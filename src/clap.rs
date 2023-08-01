@@ -1,6 +1,6 @@
 use clap;
 
-pub fn cli() -> clap::Command {
+fn cli() -> clap::Command {
     clap::Command::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .about(env!("CARGO_PKG_DESCRIPTION"))
@@ -25,18 +25,27 @@ pub fn cli() -> clap::Command {
                 .help("Use case sensitive comparison to match addresses"),
         )
         .arg(
-            clap::Arg::new("fast_mode")
-                .conflicts_with("disable_fast_mode")
-                .short('f')
-                .long("fast")
-                .action(clap::ArgAction::SetTrue)
-                .help("Limits the prefix with 4 characters"),
-        )
-        .arg(
-            clap::Arg::new("disable_fast_mode")
+            clap::Arg::new("disable-fast-mode")
                 .short('d')
                 .long("disable-fast")
-                .action(clap::ArgAction::SetFalse)
+                .action(clap::ArgAction::SetTrue)
                 .help("Disables fast mode to find a prefix more than 4 characters"),
         )
+}
+
+pub fn args() -> (String, u64, bool, bool) {
+    let app = cli();
+    let matches = app.get_matches();
+
+    return(
+        matches.get_one::<String>("prefix")
+            .expect("This was unexpected :(. Something went wrong while getting prefix arg")
+            .to_string(),
+        matches.get_one::<String>("threads")
+            .expect("This was unexpected :(. Something went wrong while getting -t or --threads arg")
+            .trim().parse::<u64>()
+            .expect("Threads must be a number!"),
+        matches.get_flag("case-sensitive"),
+        matches.get_flag("disable-fast-mode"),
+    )
 }
