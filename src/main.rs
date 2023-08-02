@@ -37,7 +37,7 @@ fn main() {
     let (vanity_mode, mode) =
         if matches.get_flag("anywhere") { (VanityMode::Anywhere, MODE[2]) }
         else if matches.get_flag("suffix") { (VanityMode::Suffix, MODE[1]) }
-        else { (VanityMode::Anywhere, MODE[0]) };
+        else { (VanityMode::Prefix, MODE[0]) };
 
     // Sets case sensitivity decoration string.
     let case_sensitive = match is_case_sensitive {
