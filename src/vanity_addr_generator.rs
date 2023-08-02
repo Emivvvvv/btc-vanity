@@ -14,7 +14,7 @@ pub enum  VanityMode {
 
 impl VanityAddr {
     pub fn generate(
-        string: String,
+        string: &String,
         threads: u64,
         case_sensitive: bool,
         fast_mode: bool,
@@ -39,7 +39,7 @@ impl VanityAddr {
     }
 }
 
-fn find_vanity_address(string: String, threads: u64, case_sensitive: bool, vanity_mode: VanityMode) -> KeysAndAddress {
+fn find_vanity_address(string: &String, threads: u64, case_sensitive: bool, vanity_mode: VanityMode) -> KeysAndAddress {
     let string_len = string.len();
     let (sender, receiver) = mpsc::channel();
 

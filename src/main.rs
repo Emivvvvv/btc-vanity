@@ -1,35 +1,10 @@
 use std::time::Instant;
 use btc_vanity::vanity_addr_generator::{VanityAddr, VanityMode};
 use btc_vanity::clap::{cli};
-use std::fs;
-use std::fs::OpenOptions;
-use std::io::Write;
-use btc_vanity::error::CustomError;
+use btc_vanity::file::{FileFlags, get_strings_and_flags_from_file, write_output_file};
 
-const MODE: [&str; 3] = ["has the prefix", "has the suffix", "has the string"];
-const CASE_SENSITIVITY: [&str; 2] = ["(case sensitive)", "(case sensitivity disabled)"];
-
-// Gets all strings from the input file. All strings must be seperated by a new line.
-fn get_strings_from_file(file_name: &String) -> Result<Vec<String>, Box<dyn std::error::Error>>{
-    let data = fs::read_to_string(file_name)?;
-    let lines: Vec<&str> = data.lines().collect::<Vec<_>>();
-    let strings = lines.into_iter().map(|line| line.to_string()).collect();
-    Ok(strings)
-}
-
-// If file already exists appends else creates an output text file and writes all the found key pairs and addresses.
-fn write_output_file(output_file_name: &String, buffer: &String) -> Result<(), Box<dyn std::error::Error>> {
-    let ofn_len = output_file_name.len();
-    if &output_file_name[ofn_len - 4..ofn_len] != ".txt" { return Err(Box::new(CustomError("file must be a text file. ex: output.txt"))) }
-    let file_result = OpenOptions::new().append(true).open(output_file_name);
-    let mut file = match file_result {
-        Ok(file) => file,
-        Err(_) => fs::File::create(output_file_name)?,
-    };
-
-    file.write_all(buffer.as_bytes())?;
-    Ok(())
-}
+const VANITY_MODE_STR: [&str; 3] = ["has the prefix", "has the suffix", "has the string"];
+const CASE_SENSITIVITY_STR: [&str; 2] = ["(case sensitive)", "(case sensitivity disabled)"];
 
 fn main() {
     // Sets the cli app.
@@ -41,54 +16,92 @@ fn main() {
         .expect("This was unexpected :(. Something went wrong while getting -t or --threads arg")
         .trim().parse::<u64>()
         .expect("Threads must be a number!");
-    let is_case_sensitive = matches.get_flag("case-sensitive");
-    let is_fast_disabled = matches.get_flag("disable-fast-mode");
-    let output_file_name = match matches.get_one::<String>("output-file") {
-        Some(output_file_name) => output_file_name.to_string(),
-        None => String::from(""),
-    };
-    let strings = match matches.get_one::<String>("string") {
-        Some(string) => vec![string.to_owned()],
+    let (strings, flags_vec) = match matches.get_one::<String>("string") {
+        Some(string) => (vec![string.to_owned()], vec![FileFlags::use_cli_flags()]),
         None => {
             let file_name = matches.get_one::<String>("input-file").unwrap();
-            get_strings_from_file(file_name).unwrap()
+            get_strings_and_flags_from_file(file_name).unwrap()
         }
     };
 
-    // Sets vanity_mode for searching and mode to predefined decoration strings.
-    let (vanity_mode, mode) =
-        if matches.get_flag("anywhere") { (VanityMode::Anywhere, MODE[2]) }
-        else if matches.get_flag("suffix") { (VanityMode::Suffix, MODE[1]) }
-        else { (VanityMode::Prefix, MODE[0]) };
-
-    // Sets case sensitivity decoration string.
-    let case_sensitive = match is_case_sensitive {
-        true => CASE_SENSITIVITY[0],
-        false => CASE_SENSITIVITY[1],
+    let cli_force_flags = matches.get_flag("force-flags");
+    let cli_is_case_sensitive = matches.get_flag("case-sensitive");
+    let cli_is_fast_disabled = matches.get_flag("disable-fast-mode");
+    let cli_output_file_name = match matches.get_one::<String>("output-file") {
+        Some(output_file_name) => output_file_name.to_string(),
+        None => String::from(""),
     };
 
+    // Sets vanity_mode for searching and mode to predefined decoration strings.
+    let cli_vanity_mode =
+        if matches.get_flag("anywhere") { VanityMode::Anywhere }
+        else if matches.get_flag("suffix") { VanityMode::Suffix }
+        else { VanityMode::Prefix };
+
+    let mut string_is_case_sensitive;
+    let mut string_is_fast_disabled;
+    let mut string_output_file_name;
+    let mut string_vanity_mode;
+
     // Loop for multiple wallet inputs from text file.
-    for string in strings {
+    for (i, string) in strings.iter().enumerate() {
+        if cli_force_flags {
+            string_is_case_sensitive = cli_is_case_sensitive;
+            string_is_fast_disabled = cli_is_fast_disabled;
+            string_output_file_name = &cli_output_file_name;
+            string_vanity_mode = cli_vanity_mode;
+        } else {
+            let flags = &flags_vec[i];
+            let force_flags = flags.force_flags;
+            string_vanity_mode = match flags.vanity_mode {
+                Some(vanity_mode) => vanity_mode,
+                None => cli_vanity_mode
+            };
+            string_output_file_name = match &flags.output_file_name {
+                Some(output_file_name) => output_file_name,
+                None => &cli_output_file_name,
+            };
+            if force_flags {
+                string_is_case_sensitive = flags.is_case_sensitive;
+                string_is_fast_disabled = flags.disable_fast_mode;
+            } else {
+                string_is_case_sensitive = cli_is_case_sensitive || flags.is_case_sensitive;
+                string_is_fast_disabled = cli_is_fast_disabled || flags.is_case_sensitive;
+            }
+        }
+
+        let vanity_mode_str = match string_vanity_mode {
+            VanityMode::Prefix => VANITY_MODE_STR[0],
+            VanityMode::Suffix => VANITY_MODE_STR[1],
+            VanityMode::Anywhere => VANITY_MODE_STR[2],
+        };
+
+        // Sets case sensitivity decoration string.
+        let case_sensitive_str = match string_is_case_sensitive {
+            true => CASE_SENSITIVITY_STR[0],
+            false => CASE_SENSITIVITY_STR[1],
+        };
+
         let mut buffer1 = String::new();
         println!("Searching key pair which their address {}: '{}' {} with {} threads.\n",
-                 mode,
+                 vanity_mode_str,
                  string,
-                 case_sensitive,
+                 case_sensitive_str,
                  threads);
 
-        if !output_file_name.is_empty() { buffer1 = format!("Key pair which their address {}: '{}' {}\n",
-                                                            mode,
+        if !string_output_file_name.is_empty() { buffer1 = format!("Key pair which their address {}: '{}' {}\n",
+                                                            vanity_mode_str,
                                                             string,
-                                                            case_sensitive) }
+                                                            case_sensitive_str) }
 
         // Generates the vanity address and measures the time elapsed while finding the address.
         let start = Instant::now();
         let result = VanityAddr::generate(
             string,
             threads,
-            is_case_sensitive,
-            !is_fast_disabled,
-            vanity_mode);
+            string_is_case_sensitive,
+            !string_is_fast_disabled,
+            string_vanity_mode);
         let seconds = start.elapsed().as_secs_f64();
 
         #[allow(unused_assignments)]
@@ -109,7 +122,7 @@ fn main() {
             Err(err) => buffer2 = format!("Skipping because of error: {}\n\n", err),
         }
 
-        if !output_file_name.is_empty() { write_output_file(&output_file_name, &format!("{}\n{}", buffer1, buffer2)).unwrap() }
+        if !string_output_file_name.is_empty() { write_output_file(&string_output_file_name, &format!("{}\n{}", buffer1, buffer2)).unwrap() }
         else {println!("{}", buffer2)}
     }
 }

@@ -1,32 +1,20 @@
-Key pair which their address has the string: 'Emiv' (case sensitivity disabled)
+Key pair which their address has the prefix: 'Emiv' (case sensitive)
 
-private_key (wif): KykPqyDR5b5R6CLv8rdHejkueoE8ajyiWASRcpdPgvTCgVZBWXBW
-public_key (compressed): 03cdd38675538d09b12731f85d5596ce1700c0605867ad73bcc1c79a5b34025fad
-address (compressed): 1Ly6bkbMDYBeyzRaHemiV68TXQ5MRZ3Yk8
+private_key (wif): L5HKSVzYDhCVLL7Ee86ZdUfCxct79QNNitcY31Fd2jpLRhsP9aGM
+public_key (compressed): 0219bf50de1016e3b9488d40f1491fc68770fc6f1cd4c03800f735bf5e24604071
+address (compressed): 1EmivViq9PGMZbsACzThSLui9DD1roNWM3
 
 Key pair which their address has the string: 'TALA' (case sensitivity disabled)
 
-private_key (wif): L5D6ro2ApU3sbo96tbiJSAU8GciPAfxRXGttYQ9CGBUwtyrhkkox
-public_key (compressed): 0278b6d7cf2c1e5e6c9ed7b418a132f12ead1a60ed049bd57bc2f82039265ab05a
-address (compressed): 1HGFM6K1vQvqWV2J8edqSeMRT8ZhUtaLAu
-
-Key pair which their address has the string: 'susy' (case sensitivity disabled)
-
-private_key (wif): L3ea8oHcXBBaWYTYoDaoW9585UnGtXxQoQ3EZX1sHNwHmu1WyWE6
-public_key (compressed): 0252304dd0830933c4d86998c691eac2eaaa9b3cd94b4ad52cb0ed6804363db3a2
-address (compressed): 1ForhsuSyRxmykzd4AAPnKjDoAMoR6bQSq
-
-Key pair which their address has the string: 'baka' (case sensitivity disabled)
-
-private_key (wif): L2sS1g2CzjuK1ioWyBBXY9LUKBQSSEPr7y5VDkXiAvSvXiXKY2kq
-public_key (compressed): 036038c44942eda31f377b17c09f89367ca26e8ae671e651b94d079d16c8a55fc8
-address (compressed): 1E54ypoUraXWWsq6qe7emzbakAjy2UY5Jf
+private_key (wif): L3DsGrvw2Q5DupsB3sSXHLrR1XQG2YEX83khmFGk9DG43wtzTKJb
+public_key (compressed): 03b77d7558ddb87a8b227632ba70f3d9e0d9c69cd6bac1a6217d6d055b9c7da3e6
+address (compressed): 18FYTaLA9SJ3MsoYpZovioFjjorBMxF2Y9
 
 Key pair which their address has the string: '3169' (case sensitivity disabled)
 
-private_key (wif): L15ueUSYvutNzeF1ZfS4DQf4YGMQdS9ASMYCFFVnWyXsm3pgT2Cy
-public_key (compressed): 03edf7bff75c8aa90d9866d43c0507a16847bf337de3d7367dc38ffe40ed00da32
-address (compressed): 12n7QnUGG1qQDU6P93169osNRk67oYBpTf
+private_key (wif): L1vBtcfbZMiGrcEKddsgqr8HNcm4hmvSb7FA9iiFcLr7ysi6Q4qk
+public_key (compressed): 037585a1fa6dd7119240c64aabd0ac1a50efe1b9719ba65a4f5e7ba1c5916ffa93
+address (compressed): 1AUUeG6EE7yhL3BPAhh33169LgBJBG72TT
 
 Key pair which their address has the string: 'tala' (case sensitivity disabled)
 

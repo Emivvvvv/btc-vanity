@@ -1,0 +1,12 @@
+Key pair which their address has the suffix: 'susy' (case sensitivity disabled)
+
+private_key (wif): L2ADCNMaYUvc7UQR3r5m54i3oc3Lg8pjZxYzbEeKwvJHwDbKS3Vu
+public_key (compressed): 039c921c84fb9a4edb4866ed3041d25ed85eb591e1a5efe78badc17618d5c9757f
+address (compressed): 16CkmWeZvq4na9ZewNSAXf6rhT5dQ9SuSy
+
+Key pair which their address has the string: 'baka' (case sensitivity disabled)
+
+private_key (wif): L3JmKQjJf35DfV1bxFMnM5a23UBmWwbCLdHsxPTrrZGibEpDXB8R
+public_key (compressed): 028cd20296a0c1ef3f4392cfb98325b7b35f66f95439aabe7825a68241dcdad366
+address (compressed): 1BAKaWDCdUhjb4mayLi5YyzQEycfoMnSXk
+

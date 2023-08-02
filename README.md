@@ -24,8 +24,10 @@ DO NOT USE THE PRIVATE KEYS ON THE SCREENSHOTS! NEVER EVER SHARE YOUR PRIVATE KE
 |   ✅    |             Implementing case_sensitive: false              | v0.3.0  |
 |   ✅    |    Taking input from a file to generate multiple wallets    | v0.4.0  |
 |   ✅    |    Implementing output file that contains found wallets     | v0.5.0  |
-|   ⏳    | Getting flags from input file for each string and implement | v0.6.0  |
+|   ✅    | Getting flags from input file for each string and implement | v0.6.0  |
 |  ...   |                             ...                             |   ...   |
+
+As I completed this roadmap I'll focus on bug fixes and optimizing the whole performance.
 
 ## Installation
 
@@ -35,10 +37,18 @@ $ cargo install btc-vanity
 [btc-vanity crates.io](https://crates.io/crates/btc-vanity)
 
 
-## Example Usage
+## Example Usages
 
 ```
 $ btc-vanity -c -a Emiv
+```
+
+```
+$ btc-vanity -s -o wallet.txt TALA
+```
+
+```
+$ btc-vanity -f -p -c -i inputs.txt -o wallets.txt
 ```
 
 ## CLI
@@ -50,18 +60,21 @@ A bitcoin vanity address generator written with the Rust programming language.
 Usage: btc-vanity [OPTIONS] [string]
 
 Arguments:
-  [string]  String used to match addresses
+  [string]  String used to match addresses.
 
 Options:
   -i, --input-file <input-file>    File with strings to match addresses with.
                                    Important: Write every string in a separate line.
-  -o, --output-file <output-file>  Crates a file that contains found wallet/s
+  -f, --force-flags                Use this flag to override the flags in the input file
+                                   or use in file to override cli flags for only that string.
+                                   Note: Cli -f is stronger than input-file -f.
+  -o, --output-file <output-file>  Crates a file that contains found wallet/s.
   -p, --prefix                     Finds a vanity address which has 'string' prefix. [default]
   -s, --suffix                     Finds a vanity address which has 'string' suffix.
   -a, --anywhere                   Finds a vanity address which includes 'string' at any part of the address.
-  -t, --threads <threads>          Number of threads to be used [default: 8]
-  -c, --case-sensitive             Use case sensitive comparison to match addresses
-  -d, --disable-fast               Disables fast mode to find a prefix more than 4 characters
+  -t, --threads <threads>          Number of threads to be used. [default: 16]
+  -c, --case-sensitive             Use case sensitive comparison to match addresses.
+  -d, --disable-fast               Disables fast mode to find a prefix more than 4 characters.
   -h, --help                       Print help
   -V, --version                    Print version
 ```
