@@ -20,7 +20,7 @@ DO NOT USE THE PRIVATE KEYS ON THE SCREENSHOTS! NEVER EVER SHARE YOUR PRIVATE KE
 |:------:|:-----------------------------------------------------:|:-------:|
 |   ✅    |        Creating vanity addresses with a prefix        | v0.1.0  |
 |   ✅    |          Adding suffix and anywhere options           | v0.2.0  |
-|   ⏳    |          Implementing case_sensitive: false           | v0.3.0  |
+|   ✅    |          Implementing case_sensitive: false           | v0.3.0  |
 |   ⏳    | Taking input from a file to generate multiple wallets | v.0.4.0 |
 |  ...   |                          ...                          |   ...   |
 

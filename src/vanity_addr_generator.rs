@@ -55,25 +55,41 @@ fn find_vanity_address(string: String, threads: u64, case_sensitive: bool, vanit
                 let new_pair = KeysAndAddress::generate_random();
                 let address = new_pair.get_comp_address();
 
-                match vanity_mode {
-                    VanityMode::Prefix => {
-                        let slice = &address[1..= string_len];
-                        prefix_suffix_flag = slice == string;
+                match case_sensitive {
+                    true => {
+                        match vanity_mode {
+                            VanityMode::Prefix => {
+                                let slice = &address[1..= string_len];
+                                prefix_suffix_flag = slice == string;
+                            }
+                            VanityMode::Suffix => {
+                                let address_len = address.len();
+                                let slice = &address[address_len - string_len..address_len];
+                                prefix_suffix_flag = slice == string;
+                            }
+                            VanityMode::Anywhere => {
+                                anywhere_flag = address.contains(&string);
+                            }
+                        }
+                        if prefix_suffix_flag || anywhere_flag { sender.send(new_pair).unwrap() };
+                    },
+                    false => {
+                        match vanity_mode {
+                            VanityMode::Prefix => {
+                                let slice = &address[1..= string_len];
+                                prefix_suffix_flag = slice.to_lowercase().contains(&string.to_lowercase());
+                            }
+                            VanityMode::Suffix => {
+                                let address_len = address.len();
+                                let slice = &address[address_len - string_len..address_len];
+                                prefix_suffix_flag = slice.to_lowercase().contains(&string.to_lowercase());
+                            }
+                            VanityMode::Anywhere => {
+                                anywhere_flag = address.to_lowercase().contains(&string.to_lowercase());
+                            }
+                        }
+                        if prefix_suffix_flag || anywhere_flag { sender.send(new_pair).unwrap() };
                     }
-                    VanityMode::Suffix => {
-                        let address_len = address.len();
-                        let slice = &address[address_len - string_len..address_len];
-                        prefix_suffix_flag = slice == string;
-                    }
-                    VanityMode::Anywhere => {
-                        anywhere_flag = address.contains(&string);
-                    }
-                }
-
-                if case_sensitive {
-                    if prefix_suffix_flag || anywhere_flag { sender.send(new_pair).unwrap() };
-                } else {
-                    todo!() //TODO: implement case_sensitive: false. For now it just sends a random pair.
                 }
             }
         });
