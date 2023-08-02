@@ -7,7 +7,11 @@ const CASE_SENSITIVITY: [&str; 2] = ["(case sensitive)", "(case sensitivity disa
 
 fn main() {
     // Sets the cli app and gets all the arguments from cli app.
-    let (string, threads, is_case_sensitive, is_fast_disabled, vanity_mode) = args();
+    let (string,
+        threads,
+        is_case_sensitive,
+        is_fast_disabled,
+        vanity_mode) = args();
 
     // Sets mode to predefined decoration strings.
     let mode = match vanity_mode {
@@ -23,9 +27,18 @@ fn main() {
     };
 
     // Gets the keys and the vanity address
-    println!("Searching key pair which their address {}: '{}' {} with {} threads.\n", mode, string, case_sensitive, threads);
+    println!("Searching key pair which their address {}: '{}' {} with {} threads.\n",
+             mode,
+             string,
+             case_sensitive,
+             threads);
     let start = Instant::now();
-    let result = VanityAddr::generate(string, threads, is_case_sensitive, !is_fast_disabled, vanity_mode).unwrap();
+    let result = VanityAddr::generate(
+        string,
+        threads,
+        is_case_sensitive,
+        !is_fast_disabled,
+        vanity_mode).unwrap();
     let seconds = start.elapsed().as_secs_f64();
 
     // Prints the found key pair and the address which has the string.
