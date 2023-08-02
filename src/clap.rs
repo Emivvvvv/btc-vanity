@@ -1,16 +1,30 @@
 use clap;
-use crate::vanity_addr_generator::VanityMode;
 
-fn cli() -> clap::Command {
+pub fn cli() -> clap::Command {
     clap::Command::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .about(env!("CARGO_PKG_DESCRIPTION"))
         .arg(
             clap::Arg::new("string")
                 .index(1)
-                .required(true)
+                .required_unless_present_any(["input-file"])
                 .help("String used to match addresses"),
         )
+        .arg(
+            clap::Arg::new("input-file")
+                .short('i')
+                .long("input-file")
+                .required_unless_present_any(["string"])
+                .help("File with strings to match addresses with.\nImportant: Write every string in a separate line.")
+        )
+        //  will be added with the version v0.5.0
+        // .arg(
+        //     clap::Arg::new("output-file")
+        //         .short('o')
+        //         .long("output-file")
+        //         .default_value("wallets.txt")
+        //         .help("Crates a file that contains found wallet/s"),
+        // )
         .arg(
             clap::Arg::new("prefix")
                 .conflicts_with("suffix")
@@ -57,27 +71,4 @@ fn cli() -> clap::Command {
                 .action(clap::ArgAction::SetTrue)
                 .help("Disables fast mode to find a prefix more than 4 characters"),
         )
-}
-
-pub fn args() -> (String, u64, bool, bool, VanityMode) {
-    let app = cli();
-    let matches = app.get_matches();
-
-    let vanity_mode =
-        if matches.get_flag("anywhere") { VanityMode::Anywhere }
-        else if matches.get_flag("suffix") { VanityMode::Suffix }
-        else { VanityMode::Prefix };
-
-    return(
-        matches.get_one::<String>("string")
-            .expect("This was unexpected :(. Something went wrong while getting prefix arg")
-            .to_string(),
-        matches.get_one::<String>("threads")
-            .expect("This was unexpected :(. Something went wrong while getting -t or --threads arg")
-            .trim().parse::<u64>()
-            .expect("Threads must be a number!"),
-        matches.get_flag("case-sensitive"),
-        matches.get_flag("disable-fast-mode"),
-        vanity_mode
-    )
 }

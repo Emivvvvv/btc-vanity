@@ -13,16 +13,19 @@ DO NOT USE THE PRIVATE KEYS ON THE SCREENSHOTS! NEVER EVER SHARE YOUR PRIVATE KE
 
 ![My Image](case-sensitive-false-examples.png)
 ![My Image](case-sensitive-true-examples.png)
+![My Image](input-file-examples.png)
 
 ## Roadmap
 
-| Status |                        Feature                        | Version |
-|:------:|:-----------------------------------------------------:|:-------:|
-|   ✅    |        Creating vanity addresses with a prefix        | v0.1.0  |
-|   ✅    |          Adding suffix and anywhere options           | v0.2.0  |
-|   ✅    |          Implementing case_sensitive: false           | v0.3.0  |
-|   ⏳    | Taking input from a file to generate multiple wallets | v.0.4.0 |
-|  ...   |                          ...                          |   ...   |
+| Status |                           Feature                           | Version |
+|:------:|:-----------------------------------------------------------:|:-------:|
+|   ✅    |           Creating vanity addresses with a prefix           | v0.1.0  |
+|   ✅    |             Adding suffix and anywhere options              | v0.2.0  |
+|   ✅    |             Implementing case_sensitive: false              | v0.3.0  |
+|   ✅    |    Taking input from a file to generate multiple wallets    | v0.4.0  |
+|   ⏳    | Getting flags from input file for each string and implement | v0.5.0  |
+|   ⏳    |    Implementing output file that contains found wallets     | v0.6.0  |
+|  ...   |                             ...                             |   ...   |
 
 ## Installation
 

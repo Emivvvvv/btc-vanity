@@ -2,7 +2,6 @@ use crate::keys_and_address::KeysAndAddress;
 use crate::error::CustomError;
 use std::thread;
 use std::sync::mpsc;
-use std::sync::mpsc::TryRecvError;
 
 pub struct VanityAddr;
 
@@ -71,8 +70,7 @@ fn find_vanity_address(string: String, threads: u64, case_sensitive: bool, vanit
                                 anywhere_flag = address.contains(&string);
                             }
                         }
-                        if prefix_suffix_flag || anywhere_flag { sender.send(new_pair).unwrap() };
-                    },
+                        if prefix_suffix_flag || anywhere_flag { if let Err(_) = sender.send(new_pair) {return}} }, // If the channel closed, that means another thread found a keypair and closed it so we just return and kill the thread if an error occurs.
                     false => {
                         match vanity_mode {
                             VanityMode::Prefix => {
@@ -88,7 +86,7 @@ fn find_vanity_address(string: String, threads: u64, case_sensitive: bool, vanit
                                 anywhere_flag = address.to_lowercase().contains(&string.to_lowercase());
                             }
                         }
-                        if prefix_suffix_flag || anywhere_flag { sender.send(new_pair).unwrap() };
+                        if prefix_suffix_flag || anywhere_flag { if let Err(_) = sender.send(new_pair) {return}} // If the channel closed, that means another thread found a keypair and closed it so we just return and kill the thread if an error occurs.
                     }
                 }
             }
@@ -98,10 +96,7 @@ fn find_vanity_address(string: String, threads: u64, case_sensitive: bool, vanit
     loop {
         match receiver.try_recv() {
             Ok(pair) => return pair,
-            Err(err) => match err {
-                TryRecvError::Empty => continue,
-                _ => panic!("{}",err),
-            }
+            Err(_) => continue
         }
     }
 }
