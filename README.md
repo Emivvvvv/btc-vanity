@@ -11,8 +11,8 @@ You can easily run btc-vanity at you computer to get your private key securely.
 
 DO NOT USE THE PRIVATE KEYS ON THE SCREENSHOTS! NEVER EVER SHARE YOUR PRIVATE KEY! THESE ACCOUNTS ARE NOT IN USE! USING THESE ACCOUNTS MEAN YOU PROBABLY LOSE YOUR MONEY!
 
-![My Image](example-screenshot.png)
-
+![My Image](case-sensitive-false-examples.png)
+![My Image](case-sensitive-true-examples.png)
 
 ## Roadmap
 
