@@ -17,14 +17,12 @@ pub fn cli() -> clap::Command {
                 .required_unless_present_any(["string"])
                 .help("File with strings to match addresses with.\nImportant: Write every string in a separate line.")
         )
-        //  will be added with the version v0.5.0
-        // .arg(
-        //     clap::Arg::new("output-file")
-        //         .short('o')
-        //         .long("output-file")
-        //         .default_value("wallets.txt")
-        //         .help("Crates a file that contains found wallet/s"),
-        // )
+        .arg(
+            clap::Arg::new("output-file")
+                .short('o')
+                .long("output-file")
+                .help("Crates a file that contains found wallet/s"),
+        )
         .arg(
             clap::Arg::new("prefix")
                 .conflicts_with("suffix")

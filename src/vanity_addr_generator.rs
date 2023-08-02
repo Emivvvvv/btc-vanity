@@ -55,8 +55,7 @@ fn find_vanity_address(string: String, threads: u64, case_sensitive: bool, vanit
                 let address = new_pair.get_comp_address();
 
                 match case_sensitive {
-                    true => {
-                        match vanity_mode {
+                    true => match vanity_mode {
                             VanityMode::Prefix => {
                                 let slice = &address[1..= string_len];
                                 prefix_suffix_flag = slice == string;
@@ -69,10 +68,8 @@ fn find_vanity_address(string: String, threads: u64, case_sensitive: bool, vanit
                             VanityMode::Anywhere => {
                                 anywhere_flag = address.contains(&string);
                             }
-                        }
-                        if prefix_suffix_flag || anywhere_flag { if let Err(_) = sender.send(new_pair) {return}} }, // If the channel closed, that means another thread found a keypair and closed it so we just return and kill the thread if an error occurs.
-                    false => {
-                        match vanity_mode {
+                        },
+                    false => match vanity_mode {
                             VanityMode::Prefix => {
                                 let slice = &address[1..= string_len];
                                 prefix_suffix_flag = slice.to_lowercase().contains(&string.to_lowercase());
@@ -86,9 +83,8 @@ fn find_vanity_address(string: String, threads: u64, case_sensitive: bool, vanit
                                 anywhere_flag = address.to_lowercase().contains(&string.to_lowercase());
                             }
                         }
-                        if prefix_suffix_flag || anywhere_flag { if let Err(_) = sender.send(new_pair) {return}} // If the channel closed, that means another thread found a keypair and closed it so we just return and kill the thread if an error occurs.
-                    }
                 }
+                if prefix_suffix_flag || anywhere_flag {if sender.send(new_pair).is_err() {return}} // If the channel closed, that means another thread found a keypair and closed it so we just return and kill the thread if an error occurs.
             }
         });
     }

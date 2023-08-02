@@ -1,0 +1,34 @@
+Key pair which their address has the string: 'Emiv' (case sensitivity disabled)
+
+private_key (wif): KykPqyDR5b5R6CLv8rdHejkueoE8ajyiWASRcpdPgvTCgVZBWXBW
+public_key (compressed): 03cdd38675538d09b12731f85d5596ce1700c0605867ad73bcc1c79a5b34025fad
+address (compressed): 1Ly6bkbMDYBeyzRaHemiV68TXQ5MRZ3Yk8
+
+Key pair which their address has the string: 'TALA' (case sensitivity disabled)
+
+private_key (wif): L5D6ro2ApU3sbo96tbiJSAU8GciPAfxRXGttYQ9CGBUwtyrhkkox
+public_key (compressed): 0278b6d7cf2c1e5e6c9ed7b418a132f12ead1a60ed049bd57bc2f82039265ab05a
+address (compressed): 1HGFM6K1vQvqWV2J8edqSeMRT8ZhUtaLAu
+
+Key pair which their address has the string: 'susy' (case sensitivity disabled)
+
+private_key (wif): L3ea8oHcXBBaWYTYoDaoW9585UnGtXxQoQ3EZX1sHNwHmu1WyWE6
+public_key (compressed): 0252304dd0830933c4d86998c691eac2eaaa9b3cd94b4ad52cb0ed6804363db3a2
+address (compressed): 1ForhsuSyRxmykzd4AAPnKjDoAMoR6bQSq
+
+Key pair which their address has the string: 'baka' (case sensitivity disabled)
+
+private_key (wif): L2sS1g2CzjuK1ioWyBBXY9LUKBQSSEPr7y5VDkXiAvSvXiXKY2kq
+public_key (compressed): 036038c44942eda31f377b17c09f89367ca26e8ae671e651b94d079d16c8a55fc8
+address (compressed): 1E54ypoUraXWWsq6qe7emzbakAjy2UY5Jf
+
+Key pair which their address has the string: '3169' (case sensitivity disabled)
+
+private_key (wif): L15ueUSYvutNzeF1ZfS4DQf4YGMQdS9ASMYCFFVnWyXsm3pgT2Cy
+public_key (compressed): 03edf7bff75c8aa90d9866d43c0507a16847bf337de3d7367dc38ffe40ed00da32
+address (compressed): 12n7QnUGG1qQDU6P93169osNRk67oYBpTf
+
+Key pair which their address has the string: 'tala' (case sensitivity disabled)
+
+Skipping because of error: Custom Error: Your input is not in base58. Don't include zero: '0', uppercase i: 'I', uppercase o: 'O', lowercase L: 'l', in your input!
+

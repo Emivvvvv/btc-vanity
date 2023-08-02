@@ -13,6 +13,7 @@ DO NOT USE THE PRIVATE KEYS ON THE SCREENSHOTS! NEVER EVER SHARE YOUR PRIVATE KE
 
 ![My Image](case-sensitive-false-examples.png)
 ![My Image](case-sensitive-true-examples.png)
+![My Image](input-file-examples.png)
 
 ## Roadmap
 
@@ -22,8 +23,8 @@ DO NOT USE THE PRIVATE KEYS ON THE SCREENSHOTS! NEVER EVER SHARE YOUR PRIVATE KE
 |   ✅    |             Adding suffix and anywhere options              | v0.2.0  |
 |   ✅    |             Implementing case_sensitive: false              | v0.3.0  |
 |   ✅    |    Taking input from a file to generate multiple wallets    | v0.4.0  |
-|   ⏳    | Getting flags from input file for each string and implement | v0.5.0  |
-|   ⏳    |    Implementing output file that contains found wallets     | v0.6.0  |
+|   ✅    |    Implementing output file that contains found wallets     | v0.5.0  |
+|   ⏳    | Getting flags from input file for each string and implement | v0.6.0  |
 |  ...   |                             ...                             |   ...   |
 
 ## Installation
@@ -46,20 +47,23 @@ $ btc-vanity -c -a Emiv
 $ btc-vanity --help
 A bitcoin vanity address generator written with the Rust programming language.
 
-Usage: btc-vanity [OPTIONS] <string>
+Usage: btc-vanity [OPTIONS] [string]
 
 Arguments:
-  <string>  String used to match addresses
+  [string]  String used to match addresses
 
 Options:
-  -p, --prefix             Finds a vanity address which has 'string' prefix. [default]
-  -s, --suffix             Finds a vanity address which has 'string' suffix.
-  -a, --anywhere           Finds a vanity address which includes 'string' at any part of the address.
-  -t, --threads <threads>  Number of threads to be used [default: 8]
-  -c, --case-sensitive     Use case sensitive comparison to match addresses
-  -d, --disable-fast       Disables fast mode to find a prefix more than 4 characters
-  -h, --help               Print help
-  -V, --version            Print version
+  -i, --input-file <input-file>    File with strings to match addresses with.
+                                   Important: Write every string in a separate line.
+  -o, --output-file <output-file>  Crates a file that contains found wallet/s
+  -p, --prefix                     Finds a vanity address which has 'string' prefix. [default]
+  -s, --suffix                     Finds a vanity address which has 'string' suffix.
+  -a, --anywhere                   Finds a vanity address which includes 'string' at any part of the address.
+  -t, --threads <threads>          Number of threads to be used [default: 8]
+  -c, --case-sensitive             Use case sensitive comparison to match addresses
+  -d, --disable-fast               Disables fast mode to find a prefix more than 4 characters
+  -h, --help                       Print help
+  -V, --version                    Print version
 ```
 
 ## Disclaimer
