@@ -1,14 +1,40 @@
 use clap;
+use crate::vanity_addr_generator::VanityMode;
 
 fn cli() -> clap::Command {
     clap::Command::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .about(env!("CARGO_PKG_DESCRIPTION"))
         .arg(
-            clap::Arg::new("prefix")
+            clap::Arg::new("string")
                 .index(1)
                 .required(true)
-                .help("Prefix used to match addresses"),
+                .help("String used to match addresses"),
+        )
+        .arg(
+            clap::Arg::new("prefix")
+                .conflicts_with("suffix")
+                .conflicts_with("anywhere")
+                .short('p')
+                .long("prefix")
+                .action(clap::ArgAction::SetTrue)
+                .help("Finds a vanity address which has 'string' prefix. [default]")
+        )
+        .arg(
+            clap::Arg::new("suffix")
+                .conflicts_with("prefix")
+                .conflicts_with("anywhere")
+                .short('s')
+                .long("suffix")
+                .action(clap::ArgAction::SetTrue)
+                .help("Finds a vanity address which has 'string' suffix.")
+        )
+        .arg(
+            clap::Arg::new("anywhere")
+                .short('a')
+                .long("anywhere")
+                .action(clap::ArgAction::SetTrue)
+                .help("Finds a vanity address which includes 'string' at any part of the address.")
         )
         .arg(
             clap::Arg::new("threads")
@@ -33,12 +59,17 @@ fn cli() -> clap::Command {
         )
 }
 
-pub fn args() -> (String, u64, bool, bool) {
+pub fn args() -> (String, u64, bool, bool, VanityMode) {
     let app = cli();
     let matches = app.get_matches();
 
+    let vanity_mode =
+        if matches.get_flag("anywhere") { VanityMode::Anywhere }
+        else if matches.get_flag("suffix") { VanityMode::Suffix }
+        else { VanityMode::Prefix };
+
     return(
-        matches.get_one::<String>("prefix")
+        matches.get_one::<String>("string")
             .expect("This was unexpected :(. Something went wrong while getting prefix arg")
             .to_string(),
         matches.get_one::<String>("threads")
@@ -47,5 +78,6 @@ pub fn args() -> (String, u64, bool, bool) {
             .expect("Threads must be a number!"),
         matches.get_flag("case-sensitive"),
         matches.get_flag("disable-fast-mode"),
+        vanity_mode
     )
 }
