@@ -13,7 +13,6 @@ DO NOT USE THE PRIVATE KEYS ON THE SCREENSHOTS! NEVER EVER SHARE YOUR PRIVATE KE
 
 ![My Image](case-sensitive-false-examples.png)
 ![My Image](case-sensitive-true-examples.png)
-![My Image](input-file-examples.png)
 
 ## Roadmap
 
