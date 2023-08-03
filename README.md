@@ -17,17 +17,18 @@ DO NOT USE THE PRIVATE KEYS ON THE SCREENSHOTS! NEVER EVER SHARE YOUR PRIVATE KE
 
 ## Roadmap
 
-| Status |                           Feature                           | Version |
-|:------:|:-----------------------------------------------------------:|:-------:|
-|   ✅    |           Creating vanity addresses with a prefix           | v0.1.0  |
-|   ✅    |             Adding suffix and anywhere options              | v0.2.0  |
-|   ✅    |             Implementing case_sensitive: false              | v0.3.0  |
-|   ✅    |    Taking input from a file to generate multiple wallets    | v0.4.0  |
-|   ✅    |    Implementing output file that contains found wallets     | v0.5.0  |
-|   ✅    | Getting flags from input file for each string and implement | v0.6.0  |
-|  ...   |                             ...                             |   ...   |
+| Status |                               Feature                               | Version |
+|:------:|:-------------------------------------------------------------------:|:-------:|
+|   ✅    |               Creating vanity addresses with a prefix               | v0.1.0  |
+|   ✅    |                 Adding suffix and anywhere options                  | v0.2.0  |
+|   ✅    |                 Implementing case_sensitive: false                  | v0.3.0  |
+|   ✅    |        Taking input from a file to generate multiple wallets        | v0.4.0  |
+|   ✅    |        Implementing output file that contains found wallets         | v0.5.0  |
+|   ✅    |     Getting flags from input file for each string and implement     | v0.6.0  |
+|   ✅    | More optimized, improved and structured code. A general refactoring | v0.7.0  |
+|  ...   |                                 ...                                 |   ...   |
 
-As I completed this roadmap I'll focus on bug fixes and optimizing the whole performance.
+I don't suggest you to use any version before v0.7.0
 
 ## Installation
 

@@ -1,20 +1,20 @@
 Key pair which their address has the prefix: 'Emiv' (case sensitive)
 
-private_key (wif): L5HKSVzYDhCVLL7Ee86ZdUfCxct79QNNitcY31Fd2jpLRhsP9aGM
-public_key (compressed): 0219bf50de1016e3b9488d40f1491fc68770fc6f1cd4c03800f735bf5e24604071
-address (compressed): 1EmivViq9PGMZbsACzThSLui9DD1roNWM3
+private_key (wif): L4RMjXo3AWzBuJTv98ZPoLtPtPP71aLwG7xV5pXodxGzWNZmK6Db
+public_key (compressed): 03a80e3296e19ffd656210aafe1bc2acb5a41c6a9b9361631c68fb7c9dbd416563
+address (compressed): 1Emiv6UxeRbAchqLvLEyVXDeL8UkrEUpzd
 
 Key pair which their address has the string: 'TALA' (case sensitivity disabled)
 
-private_key (wif): L3DsGrvw2Q5DupsB3sSXHLrR1XQG2YEX83khmFGk9DG43wtzTKJb
-public_key (compressed): 03b77d7558ddb87a8b227632ba70f3d9e0d9c69cd6bac1a6217d6d055b9c7da3e6
-address (compressed): 18FYTaLA9SJ3MsoYpZovioFjjorBMxF2Y9
+private_key (wif): KzMLndRF3EjgLPnuYsQC31sgcvJKkqX2XoebovRPjdYAp5rYPhHm
+public_key (compressed): 02dc0eaebe451bc868ac0a7806f1ccde356c9a0e296217b684ba9095d9a41cb36a
+address (compressed): 1G9rGeY13XZoa8CjK3BhaEtqotaLasmbB7
 
 Key pair which their address has the string: '3169' (case sensitivity disabled)
 
-private_key (wif): L1vBtcfbZMiGrcEKddsgqr8HNcm4hmvSb7FA9iiFcLr7ysi6Q4qk
-public_key (compressed): 037585a1fa6dd7119240c64aabd0ac1a50efe1b9719ba65a4f5e7ba1c5916ffa93
-address (compressed): 1AUUeG6EE7yhL3BPAhh33169LgBJBG72TT
+private_key (wif): L44VHVPLhD19TDpVzY3oJU5TXANVNpjVzYSB89giP1mUdPy4WexG
+public_key (compressed): 0349604b1459052a9f0bd993c4b03af4faa8e8e08c733dac129c6bcc1cdbae6057
+address (compressed): 1PKFWNcazkSKymp3169CSGBsN8gbTGeJDm
 
 Key pair which their address has the string: 'tala' (case sensitivity disabled)
 

@@ -1,12 +1,12 @@
 Key pair which their address has the suffix: 'susy' (case sensitivity disabled)
 
-private_key (wif): L2ADCNMaYUvc7UQR3r5m54i3oc3Lg8pjZxYzbEeKwvJHwDbKS3Vu
-public_key (compressed): 039c921c84fb9a4edb4866ed3041d25ed85eb591e1a5efe78badc17618d5c9757f
-address (compressed): 16CkmWeZvq4na9ZewNSAXf6rhT5dQ9SuSy
+private_key (wif): L4PqpBbDjbodfgi94ySWxEoc98Kpk4Bq1e71tpkbKSZw4BuZS8xN
+public_key (compressed): 0391743b9bf1f27a2d0ccac7fb856bef497acd91bd5f31db75b0951c446d319a5c
+address (compressed): 1DatLyAd8D6t9AjDqaZMZ8Q2pZhsJnSuSY
 
 Key pair which their address has the string: 'baka' (case sensitivity disabled)
 
-private_key (wif): L3JmKQjJf35DfV1bxFMnM5a23UBmWwbCLdHsxPTrrZGibEpDXB8R
-public_key (compressed): 028cd20296a0c1ef3f4392cfb98325b7b35f66f95439aabe7825a68241dcdad366
-address (compressed): 1BAKaWDCdUhjb4mayLi5YyzQEycfoMnSXk
+private_key (wif): L37CVwCALjAQX8NqfVWXeBiaN6JMS81m15q8eSDPcbYiNiJeJfpd
+public_key (compressed): 036ba9ac0f0d46f118bae098576352a5e9870127d2ecfda055217bff2d8391e565
+address (compressed): 1BdPtBC5w3NzmprW7wtEBAkAGdqMeChQue
 

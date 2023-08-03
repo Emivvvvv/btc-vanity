@@ -14,7 +14,7 @@ pub enum  VanityMode {
 
 impl VanityAddr {
     pub fn generate(
-        string: &String,
+        string: &str,
         threads: u64,
         case_sensitive: bool,
         fast_mode: bool,
@@ -39,13 +39,13 @@ impl VanityAddr {
     }
 }
 
-fn find_vanity_address(string: &String, threads: u64, case_sensitive: bool, vanity_mode: VanityMode) -> KeysAndAddress {
+fn find_vanity_address(string: &str, threads: u64, case_sensitive: bool, vanity_mode: VanityMode) -> KeysAndAddress {
     let string_len = string.len();
     let (sender, receiver) = mpsc::channel();
 
     for _ in 0..threads {
         let sender = sender.clone();
-        let string = string.clone();
+        let string = string.to_string();
         let mut anywhere_flag = false;
         let mut prefix_suffix_flag = false;
 
@@ -54,35 +54,28 @@ fn find_vanity_address(string: &String, threads: u64, case_sensitive: bool, vani
                 let new_pair = KeysAndAddress::generate_random();
                 let address = new_pair.get_comp_address();
 
-                match case_sensitive {
-                    true => match vanity_mode {
-                            VanityMode::Prefix => {
-                                let slice = &address[1..= string_len];
-                                prefix_suffix_flag = slice == string;
-                            }
-                            VanityMode::Suffix => {
-                                let address_len = address.len();
-                                let slice = &address[address_len - string_len..address_len];
-                                prefix_suffix_flag = slice == string;
-                            }
-                            VanityMode::Anywhere => {
-                                anywhere_flag = address.contains(&string);
-                            }
-                        },
-                    false => match vanity_mode {
-                            VanityMode::Prefix => {
-                                let slice = &address[1..= string_len];
-                                prefix_suffix_flag = slice.to_lowercase().contains(&string.to_lowercase());
-                            }
-                            VanityMode::Suffix => {
-                                let address_len = address.len();
-                                let slice = &address[address_len - string_len..address_len];
-                                prefix_suffix_flag = slice.to_lowercase().contains(&string.to_lowercase());
-                            }
-                            VanityMode::Anywhere => {
-                                anywhere_flag = address.to_lowercase().contains(&string.to_lowercase());
-                            }
-                        }
+                match vanity_mode {
+                    VanityMode::Prefix => {
+                        let slice = &address[1..=string_len];
+                        prefix_suffix_flag = match case_sensitive {
+                            true => slice == string,
+                            false => slice.to_lowercase() == string.to_lowercase(),
+                        };
+                    }
+                    VanityMode::Suffix => {
+                        let address_len = address.len();
+                        let slice = &address[address_len - string_len..address_len];
+                        prefix_suffix_flag = match case_sensitive {
+                            true => slice == string,
+                            false => slice.to_lowercase() == string.to_lowercase(),
+                        };
+                    }
+                    VanityMode::Anywhere => {
+                        anywhere_flag = match case_sensitive {
+                            true => address.contains(&string),
+                            false => address.to_lowercase().contains(&string.to_lowercase()),
+                        };
+                    }
                 }
                 if prefix_suffix_flag || anywhere_flag {if sender.send(new_pair).is_err() {return}} // If the channel closed, that means another thread found a keypair and closed it so we just return and kill the thread if an error occurs.
             }

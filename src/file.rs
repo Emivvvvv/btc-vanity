@@ -24,7 +24,7 @@ impl FileFlags {
     }
 }
 
-pub fn get_flags(line: &String) -> FileFlags {
+pub fn get_flags(line: &str) -> FileFlags {
     let args = line.split(' ').collect::<Vec<_>>();
 
     if args.len() == 1 { return FileFlags::use_cli_flags() }
@@ -34,19 +34,19 @@ pub fn get_flags(line: &String) -> FileFlags {
     let disable_fast_mode = args.contains(&"-d") || args.contains(&"--disable-fast");
     let vanity_option = args.iter().find(|&&arg| arg == "-p" || arg == "-s" || arg == "-a" || arg == "--prefix" || arg == "--suffix" || arg == "--anywhere");
     let vanity_mode = match vanity_option {
-        Some(vanity) => {
-            let vanity = vanity.to_string();
-            if vanity == String::from("-p") || vanity == String::from("--prefix") { Some(VanityMode::Prefix) }
-            else if vanity == String::from("-s") || vanity == String::from("--suffix") { Some(VanityMode::Suffix) }
-            else { Some(VanityMode::Anywhere) }
+        Some(&vanity) => match vanity {
+            "-p" | "--prefix" => Some(VanityMode::Prefix),
+            "-s" | "--suffix" => Some(VanityMode::Suffix),
+            _ => Some(VanityMode::Anywhere),
         },
         None => None,
     };
-    let ofn_index = args.iter().position(|&arg| arg == "-o" || arg == "--output-file");
-    let output_file_name = match ofn_index {
-        Some(i) => Some(args[i + 1].to_string()),
-        None => None,
-    };
+    let ofn_index = args
+        .iter()
+        .position(|&arg| arg == "-o" || arg == "--output-file");
+    let output_file_name = ofn_index
+        .and_then(|i| args.get(i + 1))
+        .map(ToString::to_string);
 
     FileFlags {
         force_flags,
@@ -65,7 +65,7 @@ pub fn get_strings_and_flags_from_file(file_name: &String) -> Result<(Vec<String
         let line_split = line.split(' ').collect::<Vec<_>>();
         line_split[0].to_string()
     }).collect();
-    let flags: Vec<FileFlags> = lines.iter().map(|&string| get_flags(&string.to_string())).collect();
+    let flags: Vec<FileFlags> = lines.iter().map(|&string| get_flags(string)).collect();
 
     Ok((strings, flags))
 }
