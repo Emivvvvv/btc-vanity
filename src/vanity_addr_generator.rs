@@ -27,6 +27,7 @@ use crate::error::CustomError;
 use std::thread;
 use std::sync::mpsc;
 
+/// An Empty Struct for a more structured code
 pub struct VanityAddr;
 
 /// Vanity mode enum
