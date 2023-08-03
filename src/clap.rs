@@ -1,5 +1,62 @@
+//! # Cli With Using Clap Crate
+//!
+//! This module is used for creating a cli app for btc-vanity with using clap crate
+//!
+//! # Usage
+//!
+//! ```bash
+//! $ btc-vanity --help
+//! A bitcoin vanity address generator written with the Rust programming language.
+//!
+//! Usage: btc-vanity [OPTIONS] [string]
+//!
+//! Arguments:
+//! [string]  String used to match addresses.
+//!
+//! Options:
+//! -i, --input-file <input-file>    File with strings to match addresses with.
+//! Important: Write every string in a separate line.
+//! -f, --force-flags                Use this flag to override the flags in the input file
+//! or use in file to override cli flags for only that string.
+//! Note: Cli -f is stronger than input-file -f.
+//! -o, --output-file <output-file>  Crates a file that contains found wallet/s.
+//! -p, --prefix                     Finds a vanity address which has 'string' prefix. [default]
+//! -s, --suffix                     Finds a vanity address which has 'string' suffix.
+//! -a, --anywhere                   Finds a vanity address which includes 'string' at any part of the address.
+//! -t, --threads <threads>          Number of threads to be used. [default: 16]
+//! -c, --case-sensitive             Use case sensitive comparison to match addresses.
+//! -d, --disable-fast               Disables fast mode to find a prefix more than 4 characters.
+//! -h, --help                       Print help
+//! -V, --version                    Print version
+//! ```
+//!
+//! # Some Usage Examples
+//!
+//! Find a vanity address with prefix "Emiv" and appends the wallet details to -wallet.txt
+//! (if there is no wallet.txt it crates a new one)
+//! ```bash
+//! $ btc-vanity -o wallet.txt Emiv
+//! ```
+//!
+//! Gets all the inputs and flags (if available) from the inputs.txt text file
+//! sets the vanity mode anywhere for the strings which don't have any vanity mode flag
+//! and appends all the wallet details to -wallets.txt with using 8 threads
+//! (if there is no wallets.txt it crates a new one)
+//! ```bash
+//! $ btc-vanity -i inputs.txt -o wallets.txt -t 8 -a
+//! ```
+//!
+//! Gets all the inputs and flags (if available) from the inputs.txt text file
+//! overrides all flags with the vanity mode to suffix, if a strings has it's own
+//! -o <text file> flag it ignores it because of -f flag adn prints all the wallet details
+//! to stdout.
+//! ```bash
+//! $ btc-vanity -f -s -i inputs.txt
+//! ```
+
 use clap;
 
+/// Runs the clap app in order to use cli
 pub fn cli() -> clap::Command {
     clap::Command::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))

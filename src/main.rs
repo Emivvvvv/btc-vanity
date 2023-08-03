@@ -3,23 +3,23 @@ use btc_vanity::vanity_addr_generator::VanityAddr;
 use btc_vanity::clap::{cli};
 use btc_vanity::file::write_output_file;
 use btc_vanity::decoration::get_decoration_strings;
-use btc_vanity::flags_and_args::{get_cli_args, get_strings_args};
+use btc_vanity::flags::{get_cli_flags, get_strings_flags};
 
 fn main() {
     // Sets the cli app.
     let app = cli();
 
-    let cli_args = get_cli_args(app);
+    let cli_flags = get_cli_flags(app);
 
     // Loop for multiple wallet inputs from text file.
-    for (i, string) in cli_args.get_strings().iter().enumerate() {
-        let string_args = get_strings_args(&cli_args, i);
+    for (i, string) in cli_flags.get_strings().iter().enumerate() {
+        let string_flags = get_strings_flags(&cli_flags, i);
 
 
         let (vanity_mode_str, case_sensitive_str)
             = get_decoration_strings(
-            string_args.get_vanity_mode(),
-            string_args.get_case_sensitivity());
+            string_flags.get_vanity_mode(),
+            string_flags.get_case_sensitivity());
 
         // First buffer/print before starting calculation
         let mut buffer1 = String::new();
@@ -27,8 +27,8 @@ fn main() {
                  vanity_mode_str,
                  string,
                  case_sensitive_str,
-                 cli_args.get_threads());
-        if !string_args.get_output_file_name().is_empty() { buffer1 = format!("Key pair which their address {}: '{}' {}\n",
+                 cli_flags.get_threads());
+        if !string_flags.get_output_file_name().is_empty() { buffer1 = format!("Key pair which their address {}: '{}' {}\n",
                                                             vanity_mode_str,
                                                             string,
                                                             case_sensitive_str) }
@@ -37,10 +37,10 @@ fn main() {
         let start = Instant::now();
         let result = VanityAddr::generate(
             string,
-            cli_args.get_threads(),
-            string_args.get_case_sensitivity(),
-            !string_args.get_is_fast_mode_disabled(),
-            string_args.get_vanity_mode());
+            cli_flags.get_threads(),
+            string_flags.get_case_sensitivity(),
+            !string_flags.get_is_fast_mode_disabled(),
+            string_flags.get_vanity_mode());
         let seconds = start.elapsed().as_secs_f64();
 
         // Second buffer/print after the vanity address found
@@ -62,7 +62,7 @@ fn main() {
         }
 
         // If string_output_file_name is empty it just prints the buffer2 to stdout else writes the wallet to the output file.
-        if !string_args.get_output_file_name().is_empty() { write_output_file(string_args.get_output_file_name(), &format!("{}\n{}", buffer1, buffer2)).unwrap() }
+        if !string_flags.get_output_file_name().is_empty() { write_output_file(string_flags.get_output_file_name(), &format!("{}\n{}", buffer1, buffer2)).unwrap() }
         else {println!("{}", buffer2)}
     }
 }

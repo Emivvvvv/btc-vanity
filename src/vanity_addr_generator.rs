@@ -1,3 +1,27 @@
+//! # Vanity Address Generation Module]
+//!
+//! This module is used to generate Bitcoin vanity addresses with multithreading.
+//!
+//! # Example Usage
+//!
+//! ```rust
+//! use btc_vanity::vanity_addr_generator::{VanityAddr, VanityMode};
+//!
+//! let vanity_address = VanityAddr::generate(
+//!             "Test", // the string that you want your vanity address include.
+//!             16, // number of threads
+//!             false, // case sensitivity (false ex: tESt, true ex: Test)
+//!             false, // fast mode flag (to use a string longer than 4 chars this must be set to true)
+//!             VanityMode::Anywhere); // vanity mode flag (prefix, suffix, anywhere available)
+//!
+//! println!("private_key (wif): {}\n\
+//!           public_key (compressed): {}\n\
+//!           address (compressed): {}\n\n",
+//!                 vanity_address.get_wif_private_key(),
+//!                 vanity_address.get_comp_public_key(),
+//!                 vanity_address.get_comp_address())
+//! ```
+
 use crate::keys_and_address::KeysAndAddress;
 use crate::error::CustomError;
 use std::thread;
@@ -5,6 +29,7 @@ use std::sync::mpsc;
 
 pub struct VanityAddr;
 
+/// Vanity mode enum
 #[derive(Copy, Clone)]
 pub enum  VanityMode {
     Prefix,
@@ -13,6 +38,11 @@ pub enum  VanityMode {
 }
 
 impl VanityAddr {
+    /// Checks all given information's before passing to the vanity address finder function.
+    /// Returns a Result type
+    /// Returns OK if a vanity address found successfully with keys_and_address::KeysAndAddress struct
+    /// Returns Err if the string if longer than 4 chars and -d or --disable-fast-mode flags are not given.
+    /// Returns Err if the string is not in base58 format.
     pub fn generate(
         string: &str,
         threads: u64,
@@ -39,6 +69,11 @@ impl VanityAddr {
     }
 }
 
+/// Search for the vanity address with given threads.
+/// First come served! If a thread finds a vanity address that satisfy all the requirements it sends
+/// the keys_and_address::KeysAndAddress struct wia std::sync::mpsc channel and find_vanity_address function kills all of the other
+/// threads and closes the channel and returns the found KeysAndAddress struct that includes
+/// key pair and the desired address.
 fn find_vanity_address(string: &str, threads: u64, case_sensitive: bool, vanity_mode: VanityMode) -> KeysAndAddress {
     let string_len = string.len();
     let (sender, receiver) = mpsc::channel();

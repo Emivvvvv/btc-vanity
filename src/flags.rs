@@ -1,8 +1,14 @@
+//! # Cli and Input File Flags Module
+//!
+//! This module is used for getting flags and file names from the cli
+//! and change flags for each string iteration if any other flags set in input file.
+
 use clap::Command;
 use crate::file::{FileFlags, get_strings_and_flags_from_file};
 use crate::vanity_addr_generator::VanityMode;
 
-pub struct CliArgs {
+/// This struct is used to save the cli flags 
+pub struct CliFlags {
     threads: u64,
     strings: Vec<String>,
     flags: Vec<FileFlags>,
@@ -13,7 +19,7 @@ pub struct CliArgs {
     vanity_mode: VanityMode,
 }
 
-impl CliArgs {
+impl CliFlags {
     pub fn get_strings(&self) -> &Vec<String> {
         &self.strings
     }
@@ -23,7 +29,8 @@ impl CliArgs {
     }
 }
 
-pub fn get_cli_args(app: Command) -> CliArgs {
+/// Gets all the set flags, file names from cli and returns them with CliFlags struct
+pub fn get_cli_flags(app: Command) -> CliFlags {
     // Gets all the arguments from the cli.
     let matches = app.get_matches();
     let threads = matches.get_one::<String>("threads")
@@ -52,7 +59,7 @@ pub fn get_cli_args(app: Command) -> CliArgs {
         else if matches.get_flag("suffix") { VanityMode::Suffix }
         else { VanityMode::Prefix };
 
-    CliArgs {
+    CliFlags {
         threads,
         strings,
         flags: flags_vec,
@@ -64,19 +71,22 @@ pub fn get_cli_args(app: Command) -> CliArgs {
     }
 }
 
-pub struct StringsArgs {
+/// This struct is used to save the strings flags for each string in the input file.
+/// Each iteration means a new StringFlag structure will be created.
+pub struct StringsFlags {
     is_case_sensitive: bool,
     is_fast_disabled: bool,
     output_file_name: String,
     vanity_mode: VanityMode,
 }
 
-impl StringsArgs {
+impl StringsFlags {
+    /// Creates a new StringFlags
     fn from(is_case_sensitive: bool,
             is_fast_disabled: bool,
             output_file_name: String,
             vanity_mode: VanityMode) -> Self {
-        StringsArgs {
+        StringsFlags {
             is_case_sensitive,
             is_fast_disabled,
             output_file_name,
@@ -84,8 +94,10 @@ impl StringsArgs {
         }
     }
 
-    fn use_cli(cli_args: &CliArgs) -> Self {
-        StringsArgs{
+    /// If the use used -f or --force flags in cli
+    /// String flags will be same as cli flags
+    fn use_cli(cli_args: &CliFlags) -> Self {
+        StringsFlags{
             is_case_sensitive: cli_args.is_case_sensitive,
             is_fast_disabled: cli_args.is_fast_disabled,
             output_file_name: cli_args.output_file_name.to_string(),
@@ -101,7 +113,6 @@ impl StringsArgs {
         self.is_case_sensitive
     }
 
-
     pub fn get_output_file_name(&self) -> &String {
         &self.output_file_name
     }
@@ -111,9 +122,12 @@ impl StringsArgs {
     }
 }
 
-pub fn get_strings_args(cli_args: &CliArgs, index: usize) -> StringsArgs {
+/// Returns A StringFlags depending string's flags that we get from the input file.
+/// If -f --force is set in cli it just return StringFlag struct that has the same flags
+/// with the cli flags
+pub fn get_strings_flags(cli_args: &CliFlags, index: usize) -> StringsFlags {
     match cli_args.force_flags {
-        true => StringsArgs::use_cli(cli_args),  // Use the provided CLI arguments directly
+        true => StringsFlags::use_cli(cli_args),  // Use the provided CLI arguments directly
         false => {
             let flags = &cli_args.flags[index];  // Get flags for the specified index
             let force_flags = flags.force_flags;  // Check if force flags are set
@@ -133,7 +147,7 @@ pub fn get_strings_args(cli_args: &CliArgs, index: usize) -> StringsArgs {
             else { cli_args.is_fast_disabled || flags.disable_fast_mode };
 
             // Construct and return the StringsArgs struct
-            StringsArgs::from(
+            StringsFlags::from(
                 string_is_case_sensitive,
                 string_is_fast_disabled,
                 string_output_file_name.to_string(),

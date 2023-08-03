@@ -1,3 +1,8 @@
+//! # Decoration Strings For Stylized Outputs
+//!
+//! This module is used for creating a better stylized outputs for btc-vanity.
+
+
 use crate::vanity_addr_generator::VanityMode;
 
 const VANITY_MODE_STR: [&str; 3] = ["has the prefix", "has the suffix", "has the string"];
