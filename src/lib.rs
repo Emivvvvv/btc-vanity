@@ -12,7 +12,7 @@
 //!             16, // number of threads
 //!             false, // case sensitivity (false ex: tESt, true ex: Test)
 //!             false, // fast mode flag (to use a string longer than 4 chars this must be set to true)
-//!             VanityMode::Anywhere); // vanity mode flag (prefix, suffix, anywhere available)
+//!             VanityMode::Anywhere).unwrap(); // vanity mode flag (prefix, suffix, anywhere available)
 //!
 //! println!("private_key (wif): {}\n\
 //!           public_key (compressed): {}\n\
