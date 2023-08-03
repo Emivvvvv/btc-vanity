@@ -20,7 +20,7 @@
 use bitcoin::{Address, PrivateKey};
 use bitcoin::key::PublicKey;
 use bitcoin::Network::Bitcoin;
-use bitcoin::secp256k1::{rand, Secp256k1};
+use bitcoin::secp256k1::{All, rand, Secp256k1, SecretKey};
 
 /// A struct to hold wif private_key, compressed public_key and their compressed address
 pub struct KeysAndAddress {
@@ -46,6 +46,20 @@ impl KeysAndAddress {
             wif_private_key: private_key.to_wif(),
             comp_public_key: public_key.to_string(),
             comp_address: address.to_string(),
+        }
+    }
+
+    pub fn fast_engine_generate_random(s: &Secp256k1<All>) -> (SecretKey, PublicKey, String) {
+        let (sk, pk) = s.generate_keypair(&mut rand::thread_rng());
+        let public_key = PublicKey::new(pk);
+        (sk, public_key, Address::p2pkh(&public_key, Bitcoin).to_string())
+    }
+
+    pub fn fast_engine_get(sk: SecretKey, public_key: PublicKey, address: String) -> Self {
+        KeysAndAddress {
+            wif_private_key: PrivateKey::new(sk, Bitcoin).to_wif(),
+            comp_public_key: public_key.to_string(),
+            comp_address: address,
         }
     }
 

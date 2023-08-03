@@ -17,18 +17,19 @@ DO NOT USE THE PRIVATE KEYS ON THE SCREENSHOTS! NEVER EVER SHARE YOUR PRIVATE KE
 
 ## Roadmap
 
-| Status |                                     Feature                                      | Version |
-|:------:|:--------------------------------------------------------------------------------:|:-------:|
-|   ✅    |                     Creating vanity addresses with a prefix                      | v0.1.0  |
-|   ✅    |                        Adding suffix and anywhere options                        | v0.2.0  |
-|   ✅    |                        Implementing case_sensitive: false                        | v0.3.0  |
-|   ✅    |              Taking input from a file to generate multiple wallets               | v0.4.0  |
-|   ✅    |               Implementing output file that contains found wallets               | v0.5.0  |
-|   ✅    |           Getting flags from input file for each string and implement            | v0.6.0  |
-|   ✅    |       More optimized, improved and structured code. A general refactoring        | v0.7.0  |
-|   ✅    |                                  Documentation                                   | v0.8.0  |
-|   ⏳    | A faster search engine function by sacrificing readability and code organization | v0.9.0  |
-|  ...   |                                       ...                                        |   ...   |
+| Status |                               Feature                                | Version |
+|:------:|:--------------------------------------------------------------------:|:-------:|
+|   ✅    |               Creating vanity addresses with a prefix                | v0.1.0  |
+|   ✅    |                  Adding suffix and anywhere options                  | v0.2.0  |
+|   ✅    |                  Implementing case_sensitive: false                  | v0.3.0  |
+|   ✅    |        Taking input from a file to generate multiple wallets         | v0.4.0  |
+|   ✅    |         Implementing output file that contains found wallets         | v0.5.0  |
+|   ✅    |     Getting flags from input file for each string and implement      | v0.6.0  |
+|   ✅    | More optimized, improved and structured code. A general refactoring  | v0.7.0  |
+|   ✅    |                            Documentation                             | v0.8.0  |
+|   ✅    |             Testing 1.58x faster search engine function              | v0.9.0  |
+|   ⏳    | Setting fast engine as default and making last touches to launch v1! | v1.0.0  |
+|  ...   |                                 ...                                  |   ...   |
 
 I don't suggest you to use any version before v0.7.0
 

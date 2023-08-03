@@ -11,8 +11,10 @@
 //!             "Test", // the string that you want your vanity address include.
 //!             16, // number of threads
 //!             false, // case sensitivity (false ex: tESt, true ex: Test)
-//!             false, // fast mode flag (to use a string longer than 4 chars this must be set to true)
-//!             VanityMode::Anywhere).unwrap(); // vanity mode flag (prefix, suffix, anywhere available)
+//!             true, // fast mode flag (to use a string longer than 4 chars this must be set to false)
+//!             VanityMode::Anywhere, // vanity mode flag (prefix, suffix, anywhere available)
+//!             true) // enables test features ( ~1.58x faster engine)
+//!             .unwrap(); // this function returns a result type
 //!
 //! println!("private_key (wif): {}\n\
 //!           public_key (compressed): {}\n\
@@ -26,12 +28,14 @@ use crate::keys_and_address::KeysAndAddress;
 use crate::error::CustomError;
 use std::thread;
 use std::sync::mpsc;
+use bitcoin::secp256k1::{All, Secp256k1};
 
 /// An Empty Struct for a more structured code
+/// implements the only public function generate
 pub struct VanityAddr;
 
 /// Vanity mode enum
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum  VanityMode {
     Prefix,
     Suffix,
@@ -49,7 +53,8 @@ impl VanityAddr {
         threads: u64,
         case_sensitive: bool,
         fast_mode: bool,
-        vanity_mode: VanityMode
+        vanity_mode: VanityMode,
+        test_features: bool,
     ) -> Result<KeysAndAddress, CustomError> {
         if string.is_empty() { return Ok( KeysAndAddress::generate_random()) }
         if string.len() > 4 && fast_mode {
@@ -66,62 +71,200 @@ impl VanityAddr {
             return Err(CustomError("Your input is not in base58. Don't include zero: '0', uppercase i: 'I', uppercase o: 'O', lowercase L: 'l', in your input!"))
         }
 
-        Ok(find_vanity_address(string, threads, case_sensitive, vanity_mode))
+        match test_features {
+            false => Ok(SearchEngines::old_find_vanity_address(string, threads, case_sensitive, vanity_mode)),
+            true => {
+                println!("You're currently using the new faster function!");
+                let s = Secp256k1::new();
+                Ok(SearchEngines::new_find_vanity_address(string, threads, case_sensitive, vanity_mode, s))
+            }
+        }
+
     }
 }
 
-/// Search for the vanity address with given threads.
-/// First come served! If a thread finds a vanity address that satisfy all the requirements it sends
-/// the keys_and_address::KeysAndAddress struct wia std::sync::mpsc channel and find_vanity_address function kills all of the other
-/// threads and closes the channel and returns the found KeysAndAddress struct that includes
-/// key pair and the desired address.
-fn find_vanity_address(string: &str, threads: u64, case_sensitive: bool, vanity_mode: VanityMode) -> KeysAndAddress {
-    let string_len = string.len();
-    let (sender, receiver) = mpsc::channel();
+/// An Empty Struct for a more structured code
+/// # Benchmark between old and new search engines.
+///
+/// As benchmark suggests new engine is a lot faster than the old one especially with string
+/// searches that longer than 1 character.
+///
+/// Old engine's searches took 977.27 seconds total.
+/// New engine's searches took 627.29 seconds total
+///
+/// Which means new engine is faster than the old one by ~1.58x (977.27 / 627.29)!
+/// (I think this is a better calculation than the function suggests (~1.64x))
+///
+/// This test ran on a 8 cores m1 pro macbook pro 14 inch. Fans were on full blast mode.
+///
+///```bash
+/// $ cargo test --test benchmark -- --nocapture --test-threads=1
+/// ````
+///
+/// ```bash
+///    Compiling btc-vanity v0.9.0 (/Users/emivvvvv/Documents/GitHub/btc-vanity)
+///     Finished test [optimized + debuginfo] target(s) in 0.15s
+///      Running tests/benchmark.rs (target/debug/deps/benchmark-981a0dc8e71e6fdd)
+///
+/// running 1 test
+/// test benchmarks ...
+/// Test settings ( threads: 16, case_sensititve: false, fast_mode: true, vanity_mode: Anywhere)
+///
+/// test string: e, test count: 200000
+/// Finding 200000 vanity address took average: 163.35582925s with the old engine
+/// Finding 200000 vanity address took average: 145.740485167s with the new engine
+/// New engine is 1.1208678841902788x faster than the old one!
+///
+///
+/// test string: mi, test count: 8000
+/// Finding 8000 vanity address took average: 113.937177833s with the old engine
+/// Finding 8000 vanity address took average: 50.817601375s with the new engine
+/// New engine is 2.2420809867081215x faster than the old one!
+///
+///
+/// test string: vvv, test count: 1000
+/// Finding 1000 vanity address took average: 113.463775042s with the old engine
+/// Finding 1000 vanity address took average: 64.925782208s with the new engine
+/// New engine is 1.7475919609023864x faster than the old one!
+///
+///
+/// test string: Emiv, test count: 100
+/// Finding 100 vanity address took average: 445.538857334s with the old engine
+/// Finding 100 vanity address took average: 266.378989417s with the new engine
+/// New engine is 1.6725750717393713x faster than the old one!
+///
+///
+/// test string: 3169, test count: 10
+/// Finding 10 vanity address took average: 140.982839292s with the old engine
+/// Finding 10 vanity address took average: 99.419238167s with the new engine
+/// New engine is 1.4180639672090758x faster than the old one!
+///
+/// Final result. New engine is 1.640235974149847x faster than the old one overall!
+/// ok
+///
+/// test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1604.56s
+/// ```
+pub struct SearchEngines;
 
-    for _ in 0..threads {
-        let sender = sender.clone();
-        let string = string.to_string();
-        let mut anywhere_flag = false;
-        let mut prefix_suffix_flag = false;
+pub enum EngineMode {
+    Old,
+    New,
+}
 
-        let _ = thread::spawn(move || {
-            loop {
-                let new_pair = KeysAndAddress::generate_random();
-                let address = new_pair.get_comp_address();
+impl SearchEngines {
+    /// Slower first engine!
+    /// Search for the vanity address with given threads.
+    /// First come served! If a thread finds a vanity address that satisfy all the requirements it sends
+    /// the keys_and_address::KeysAndAddress struct wia std::sync::mpsc channel and find_vanity_address function kills all of the other
+    /// threads and closes the channel and returns the found KeysAndAddress struct that includes
+    /// key pair and the desired address.
+    fn old_find_vanity_address(string: &str, threads: u64, case_sensitive: bool, vanity_mode: VanityMode) -> KeysAndAddress {
+        let string_len = string.len();
+        let (sender, receiver) = mpsc::channel();
 
-                match vanity_mode {
-                    VanityMode::Prefix => {
-                        let slice = &address[1..=string_len];
-                        prefix_suffix_flag = match case_sensitive {
-                            true => slice == string,
-                            false => slice.to_lowercase() == string.to_lowercase(),
-                        };
+        for _ in 0..threads {
+            let sender = sender.clone();
+            let string = string.to_string();
+            let mut anywhere_flag = false;
+            let mut prefix_suffix_flag = false;
+
+            let _ = thread::spawn(move || {
+                loop {
+                    let new_pair = KeysAndAddress::generate_random();
+                    let address = new_pair.get_comp_address();
+
+                    match vanity_mode {
+                        VanityMode::Prefix => {
+                            let slice = &address[1..=string_len];
+                            prefix_suffix_flag = match case_sensitive {
+                                true => slice == string,
+                                false => slice.to_lowercase() == string.to_lowercase(),
+                            };
+                        }
+                        VanityMode::Suffix => {
+                            let address_len = address.len();
+                            let slice = &address[address_len - string_len..address_len];
+                            prefix_suffix_flag = match case_sensitive {
+                                true => slice == string,
+                                false => slice.to_lowercase() == string.to_lowercase(),
+                            };
+                        }
+                        VanityMode::Anywhere => {
+                            anywhere_flag = match case_sensitive {
+                                true => address.contains(&string),
+                                false => address.to_lowercase().contains(&string.to_lowercase()),
+                            };
+                        }
                     }
-                    VanityMode::Suffix => {
-                        let address_len = address.len();
-                        let slice = &address[address_len - string_len..address_len];
-                        prefix_suffix_flag = match case_sensitive {
-                            true => slice == string,
-                            false => slice.to_lowercase() == string.to_lowercase(),
-                        };
-                    }
-                    VanityMode::Anywhere => {
-                        anywhere_flag = match case_sensitive {
-                            true => address.contains(&string),
-                            false => address.to_lowercase().contains(&string.to_lowercase()),
-                        };
-                    }
+                    if prefix_suffix_flag || anywhere_flag { if sender.send(new_pair).is_err() { return } } // If the channel closed, that means another thread found a keypair and closed it so we just return and kill the thread if an error occurs.
                 }
-                if prefix_suffix_flag || anywhere_flag {if sender.send(new_pair).is_err() {return}} // If the channel closed, that means another thread found a keypair and closed it so we just return and kill the thread if an error occurs.
+            });
+        }
+
+        loop {
+            match receiver.try_recv() {
+                Ok(pair) => return pair,
+                Err(_) => continue
             }
-        });
+        }
     }
 
-    loop {
-        match receiver.try_recv() {
-            Ok(pair) => return pair,
-            Err(_) => continue
+    /// Testing of a faster search engine! In order to use this engine use -x or --test-features flags!
+    /// Search for the vanity address with given threads.
+    /// First come served! If a thread finds a vanity address that satisfy all the requirements it sends
+    /// the keys_and_address::KeysAndAddress struct wia std::sync::mpsc channel and find_vanity_address function kills all of the other
+    /// threads and closes the channel and returns the found KeysAndAddress struct that includes
+    /// key pair and the desired address.
+    fn new_find_vanity_address(string: &str, threads: u64, case_sensitive: bool, vanity_mode: VanityMode, s: Secp256k1<All>) -> KeysAndAddress {
+        let string_len = string.len();
+        let (sender, receiver) = mpsc::channel();
+
+        for _ in 0..threads {
+            let sender = sender.clone();
+            let string = string.to_string();
+            let mut anywhere_flag = false;
+            let mut prefix_suffix_flag = false;
+            let s = s.clone();
+
+            let _ = thread::spawn(move || {
+                loop {
+                    // difference 1 - generating the keys without converting them to strings without regenerating Secp256k1 in each generation
+                    let (sk, public_key, address) = KeysAndAddress::fast_engine_generate_random(&s);
+
+                    match vanity_mode {
+                        VanityMode::Prefix => {
+                            let slice = &address[1..=string_len];
+                            prefix_suffix_flag = match case_sensitive {
+                                true => slice == string,
+                                false => slice.to_lowercase() == string.to_lowercase(),
+                            };
+                        }
+                        VanityMode::Suffix => {
+                            let address_len = address.len();
+                            let slice = &address[address_len - string_len..address_len];
+                            prefix_suffix_flag = match case_sensitive {
+                                true => slice == string,
+                                false => slice.to_lowercase() == string.to_lowercase(),
+                            };
+                        }
+                        VanityMode::Anywhere => {
+                            anywhere_flag = match case_sensitive {
+                                true => address.contains(&string),
+                                false => address.to_lowercase().contains(&string.to_lowercase()),
+                            };
+                        }
+                    }
+                    // difference 2 - creates KeysAndAddress only one time.
+                    if prefix_suffix_flag || anywhere_flag { if sender.send(KeysAndAddress::fast_engine_get(sk, public_key, address) ).is_err() { return } } // If the channel closed, that means another thread found a keypair and closed it so we just return and kill the thread if an error occurs.
+                }
+            });
+        }
+
+        loop {
+            match receiver.try_recv() {
+                Ok(pair) => return pair,
+                Err(_) => continue
+            }
         }
     }
 }

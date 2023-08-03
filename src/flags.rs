@@ -17,6 +17,7 @@ pub struct CliFlags {
     is_fast_disabled: bool,
     output_file_name: String,
     vanity_mode: VanityMode,
+    test_features: bool,
 }
 
 impl CliFlags {
@@ -26,6 +27,10 @@ impl CliFlags {
 
     pub fn get_threads(&self) -> u64 {
         self.threads
+    }
+
+    pub fn get_test_features(&self) -> bool {
+        self.test_features
     }
 }
 
@@ -52,6 +57,7 @@ pub fn get_cli_flags(app: Command) -> CliFlags {
         Some(output_file_name) => output_file_name.to_string(),
         None => String::from(""),
     };
+    let cli_test_features = matches.get_flag("test-features");
 
     // Sets vanity_mode for searching and mode to predefined decoration strings.
     let cli_vanity_mode =
@@ -68,6 +74,7 @@ pub fn get_cli_flags(app: Command) -> CliFlags {
         is_fast_disabled: cli_is_fast_disabled,
         output_file_name: cli_output_file_name,
         vanity_mode: cli_vanity_mode,
+        test_features: cli_test_features,
     }
 }
 

@@ -11,8 +11,10 @@
 //!             "Test", // the string that you want your vanity address include.
 //!             16, // number of threads
 //!             false, // case sensitivity (false ex: tESt, true ex: Test)
-//!             false, // fast mode flag (to use a string longer than 4 chars this must be set to true)
-//!             VanityMode::Anywhere).unwrap(); // vanity mode flag (prefix, suffix, anywhere available)
+//!             true, // fast mode flag (to use a string longer than 4 chars this must be set to false)
+//!             VanityMode::Anywhere, // vanity mode flag (prefix, suffix, anywhere available)
+//!             true) // enables test features ( ~1.58x faster engine)
+//!             .unwrap(); // this function returns a result type
 //!
 //! println!("private_key (wif): {}\n\
 //!           public_key (compressed): {}\n\
