@@ -26,6 +26,7 @@ DO NOT USE THE PRIVATE KEYS ON THE SCREENSHOTS! NEVER EVER SHARE YOUR PRIVATE KE
 |   ✅    |        Implementing output file that contains found wallets         | v0.5.0  |
 |   ✅    |     Getting flags from input file for each string and implement     | v0.6.0  |
 |   ✅    | More optimized, improved and structured code. A general refactoring | v0.7.0  |
+|   ⏳    |              Documentation, testing, more optimization              | v0.8.0  |
 |  ...   |                                 ...                                 |   ...   |
 
 I don't suggest you to use any version before v0.7.0
@@ -79,6 +80,15 @@ Options:
   -h, --help                       Print help
   -V, --version                    Print version
 ```
+
+
+## Documentation
+
+[btc-vanity documentation](https://docs.rs/btc-vanity/latest/btc_vanity/index.html)
+
+(At this time, documentation is unavailable. However, my top priority is to create a basic documentation as soon as possible.)
+
+
 
 ## Disclaimer
 
