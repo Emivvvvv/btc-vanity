@@ -1,12 +1,13 @@
 [package]
 name = "btc-vanity"
-version = "1.0.0"
+version = "1.0.1"
 authors = ["Emirhan TALA <emirhantala99ff99@gmail.com>"]
 description = "A bitcoin vanity address generator written with the Rust programming language."
 edition = "2021"
 license = "Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/Emivvvvv/btc-vanity"
+documentation = "https://docs.rs/btc-vanity/latest/btc_vanity/index.html"
 
 
 [dependencies]
