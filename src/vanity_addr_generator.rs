@@ -1,4 +1,4 @@
-//! # Vanity Address Generation Module]
+//! # Vanity Address Generation Module
 //!
 //! This module is used to generate Bitcoin vanity addresses with multithreading.
 //!
@@ -77,6 +77,14 @@ impl VanityAddr {
 /// An Empty Struct for a more structured code
 ///
 /// At v1.0.0 the only search engine option is the new one.
+/// ```Rust
+/// fn find_vanity_address_fast_engine(
+///         string: &str,
+///         threads: u64,
+///         case_sensitive: bool,
+///         vanity_mode: VanityMode,
+///         secp256k1: Secp256k1<All>) -> KeysAndAddressString  { ... }
+/// ```
 /// You can see the benchmark results between the old one and the new one
 /// or you can just go back to v0.9.0 to have a look at the old search engine.
 ///
