@@ -1,11 +1,9 @@
+#![allow(rustdoc::invalid_html_tags)]
+
 //! # A rusty way to find your bitcoin vanity address!
 //!
 //! With btc-vanity you can create a private key which has a compressed bitcoin pay address
 //! that has a custom prefix, suffix or a string at somewhere in the address.
-//!
-//! fun fact!: The goal of v0.8.0 was writing docs and I did it but It never showed up
-//! because of a simple doc error (<text' file> and cargo said hey this is an unclosed HTML tag `text`)!
-//! There were no docs until I checked docs.rs and publish v1.0.1.
 //!
 //! # Example Usage At Your Code
 //! ```rust
@@ -86,6 +84,14 @@
 //! ```bash
 //! $ btc-vanity -f -s -i inputs.txt
 //! ```
+//!
+//! # Fun facts about btc-vanity docs
+//! fun fact 1: The goal of v0.8.0 was writing docs and I did it but It never showed up
+//! because of a simple doc error (<text file> and cargo said hey this is an unclosed HTML tag `text`)!
+//! There were no docs until I checked docs.rs and publish v1.0.1.
+//!
+//! fun fact 2: I'm dumb... and fast!. Apparently my docs are in queue so no worries :D
+//!
 
 
 pub mod vanity_addr_generator;
