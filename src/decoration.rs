@@ -8,6 +8,7 @@ use crate::vanity_addr_generator::VanityMode;
 const VANITY_MODE_STR: [&str; 3] = ["has the prefix", "has the suffix", "has the string"];
 const CASE_SENSITIVITY_STR: [&str; 2] = ["(case sensitive)", "(case sensitivity disabled)"];
 
+/// Returns string literals of desired mode's styled string.
 pub fn get_decoration_strings<'a>(vanity_mode: VanityMode, is_case_sensitive: bool) -> (&'a str, &'a str) {
     // Sets vanity mode decoration string.
     let vanity_mode_str = match vanity_mode {

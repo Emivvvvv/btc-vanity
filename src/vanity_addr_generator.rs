@@ -13,8 +13,7 @@
 //!             false, // case sensitivity (false ex: tESt, true ex: Test)
 //!             true, // fast mode flag (to use a string longer than 4 chars this must be set to false)
 //!             VanityMode::Anywhere, // vanity mode flag (prefix, suffix, anywhere available)
-//!             true) // enables test features ( ~1.58x faster engine)
-//!             .unwrap(); // this function returns a result type
+//!             ).unwrap(); // this function returns a result type
 //!
 //! println!("private_key (wif): {}\n\
 //!           public_key (compressed): {}\n\
@@ -24,7 +23,7 @@
 //!                 vanity_address.get_comp_address())
 //! ```
 
-use crate::keys_and_address::KeysAndAddress;
+use crate::keys_and_address::{KeysAndAddress, KeysAndAddressString};
 use crate::error::CustomError;
 use std::thread;
 use std::sync::mpsc;
@@ -54,9 +53,8 @@ impl VanityAddr {
         case_sensitive: bool,
         fast_mode: bool,
         vanity_mode: VanityMode,
-        test_features: bool,
-    ) -> Result<KeysAndAddress, CustomError> {
-        if string.is_empty() { return Ok( KeysAndAddress::generate_random()) }
+    ) -> Result<KeysAndAddressString, CustomError> {
+        if string.is_empty() { return Ok( KeysAndAddressString::generate_random()) }
         if string.len() > 4 && fast_mode {
             return Err(CustomError("You're asking for too much!\n\
             If you know this will take for a long time and really want to find something longer than 4 characters\n\
@@ -71,19 +69,17 @@ impl VanityAddr {
             return Err(CustomError("Your input is not in base58. Don't include zero: '0', uppercase i: 'I', uppercase o: 'O', lowercase L: 'l', in your input!"))
         }
 
-        match test_features {
-            false => Ok(SearchEngines::old_find_vanity_address(string, threads, case_sensitive, vanity_mode)),
-            true => {
-                println!("You're currently using the new faster function!");
-                let s = Secp256k1::new();
-                Ok(SearchEngines::new_find_vanity_address(string, threads, case_sensitive, vanity_mode, s))
-            }
-        }
-
+        let secp256k1 = Secp256k1::new();
+        Ok(SearchEngines::find_vanity_address_fast_engine(string, threads, case_sensitive, vanity_mode, secp256k1))
     }
 }
 
 /// An Empty Struct for a more structured code
+///
+/// At v1.0.0 the only search engine option is the new one.
+/// You can see the benchmark results between the old one and the new one
+/// or you can just go back to v0.9.0 to have a look at the old search engine.
+///
 /// # Benchmark between old and new search engines.
 ///
 /// As benchmark suggests new engine is a lot faster than the old one especially with string
@@ -146,19 +142,15 @@ impl VanityAddr {
 /// ```
 pub struct SearchEngines;
 
-pub enum EngineMode {
-    Old,
-    New,
-}
 
 impl SearchEngines {
-    /// Slower first engine!
+    /// The faster search engine which is faster by ~1.58x than the old one!
     /// Search for the vanity address with given threads.
     /// First come served! If a thread finds a vanity address that satisfy all the requirements it sends
     /// the keys_and_address::KeysAndAddress struct wia std::sync::mpsc channel and find_vanity_address function kills all of the other
     /// threads and closes the channel and returns the found KeysAndAddress struct that includes
     /// key pair and the desired address.
-    fn old_find_vanity_address(string: &str, threads: u64, case_sensitive: bool, vanity_mode: VanityMode) -> KeysAndAddress {
+    fn find_vanity_address_fast_engine(string: &str, threads: u64, case_sensitive: bool, vanity_mode: VanityMode, secp256k1: Secp256k1<All>) -> KeysAndAddressString {
         let string_len = string.len();
         let (sender, receiver) = mpsc::channel();
 
@@ -167,11 +159,12 @@ impl SearchEngines {
             let string = string.to_string();
             let mut anywhere_flag = false;
             let mut prefix_suffix_flag = false;
+            let secp256k1 = secp256k1.clone();
 
             let _ = thread::spawn(move || {
                 loop {
-                    let new_pair = KeysAndAddress::generate_random();
-                    let address = new_pair.get_comp_address();
+                    let keys_and_address = KeysAndAddress::generate_random(&secp256k1);
+                    let address = keys_and_address.get_comp_address();
 
                     match vanity_mode {
                         VanityMode::Prefix => {
@@ -196,66 +189,14 @@ impl SearchEngines {
                             };
                         }
                     }
-                    if prefix_suffix_flag || anywhere_flag { if sender.send(new_pair).is_err() { return } } // If the channel closed, that means another thread found a keypair and closed it so we just return and kill the thread if an error occurs.
-                }
-            });
-        }
-
-        loop {
-            match receiver.try_recv() {
-                Ok(pair) => return pair,
-                Err(_) => continue
-            }
-        }
-    }
-
-    /// Testing of a faster search engine! In order to use this engine use -x or --test-features flags!
-    /// Search for the vanity address with given threads.
-    /// First come served! If a thread finds a vanity address that satisfy all the requirements it sends
-    /// the keys_and_address::KeysAndAddress struct wia std::sync::mpsc channel and find_vanity_address function kills all of the other
-    /// threads and closes the channel and returns the found KeysAndAddress struct that includes
-    /// key pair and the desired address.
-    fn new_find_vanity_address(string: &str, threads: u64, case_sensitive: bool, vanity_mode: VanityMode, s: Secp256k1<All>) -> KeysAndAddress {
-        let string_len = string.len();
-        let (sender, receiver) = mpsc::channel();
-
-        for _ in 0..threads {
-            let sender = sender.clone();
-            let string = string.to_string();
-            let mut anywhere_flag = false;
-            let mut prefix_suffix_flag = false;
-            let s = s.clone();
-
-            let _ = thread::spawn(move || {
-                loop {
-                    // difference 1 - generating the keys without converting them to strings without regenerating Secp256k1 in each generation
-                    let (sk, public_key, address) = KeysAndAddress::fast_engine_generate_random(&s);
-
-                    match vanity_mode {
-                        VanityMode::Prefix => {
-                            let slice = &address[1..=string_len];
-                            prefix_suffix_flag = match case_sensitive {
-                                true => slice == string,
-                                false => slice.to_lowercase() == string.to_lowercase(),
-                            };
-                        }
-                        VanityMode::Suffix => {
-                            let address_len = address.len();
-                            let slice = &address[address_len - string_len..address_len];
-                            prefix_suffix_flag = match case_sensitive {
-                                true => slice == string,
-                                false => slice.to_lowercase() == string.to_lowercase(),
-                            };
-                        }
-                        VanityMode::Anywhere => {
-                            anywhere_flag = match case_sensitive {
-                                true => address.contains(&string),
-                                false => address.to_lowercase().contains(&string.to_lowercase()),
-                            };
-                        }
+                    // If the channel closed, that means another thread found a keypair and closed it
+                    // so we just return and kill the thread if an error occurs.
+                    if prefix_suffix_flag || anywhere_flag {
+                        if sender.send(KeysAndAddressString::fast_engine_get(
+                            keys_and_address.get_secret_key(),
+                            *keys_and_address.get_public_key(),
+                            address.to_string()) ).is_err() { return }
                     }
-                    // difference 2 - creates KeysAndAddress only one time.
-                    if prefix_suffix_flag || anywhere_flag { if sender.send(KeysAndAddress::fast_engine_get(sk, public_key, address) ).is_err() { return } } // If the channel closed, that means another thread found a keypair and closed it so we just return and kill the thread if an error occurs.
                 }
             });
         }

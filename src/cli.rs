@@ -133,11 +133,12 @@ pub fn cli() -> clap::Command {
                 .action(clap::ArgAction::SetTrue)
                 .help("Disables fast mode to find a prefix more than 4 characters."),
         )
-        .arg(
-            clap::Arg::new("test-features")
-                .short('x')
-                .long("test-features")
-                .action(clap::ArgAction::SetTrue)
-                .help("Runs the program with test features. (Use in order to use new engine)"),
-        )
+        // There is no test features in v1.0.0
+        // .arg(
+        //     clap::Arg::new("test-features")
+        //         .short('x')
+        //         .long("test-features")
+        //         .action(clap::ArgAction::SetTrue)
+        //         .help("Runs the program with test features. (Use in order to use new engine)"),
+        // )
 }

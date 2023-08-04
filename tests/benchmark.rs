@@ -1,5 +1,7 @@
 // # Benchmark between old and new search engines.
 //
+// USE V0.9.0 TO BE ABLE TO RUN THIS TEST!
+//
 // As benchmark suggests new engine is a lot faster than the old one especially with string
 // searches that longer than 1 character.
 //
@@ -59,7 +61,7 @@
 // test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1604.56s
 // ```
 
-#![allow(dead_code)]
+#![allow(dead_code, unreachable_code, unused_variables)]
 use btc_vanity::vanity_addr_generator::{VanityAddr, VanityMode};
 use std::time::Instant;
 
@@ -80,8 +82,9 @@ const TEST_COUNT_3: usize = 1000;
 const TEST_COUNT_4: usize = 100;
 const TEST_COUNT_5: usize = 10;
 
-
+// USE V0.9.0 TO BE ABLE TO RUN THIS TEST!
 fn benchmark(test_str: &str, test_count: usize) -> f64 {
+    panic!("USE V0.9.0 TO BE ABLE TO RUN THIS TEST!");
     println!("\ntest string: {}, test count: {}", test_str, test_count);
 
     let start_engine_1 = Instant::now();
@@ -92,7 +95,8 @@ fn benchmark(test_str: &str, test_count: usize) -> f64 {
             CASE_SENSITIVE,
             FAST_MODE,
             VANITY_MODE,
-            false).unwrap();
+            //false USE V0.9.0 TO BE ABLE TO RUN THIS TEST!
+            ).unwrap();
     };
     let seconds_engine_1 = start_engine_1.elapsed().as_secs_f64();
 
@@ -106,7 +110,8 @@ fn benchmark(test_str: &str, test_count: usize) -> f64 {
             CASE_SENSITIVE,
             FAST_MODE,
             VANITY_MODE,
-            true).unwrap();
+            //true USE V0.9.0 TO BE ABLE TO RUN THIS TEST!
+        ).unwrap();
     };
     let seconds_engine_2 = start_engine_2.elapsed().as_secs_f64();
 
@@ -116,8 +121,10 @@ fn benchmark(test_str: &str, test_count: usize) -> f64 {
     result
 }
 
+// USE V0.9.0 TO BE ABLE TO RUN THIS TEST!
 //#[test] -- commenting this test because this test takes too long time!
 fn benchmarks() {
+    panic!("USE V0.9.0 TO BE ABLE TO RUN THIS TEST!");
     println!("\nTest settings ( threads: {}, case_sensititve: {}, fast_mode: {}, vanity_mode: {:?}) ",
              THREADS,
              CASE_SENSITIVE,

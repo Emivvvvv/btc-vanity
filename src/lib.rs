@@ -13,8 +13,7 @@
 //!             false, // case sensitivity (false ex: tESt, true ex: Test)
 //!             true, // fast mode flag (to use a string longer than 4 chars this must be set to false)
 //!             VanityMode::Anywhere, // vanity mode flag (prefix, suffix, anywhere available)
-//!             true) // enables test features ( ~1.58x faster engine)
-//!             .unwrap(); // this function returns a result type
+//!             ).unwrap(); // this function returns a result type
 //!
 //! println!("private_key (wif): {}\n\
 //!           public_key (compressed): {}\n\
@@ -88,7 +87,7 @@
 pub mod vanity_addr_generator;
 pub mod keys_and_address;
 pub mod error;
-pub mod clap;
+pub mod cli;
 pub mod file;
 pub mod decoration;
 pub mod flags;

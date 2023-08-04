@@ -1,6 +1,6 @@
 use std::time::Instant;
 use btc_vanity::vanity_addr_generator::VanityAddr;
-use btc_vanity::clap::cli;
+use btc_vanity::cli::cli;
 use btc_vanity::file::write_output_file;
 use btc_vanity::decoration::get_decoration_strings;
 use btc_vanity::flags::{get_cli_flags, get_strings_flags};
@@ -41,7 +41,7 @@ fn main() {
             string_flags.get_case_sensitivity(),
             !string_flags.get_is_fast_mode_disabled(),
             string_flags.get_vanity_mode(),
-        cli_flags.get_test_features());
+        );
         let seconds = start.elapsed().as_secs_f64();
 
         // Second buffer/print after the vanity address found

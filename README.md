@@ -11,9 +11,8 @@ You can easily run btc-vanity at you computer to get your private key securely.
 
 DO NOT USE THE PRIVATE KEYS ON THE SCREENSHOTS! NEVER EVER SHARE YOUR PRIVATE KEY! THESE ACCOUNTS ARE NOT IN USE! USING THESE ACCOUNTS MEAN YOU PROBABLY LOSE YOUR MONEY!
 
-![My Image](case-sensitive-false-examples.png)
-![My Image](case-sensitive-true-examples.png)
-![My Image](input-file-examples.png)
+![My Image](example.png)
+![My Image](examples-input-file.png)
 
 ## Roadmap
 
@@ -27,11 +26,11 @@ DO NOT USE THE PRIVATE KEYS ON THE SCREENSHOTS! NEVER EVER SHARE YOUR PRIVATE KE
 |   ✅    |     Getting flags from input file for each string and implement      | v0.6.0  |
 |   ✅    | More optimized, improved and structured code. A general refactoring  | v0.7.0  |
 |   ✅    |                            Documentation                             | v0.8.0  |
-|   ✅    |             Testing 1.58x faster search engine function              | v0.9.0  |
-|   ⏳    | Setting fast engine as default and making last touches to launch v1! | v1.0.0  |
+|   ✅    |             Testing ~1.58x faster search engine function             | v0.9.0  |
+|   ✅    | Setting fast engine as default and making last touches to launch v1! | v1.0.0  |
 |  ...   |                                 ...                                  |   ...   |
 
-I don't suggest you to use any version before v0.7.0
+Using v1.0.0 or later is highly suggested!
 
 ## Installation
 
@@ -83,13 +82,9 @@ Options:
   -V, --version                    Print version
 ```
 
-
 ## Documentation
 
 [btc-vanity documentation](https://docs.rs/btc-vanity/latest/btc_vanity/index.html)
-
-(At this time, documentation is unavailable. However, my top priority is to create a basic documentation as soon as possible.)
-
 
 
 ## Disclaimer

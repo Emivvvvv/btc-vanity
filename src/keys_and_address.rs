@@ -4,9 +4,9 @@
 //!
 //! # Example Usage At Your Code
 //! ```rust
-//! use btc_vanity::keys_and_address::KeysAndAddress;
+//! use btc_vanity::keys_and_address::KeysAndAddressString;
 //!
-//! let random_address = KeysAndAddress::generate_random();
+//! let random_address = KeysAndAddressString::generate_random();
 //!
 //! println!("A randomly generated key pair and their address\n\
 //!           private_key (wif): {}\n\
@@ -23,15 +23,15 @@ use bitcoin::Network::Bitcoin;
 use bitcoin::secp256k1::{All, rand, Secp256k1, SecretKey};
 
 /// A struct to hold wif private_key, compressed public_key and their compressed address
-pub struct KeysAndAddress {
+pub struct KeysAndAddressString {
     wif_private_key: String,
     comp_public_key: String,
     comp_address: String,
 }
 
-impl KeysAndAddress {
+impl KeysAndAddressString {
     /// Generates a randomly generated key pair (wif private key and compressed public key) and their compressed addresses
-    /// and Returns them in a KeysAndAddress struct.
+    /// and Returns them in a KeysAndAddressString struct.
     pub fn generate_random() -> Self {
         // Generate random key pair.
         let s = Secp256k1::new();
@@ -42,24 +42,10 @@ impl KeysAndAddress {
         // Generate pay-to-pubkey-hash address.
         let address = Address::p2pkh(&public_key, Bitcoin);
 
-        KeysAndAddress {
+        KeysAndAddressString {
             wif_private_key: private_key.to_wif(),
             comp_public_key: public_key.to_string(),
             comp_address: address.to_string(),
-        }
-    }
-
-    pub fn fast_engine_generate_random(s: &Secp256k1<All>) -> (SecretKey, PublicKey, String) {
-        let (sk, pk) = s.generate_keypair(&mut rand::thread_rng());
-        let public_key = PublicKey::new(pk);
-        (sk, public_key, Address::p2pkh(&public_key, Bitcoin).to_string())
-    }
-
-    pub fn fast_engine_get(sk: SecretKey, public_key: PublicKey, address: String) -> Self {
-        KeysAndAddress {
-            wif_private_key: PrivateKey::new(sk, Bitcoin).to_wif(),
-            comp_public_key: public_key.to_string(),
-            comp_address: address,
         }
     }
 
@@ -69,6 +55,48 @@ impl KeysAndAddress {
 
     pub fn get_comp_public_key(&self) -> &String {
         &self.comp_public_key
+    }
+
+    pub fn get_comp_address(&self) -> &String {
+        &self.comp_address
+    }
+
+    pub fn fast_engine_get(secret_key: &SecretKey, public_key: PublicKey, address: String) -> Self {
+        KeysAndAddressString {
+            wif_private_key: PrivateKey::new(*secret_key, Bitcoin).to_wif(),
+            comp_public_key: public_key.to_string(),
+            comp_address: address,
+        }
+    }
+}
+
+/// A struct to hold bitcoin::secp256k1::SecretKey bitcoin::Key::PublicKey and a string address
+pub struct KeysAndAddress {
+    secret_key: SecretKey,
+    public_key: PublicKey,
+    comp_address: String,
+}
+
+impl KeysAndAddress {
+    /// Generates a randomly generated key pair and their compressed addresses without generating a new Secp256k1.
+    /// and Returns them in a KeysAndAddress struct.
+    pub fn generate_random(s: &Secp256k1<All>) -> Self {
+        let (secret_key, pk) = s.generate_keypair(&mut rand::thread_rng());
+        let public_key = PublicKey::new(pk);
+
+        KeysAndAddress {
+            secret_key,
+            public_key,
+            comp_address: Address::p2pkh(&public_key, Bitcoin).to_string(),
+        }
+    }
+
+    pub fn get_secret_key(&self) -> &SecretKey {
+        &self.secret_key
+    }
+
+    pub fn get_public_key(&self) -> &PublicKey {
+        &self.public_key
     }
 
     pub fn get_comp_address(&self) -> &String {
