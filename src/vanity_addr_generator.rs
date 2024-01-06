@@ -63,10 +63,11 @@ impl VanityAddr {
 
         let is_base58 = string
             .chars()
-            .find(|c| c == &'0' || c == &'I' || c == &'O' || c == &'l');
+            .find(|c| c == &'0' || c == &'I' || c == &'O' || c == &'l' || !c.is_alphanumeric());
 
         if is_base58.is_some() {
-            return Err(CustomError("Your input is not in base58. Don't include zero: '0', uppercase i: 'I', uppercase o: 'O', lowercase L: 'l', in your input!"))
+            return Err(CustomError("Your input is not in base58. Don't include zero: '0', uppercase i: 'I', uppercase o: 'O', lowercase L: 'l' 
+            or any non-alphanumeric character in your input!"));
         }
 
         let secp256k1 = Secp256k1::new();
