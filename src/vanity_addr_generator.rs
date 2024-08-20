@@ -23,11 +23,11 @@
 //!                 vanity_address.get_comp_address())
 //! ```
 
-use crate::keys_and_address::{KeysAndAddress, KeysAndAddressString};
 use crate::error::CustomError;
-use std::thread;
-use std::sync::mpsc;
+use crate::keys_and_address::{KeysAndAddress, KeysAndAddressString};
 use bitcoin::secp256k1::{All, Secp256k1};
+use std::sync::mpsc;
+use std::thread;
 
 /// An Empty Struct for a more structured code
 /// implements the only public function generate
@@ -35,7 +35,7 @@ pub struct VanityAddr;
 
 /// Vanity mode enum
 #[derive(Copy, Clone, Debug)]
-pub enum  VanityMode {
+pub enum VanityMode {
     Prefix,
     Suffix,
     Anywhere,
@@ -54,11 +54,13 @@ impl VanityAddr {
         fast_mode: bool,
         vanity_mode: VanityMode,
     ) -> Result<KeysAndAddressString, CustomError> {
-        if string.is_empty() { return Ok( KeysAndAddressString::generate_random()) }
+        if string.is_empty() {
+            return Ok(KeysAndAddressString::generate_random());
+        }
         if string.len() > 4 && fast_mode {
             return Err(CustomError("You're asking for too much!\n\
             If you know this will take for a long time and really want to find something longer than 4 characters\n\
-             disable fast mode with -df or --disable_fas flags."))
+             disable fast mode with -df or --disable_fas flags."));
         }
 
         let is_base58 = string
@@ -66,11 +68,17 @@ impl VanityAddr {
             .find(|c| c == &'0' || c == &'I' || c == &'O' || c == &'l');
 
         if is_base58.is_some() {
-            return Err(CustomError("Your input is not in base58. Don't include zero: '0', uppercase i: 'I', uppercase o: 'O', lowercase L: 'l', in your input!"))
+            return Err(CustomError("Your input is not in base58. Don't include zero: '0', uppercase i: 'I', uppercase o: 'O', lowercase L: 'l', in your input!"));
         }
 
         let secp256k1 = Secp256k1::new();
-        Ok(SearchEngines::find_vanity_address_fast_engine(string, threads, case_sensitive, vanity_mode, secp256k1))
+        Ok(SearchEngines::find_vanity_address_fast_engine(
+            string,
+            threads,
+            case_sensitive,
+            vanity_mode,
+            secp256k1,
+        ))
     }
 }
 
@@ -150,7 +158,6 @@ impl VanityAddr {
 /// ```
 pub struct SearchEngines;
 
-
 impl SearchEngines {
     /// The faster search engine which is faster by ~1.58x than the old one!
     /// Search for the vanity address with given threads.
@@ -158,7 +165,13 @@ impl SearchEngines {
     /// the keys_and_address::KeysAndAddress struct wia std::sync::mpsc channel and find_vanity_address function kills all of the other
     /// threads and closes the channel and returns the found KeysAndAddress struct that includes
     /// key pair and the desired address.
-    fn find_vanity_address_fast_engine(string: &str, threads: u64, case_sensitive: bool, vanity_mode: VanityMode, secp256k1: Secp256k1<All>) -> KeysAndAddressString {
+    fn find_vanity_address_fast_engine(
+        string: &str,
+        threads: u64,
+        case_sensitive: bool,
+        vanity_mode: VanityMode,
+        secp256k1: Secp256k1<All>,
+    ) -> KeysAndAddressString {
         let string_len = string.len();
         let (sender, receiver) = mpsc::channel();
 
@@ -199,11 +212,16 @@ impl SearchEngines {
                     }
                     // If the channel closed, that means another thread found a keypair and closed it
                     // so we just return and kill the thread if an error occurs.
-                    if prefix_suffix_flag || anywhere_flag {
-                        if sender.send(KeysAndAddressString::fast_engine_get(
-                            keys_and_address.get_secret_key(),
-                            *keys_and_address.get_public_key(),
-                            address.to_string()) ).is_err() { return }
+                    if (prefix_suffix_flag || anywhere_flag)
+                        && sender
+                            .send(KeysAndAddressString::fast_engine_get(
+                                keys_and_address.get_secret_key(),
+                                *keys_and_address.get_public_key(),
+                                address.to_string(),
+                            ))
+                            .is_err()
+                    {
+                        return;
                     }
                 }
             });
@@ -212,7 +230,7 @@ impl SearchEngines {
         loop {
             match receiver.try_recv() {
                 Ok(pair) => return pair,
-                Err(_) => continue
+                Err(_) => continue,
             }
         }
     }
