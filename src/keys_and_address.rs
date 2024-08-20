@@ -17,10 +17,10 @@
 //!                 random_address.get_comp_address())
 //! ```
 
-use bitcoin::key::PublicKey;
-use bitcoin::secp256k1::{rand, All, Secp256k1, SecretKey};
+use bitcoin::key::{PrivateKey, PublicKey};
+use bitcoin::secp256k1::{rand, All, Secp256k1};
+use bitcoin::Address;
 use bitcoin::Network::{self, Bitcoin};
-use bitcoin::{Address, PrivateKey};
 use rand::Rng;
 
 /// A struct to hold wif private_key, compressed public_key and their compressed address
@@ -62,9 +62,13 @@ impl KeysAndAddressString {
         &self.comp_address
     }
 
-    pub fn fast_engine_get(secret_key: &SecretKey, public_key: PublicKey, address: String) -> Self {
+    pub fn fast_engine_get(
+        private_key: &PrivateKey,
+        public_key: PublicKey,
+        address: String,
+    ) -> Self {
         KeysAndAddressString {
-            wif_private_key: PrivateKey::new(*secret_key, Bitcoin).to_wif(),
+            wif_private_key: private_key.to_wif(),
             comp_public_key: public_key.to_string(),
             comp_address: address,
         }
@@ -73,7 +77,7 @@ impl KeysAndAddressString {
 
 /// A struct to hold bitcoin::secp256k1::SecretKey bitcoin::Key::PublicKey and a string address
 pub struct KeysAndAddress {
-    secret_key: SecretKey,
+    private_key: PrivateKey,
     public_key: PublicKey,
     comp_address: String,
 }
@@ -83,10 +87,11 @@ impl KeysAndAddress {
     /// and Returns them in a KeysAndAddress struct.
     pub fn generate_random(s: &Secp256k1<All>) -> Self {
         let (secret_key, pk) = s.generate_keypair(&mut rand::thread_rng());
+        let private_key = PrivateKey::new(secret_key, Bitcoin);
         let public_key = PublicKey::new(pk);
 
         KeysAndAddress {
-            secret_key,
+            private_key,
             public_key,
             comp_address: Address::p2pkh(&public_key, Bitcoin).to_string(),
         }
@@ -111,22 +116,20 @@ impl KeysAndAddress {
         let private_key_value = rand.gen_range(range_min..=range_max);
         let private_key_bytes = private_key_value.to_le_bytes();
 
-        let secret_key = SecretKey::from_slice(&private_key_bytes).expect("Invalid private key");
-
-        // Generate public key
+        // Generate the key pair
         let private_key = PrivateKey::from_slice(&private_key_bytes, Network::Bitcoin)
             .expect("Invalid private key");
         let public_key = PublicKey::from_private_key(s, &private_key);
 
         KeysAndAddress {
-            secret_key,
+            private_key,
             public_key,
             comp_address: Address::p2pkh(&public_key, Bitcoin).to_string(),
         }
     }
 
-    pub fn get_secret_key(&self) -> &SecretKey {
-        &self.secret_key
+    pub fn get_private_key(&self) -> &PrivateKey {
+        &self.private_key
     }
 
     pub fn get_public_key(&self) -> &PublicKey {
