@@ -94,7 +94,12 @@ impl KeysAndAddress {
 
     /// Generates a randomly generated key pair and their compressed addresses within a custom range for the private key.
     /// Returns them in a KeysAndAddress struct.
-    pub fn generate_with_custom_range(s: &Secp256k1<All>, range_min: u64, range_max: u64) -> Self {
+    /// range_max is u128 so the range is limited, this function is written for educational purposes and will be updated.
+    pub fn generate_with_custom_range(
+        s: &Secp256k1<All>,
+        range_min: u128,
+        range_max: u128,
+    ) -> Self {
         // Ensure range_max is greater than range_min
         assert!(
             range_max > range_min,
