@@ -20,8 +20,9 @@
 use bitcoin::key::{PrivateKey, PublicKey};
 use bitcoin::secp256k1::{rand, All, Secp256k1};
 use bitcoin::Address;
-use bitcoin::Network::{self, Bitcoin};
-use rand::Rng;
+use bitcoin::Network::Bitcoin;
+use num_bigint::{BigUint, RandBigInt};
+use num_traits::Num;
 
 /// A struct to hold wif private_key, compressed public_key and their compressed address
 pub struct KeysAndAddressString {
@@ -99,11 +100,11 @@ impl KeysAndAddress {
 
     /// Generates a randomly generated key pair and their compressed addresses within a custom range for the private key.
     /// Returns them in a KeysAndAddress struct.
-    /// range_max is u128 so the range is limited, this function is written for educational purposes and will be updated.
+    /// The range is defined by `range_min` and `range_max` as BigUint to handle 256-bit values.
     pub fn generate_with_custom_range(
         s: &Secp256k1<All>,
-        range_min: u128,
-        range_max: u128,
+        range_min: BigUint,
+        range_max: BigUint,
     ) -> Self {
         // Ensure range_max is greater than range_min
         assert!(
@@ -111,14 +112,28 @@ impl KeysAndAddress {
             "range_max must be greater than range_min"
         );
 
+        let secp256k1_order = BigUint::from_str_radix(
+            "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141",
+            16,
+        )
+        .expect("Failed to parse hexadecimal string");
+
+        assert!(
+            range_max > secp256k1_order,
+            "range_max must be within the valid range for Secp256k1"
+        );
+
         // Generate a random private key within the specified range
-        let mut rand = rand::thread_rng();
-        let private_key_value = rand.gen_range(range_min..=range_max);
-        let private_key_bytes = private_key_value.to_le_bytes();
+        let mut rng = rand::thread_rng();
+        let private_key_value = rng.gen_biguint_range(&range_min, &range_max);
+
+        let mut private_key_bytes = [0u8; 32];
+        let private_key_vec = private_key_value.to_bytes_be();
+        private_key_bytes[..private_key_vec.len()].copy_from_slice(&private_key_vec);
 
         // Generate the key pair
-        let private_key = PrivateKey::from_slice(&private_key_bytes, Network::Bitcoin)
-            .expect("Invalid private key");
+        let private_key =
+            PrivateKey::from_slice(&private_key_bytes, Bitcoin).expect("Invalid private key");
         let public_key = PublicKey::from_private_key(s, &private_key);
 
         KeysAndAddress {
