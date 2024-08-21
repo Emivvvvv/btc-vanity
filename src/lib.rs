@@ -78,7 +78,7 @@
 //! ```
 //!
 //! Gets all the inputs and flags (if available) from the inputs.txt text file
-//! overrides all flags with the vanity mode to suffix, if a strings has it's own
+//! overrides all flags with the vanity mode to suffix, if a strings has its own
 //! -o <text' file> flag it ignores it because of -f flag adn prints all the wallet details
 //! to stdout.
 //! ```bash

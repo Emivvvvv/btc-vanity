@@ -1,6 +1,6 @@
 [package]
 name = "btc-vanity"
-version = "1.2.0"
+version = "1.2.1"
 authors = ["Emirhan TALA <emirhantala99ff99@gmail.com>"]
 description = "A bitcoin vanity address generator written with the Rust programming language."
 edition = "2021"
@@ -12,11 +12,11 @@ documentation = "https://docs.rs/btc-vanity/latest/btc_vanity/index.html"
 
 [dependencies]
 rand = "0.8.5"
-bitcoin = { version = "0.30.1", features = ["rand-std"] }
-thiserror = "1.0.44"
-clap = "4.3.11"
-num-bigint = { version = "0.4", features = ["rand"] }
-num-traits = "0.2"
+bitcoin = { version = "0.32.2", features = ["rand-std"] }
+thiserror = "1.0.63"
+clap = "4.5.16"
+num-bigint = { version = "0.4.6", features = ["rand"] }
+num-traits = "0.2.19"
 
 [profile.test]
 opt-level = 3

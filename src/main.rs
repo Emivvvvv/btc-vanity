@@ -3,6 +3,7 @@ use btc_vanity::decoration::get_decoration_strings;
 use btc_vanity::file::write_output_file;
 use btc_vanity::flags::{get_cli_flags, get_strings_flags};
 use btc_vanity::vanity_addr_generator::VanityAddr;
+use std::fmt::Write;
 use std::time::Instant;
 
 fn main() {
@@ -55,12 +56,14 @@ fn main() {
                 println!("FOUND IN {:.4} SECONDS!\n", seconds);
 
                 // Format the private key hex value
-                let formatted_private_key_hex = res
-                    .get_private_key()
-                    .to_bytes()
-                    .iter()
-                    .map(|byte| format!("{:02X}", byte))
-                    .collect::<String>();
+                let formatted_private_key_hex =
+                    res.get_private_key()
+                        .to_bytes()
+                        .iter()
+                        .fold(String::new(), |mut acc, byte| {
+                            write!(&mut acc, "{:02X}", byte).unwrap();
+                            acc
+                        });
 
                 // Prints the found key pair and the address which has the string.
                 buffer2 = format!(

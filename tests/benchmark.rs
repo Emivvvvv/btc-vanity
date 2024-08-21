@@ -11,7 +11,7 @@
 // Which means new engine is faster than the old one by ~1.58x (977.27 / 627.29)!
 // (I think this is a better calculation than the function suggests (~1.64x))
 //
-// This test ran on a 8 cores m1 pro macbook pro 14 inch. Fans were on full blast mode.
+// This test ran on an 8 cores m1 pro macbook pro 14 inch. Fans were on full blast mode.
 //
 //```bash
 // $ cargo test --test benchmark -- --nocapture --test-threads=1
@@ -125,7 +125,7 @@ fn benchmark(test_str: &str, test_count: usize) -> f64 {
 //#[test] -- commenting this test because this test takes too long time!
 fn benchmarks() {
     panic!("USE V0.9.0 TO BE ABLE TO RUN THIS TEST!");
-    println!("\nTest settings ( threads: {}, case_sensititve: {}, fast_mode: {}, vanity_mode: {:?}) ",
+    println!("\nTest settings ( threads: {}, case_sensitive: {}, fast_mode: {}, vanity_mode: {:?}) ",
              THREADS,
              CASE_SENSITIVE,
              FAST_MODE,

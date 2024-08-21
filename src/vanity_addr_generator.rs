@@ -23,7 +23,7 @@
 //!                 vanity_address.get_comp_address())
 //! ```
 
-use crate::error::VanitiyGeneretorError;
+use crate::error::BtcVanityError;
 use crate::keys_and_address::KeysAndAddress;
 use bitcoin::secp256k1::{All, Secp256k1};
 use num_bigint::BigUint;
@@ -46,15 +46,15 @@ pub enum VanityMode {
 impl VanityAddr {
     /// Checks all given information's before passing to the vanity address finder function.
     /// Returns Ok if all checks were successful.
-    /// Returns Err if the string if longer than 4 chars and -d or --disable-fast-mode flags are not given.
+    /// Returns Err if the string is longer than 4 chars and -d or --disable-fast-mode flags are not given.
     /// Returns Err if the string is not in base58 format.
-    fn validate_input(string: &str, fast_mode: bool) -> Result<(), VanitiyGeneretorError> {
+    fn validate_input(string: &str, fast_mode: bool) -> Result<(), BtcVanityError> {
         if string.is_empty() {
             return Ok(());
         }
 
         if string.len() > 4 && fast_mode {
-            return Err(VanitiyGeneretorError(
+            return Err(BtcVanityError::VanityGeneratorError(
                     "You're asking for too much!\n\
                     If you know this will take for a long time and really want to find something longer than 4 characters\n\
                     disable fast mode with -df or --disable_fast flags.",
@@ -66,8 +66,8 @@ impl VanityAddr {
             .any(|c| c == '0' || c == 'I' || c == 'O' || c == 'l' || !c.is_alphanumeric());
 
         if is_base58 {
-            return Err(VanitiyGeneretorError(
-                    "Your input is not in base58. Don't include zero: '0', uppercase i: 'I', uppercase o: 'O', lowercase L: 'l'\
+            return Err(BtcVanityError::VanityGeneratorError(
+                    "Your input is not in base58. Don't include zero: '0', uppercase i: 'I', uppercase o: 'O', lowercase L: 'l' \
                     or any non-alphanumeric character in your input!",
                 ));
         }
@@ -76,9 +76,9 @@ impl VanityAddr {
     }
 
     /// Checks all given information's before passing to the vanity address finder function.
-    /// Returns Result<KeysAndAddressString, VanitiyGeneretorError>
+    /// Returns Result<KeysAndAddressString, VanityGeneratorError>
     /// Returns OK if a vanity address found successfully with keys_and_address::KeysAndAddress struct
-    /// Returns Err if the string if longer than 4 chars and -d or --disable-fast-mode flags are not given.
+    /// Returns Err if the string is longer than 4 chars and -d or --disable-fast-mode flags are not given.
     /// Returns Err if the string is not in base58 format.
     pub fn generate(
         string: &str,
@@ -86,7 +86,7 @@ impl VanityAddr {
         case_sensitive: bool,
         fast_mode: bool,
         vanity_mode: VanityMode,
-    ) -> Result<KeysAndAddress, VanitiyGeneretorError> {
+    ) -> Result<KeysAndAddress, BtcVanityError> {
         let secp256k1 = Secp256k1::new();
 
         Self::validate_input(string, fast_mode)?;
@@ -105,11 +105,11 @@ impl VanityAddr {
     }
 
     /// Checks all given information's before passing to the vanity address finder function.
-    /// Returns Result<KeysAndAddressString, VanitiyGeneretorError>
+    /// Returns Result<KeysAndAddressString, VanityGeneratorError>
     /// Returns OK if a vanity address found successfully with keys_and_address::KeysAndAddress struct
-    /// Returns Err if the string if longer than 4 chars and -d or --disable-fast-mode flags are not given.
+    /// Returns Err if the string is longer than 4 chars and -d or --disable-fast-mode flags are not given.
     /// Returns Err if the string is not in base58 format.
-    /// Returns Err if something wen't wrong while generating keypair within range
+    /// Returns Err if something went wrong while generating keypair within range
     pub fn generate_within_range(
         string: &str,
         range_min: BigUint,
@@ -118,15 +118,13 @@ impl VanityAddr {
         case_sensitive: bool,
         fast_mode: bool,
         vanity_mode: VanityMode,
-    ) -> Result<KeysAndAddress, VanitiyGeneretorError> {
+    ) -> Result<KeysAndAddress, BtcVanityError> {
         let secp256k1 = Secp256k1::new();
 
         Self::validate_input(string, fast_mode)?;
 
         if string.is_empty() {
-            return Ok(KeysAndAddress::generate_within_range(
-                &secp256k1, &range_min, &range_max, true,
-            )?);
+            return KeysAndAddress::generate_within_range(&secp256k1, &range_min, &range_max, true);
         }
 
         SearchEngines::find_vanity_address_within_range(
@@ -147,7 +145,7 @@ pub struct SearchEngines;
 impl SearchEngines {
     /// Search for the vanity address with given threads.
     /// First come served! If a thread finds a vanity address that satisfy all the requirements it sends
-    /// the keys_and_address::KeysAndAddress struct wia std::sync::mpsc channel and find_vanity_address function kills all of the other
+    /// the keys_and_address::KeysAndAddress struct wia std::sync::mpsc channel and find_vanity_address function kills all the other
     /// threads and closes the channel and returns the found KeysAndAddress struct that includes
     /// key pair and the desired address.
     fn find_vanity_address(
@@ -216,7 +214,7 @@ impl SearchEngines {
 
     /// Search for the vanity address with given threads, which private key is within given range.
     /// First come served! If a thread finds a vanity address that satisfy all the requirements it sends
-    /// the keys_and_address::KeysAndAddress struct wia std::sync::mpsc channel and find_vanity_address function kills all of the other
+    /// the keys_and_address::KeysAndAddress struct wia std::sync::mpsc channel and find_vanity_address function kills all the other
     /// threads and closes the channel and returns the found KeysAndAddress struct that includes
     /// key pair and the desired address.
     fn find_vanity_address_within_range(
@@ -227,13 +225,13 @@ impl SearchEngines {
         case_sensitive: bool,
         vanity_mode: VanityMode,
         secp256k1: Secp256k1<All>,
-    ) -> Result<KeysAndAddress, VanitiyGeneretorError> {
+    ) -> Result<KeysAndAddress, BtcVanityError> {
         let string_len = string.len();
         let (sender, receiver) = mpsc::channel();
 
         // Ensure range_max is greater than range_min
         if range_max < range_min {
-            return Err(VanitiyGeneretorError(
+            return Err(BtcVanityError::VanityGeneratorError(
                 "range_max must be greater than range_min",
             ));
         }
@@ -243,10 +241,10 @@ impl SearchEngines {
             "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141",
             16,
         )
-        .map_err(|_| VanitiyGeneretorError("Failed to parse hexadecimal string"))?;
+        .map_err(|_| BtcVanityError::VanityGeneratorError("Failed to parse hexadecimal string"))?;
 
         if range_max > secp256k1_order {
-            return Err(VanitiyGeneretorError(
+            return Err(BtcVanityError::VanityGeneratorError(
                 "range_max must be within the valid range for Secp256k1",
             ));
         }
@@ -308,5 +306,131 @@ impl SearchEngines {
                 Err(_) => continue,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use num_bigint::BigUint;
+    use num_traits::FromPrimitive;
+
+    #[test]
+    fn test_generate_vanity_prefix() {
+        let vanity_string = "tst";
+        let keys_and_address = VanityAddr::generate(
+            vanity_string,
+            4,                  // Use 4 threads
+            true,               // Case-insensitivity
+            true,               // Fast mode (limits string size with 4 characters)
+            VanityMode::Prefix, // Vanity mode set to Prefix
+        )
+        .unwrap();
+
+        let vanity_addr_starts_with = "1tst";
+        assert!(keys_and_address
+            .get_comp_address()
+            .starts_with(vanity_addr_starts_with));
+    }
+
+    #[test]
+    fn test_generate_vanity_suffix() {
+        let vanity_string = "12";
+        let keys_and_address = VanityAddr::generate(
+            vanity_string,
+            4,                  // Use 4 threads
+            false,              // Case-insensitivity
+            true,               // Fast mode (limits string size with 4 characters)
+            VanityMode::Suffix, // Vanity mode set to Suffix
+        )
+        .unwrap();
+
+        assert!(keys_and_address.get_comp_address().ends_with(vanity_string));
+    }
+
+    #[test]
+    fn test_generate_vanity_anywhere() {
+        let vanity_string = "ab";
+        let keys_and_address = VanityAddr::generate(
+            vanity_string,
+            4,                    // Use 4 threads
+            true,                 // Case-insensitivity
+            true,                 // Fast mode (limits string size with 4 characters)
+            VanityMode::Anywhere, // Vanity mode set to Anywhere
+        )
+        .unwrap();
+
+        assert!(keys_and_address.get_comp_address().contains(vanity_string));
+    }
+
+    #[test]
+    #[should_panic(expected = "You're asking for too much!")]
+    fn test_generate_vanity_string_too_long_with_fast_mode() {
+        let vanity_string = "12345"; // String longer than 4 characters
+        let _ = VanityAddr::generate(
+            vanity_string,
+            4,                  // Use 4 threads
+            false,              // Case-insensitivity
+            true,               // Fast mode (limits string size with 4 characters)
+            VanityMode::Prefix, // Vanity mode set to Prefix
+        )
+        .unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "Your input is not in base58.")]
+    fn test_generate_vanity_invalid_base58() {
+        let vanity_string = "emiO"; // Contains invalid base58 character 'O'
+        let _ = VanityAddr::generate(
+            vanity_string,
+            4,                  // Use 4 threads
+            false,              // Case-insensitivity
+            true,               // Fast mode (limits string size with 4 characters)
+            VanityMode::Prefix, // Vanity mode set to Prefix
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_generate_within_range_prefix() {
+        let vanity_string = "em";
+        let range_min = BigUint::from_u64(1).unwrap();
+        let range_max = BigUint::from_u64(u64::MAX).unwrap();
+
+        let keys_and_address = VanityAddr::generate_within_range(
+            vanity_string,
+            range_min,
+            range_max,
+            4,                  // Use 4 threads
+            true,               // Case-insensitivity
+            true,               // Fast mode (limits string size with 4 characters)
+            VanityMode::Prefix, // Vanity mode set to Prefix
+        )
+        .unwrap();
+
+        let vanity_addr_starts_with = "1em";
+        assert!(keys_and_address
+            .get_comp_address()
+            .starts_with(vanity_addr_starts_with));
+    }
+
+    #[test]
+    fn test_generate_within_range_anywhere() {
+        let vanity_string = "ab";
+        let range_min = BigUint::from_u64(1).unwrap();
+        let range_max = BigUint::from_u64(u64::MAX).unwrap();
+
+        let keys_and_address = VanityAddr::generate_within_range(
+            vanity_string,
+            range_min,
+            range_max,
+            4,                    // Use 4 threads
+            true,                 // Case-insensitivity
+            true,                 // Fast mode (limits string size with 4 characters)
+            VanityMode::Anywhere, // Vanity mode set to Anywhere
+        )
+        .unwrap();
+
+        assert!(keys_and_address.get_comp_address().contains(vanity_string));
     }
 }

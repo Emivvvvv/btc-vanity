@@ -129,8 +129,8 @@ impl StringsFlags {
     }
 }
 
-/// Returns A StringFlags depending string's flags that we get from the input file.
-/// If -f --force is set in cli it just return StringFlag struct that has the same flags
+/// Returns A StringFlags depending on string's flags that we get from the input file.
+/// If -f --force is set in cli it just returns StringFlag struct that has the same flags
 /// with the cli flags
 pub fn get_strings_flags(cli_args: &CliFlags, index: usize) -> StringsFlags {
     match cli_args.force_flags {

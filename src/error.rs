@@ -1,29 +1,48 @@
-//! # Custom Error Module For Better Error Handling And Output Styling
-//!
-//! This module is used for creating a better stylized custom errors for btc-vanity.
-
+use std::io;
 use thiserror::Error;
 
+/// A unified error type that encapsulates all possible errors in the btc-vanity application.
 #[derive(Error, Debug)]
-#[error("File error: {0}")]
-pub struct FileError(pub String);
+pub enum BtcVanityError {
+    #[error("File error: {0}")]
+    FileError(#[from] io::Error), // Automatically converts io::Error into BtcVanityError::FileError
 
-impl From<std::io::Error> for FileError {
-    fn from(io_err: std::io::Error) -> Self {
-        FileError(io_err.to_string())
+    #[error("Keys and address error: {0}")]
+    KeysAndAddressError(&'static str),
+
+    #[error("Vanity address generator error: {0}")]
+    VanityGeneratorError(&'static str),
+}
+
+// impl From<io::Error> for BtcVanityError {
+//     fn from(io_err: io::Error) -> Self {
+//         BtcVanityError::FileError(io_err)
+//     }
+// }
+
+impl From<KeysAndAddressError> for BtcVanityError {
+    fn from(keys_and_address_err: KeysAndAddressError) -> Self {
+        BtcVanityError::KeysAndAddressError(keys_and_address_err.0)
     }
 }
 
+impl From<VanityGeneratorError> for BtcVanityError {
+    fn from(vanity_err: VanityGeneratorError) -> Self {
+        BtcVanityError::VanityGeneratorError(vanity_err.0)
+    }
+}
+
+/// Struct-based error types for backward compatibility or specific contexts.
 #[derive(Error, Debug)]
 #[error("Keys and address error: {0}")]
-pub struct KeysAndAdressError(pub &'static str);
+pub struct KeysAndAddressError(pub &'static str);
 
 #[derive(Error, Debug)]
 #[error("Vanity address generator error: {0}")]
-pub struct VanitiyGeneretorError(pub &'static str);
+pub struct VanityGeneratorError(pub &'static str);
 
-impl From<KeysAndAdressError> for VanitiyGeneretorError {
-    fn from(keys_and_address_err: KeysAndAdressError) -> Self {
-        VanitiyGeneretorError(keys_and_address_err.0)
+impl From<KeysAndAddressError> for VanityGeneratorError {
+    fn from(keys_and_address_err: KeysAndAddressError) -> Self {
+        VanityGeneratorError(keys_and_address_err.0)
     }
 }

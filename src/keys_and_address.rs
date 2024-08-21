@@ -20,7 +20,7 @@
 //!                 random_address.get_comp_address())
 //! ```
 
-use crate::error::KeysAndAdressError;
+use crate::error::BtcVanityError;
 use bitcoin::key::{PrivateKey, PublicKey};
 use bitcoin::secp256k1::{rand, All, Secp256k1};
 use bitcoin::Address;
@@ -46,7 +46,7 @@ impl KeysAndAddress {
         KeysAndAddress {
             private_key,
             public_key,
-            comp_address: Address::p2pkh(&public_key, Bitcoin).to_string(),
+            comp_address: Address::p2pkh(public_key, Bitcoin).to_string(),
         }
     }
 
@@ -61,7 +61,7 @@ impl KeysAndAddress {
         KeysAndAddress {
             private_key,
             public_key,
-            comp_address: Address::p2pkh(&public_key, Bitcoin).to_string(),
+            comp_address: Address::p2pkh(public_key, Bitcoin).to_string(),
         }
     }
 
@@ -74,11 +74,11 @@ impl KeysAndAddress {
         range_min: &BigUint,
         range_max: &BigUint,
         safe_mode: bool,
-    ) -> Result<Self, KeysAndAdressError> {
+    ) -> Result<Self, BtcVanityError> {
         if safe_mode {
             // Ensure range_max is greater than range_min
             if range_max < range_min {
-                return Err(KeysAndAdressError(
+                return Err(BtcVanityError::KeysAndAddressError(
                     "range_max must be greater than range_min",
                 ));
             }
@@ -87,10 +87,12 @@ impl KeysAndAddress {
                 "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141",
                 16,
             )
-            .map_err(|_| KeysAndAdressError("Failed to parse hexadecimal string"))?;
+            .map_err(|_| {
+                BtcVanityError::KeysAndAddressError("Failed to parse hexadecimal string")
+            })?;
 
             if range_max > &secp256k1_order {
-                return Err(KeysAndAdressError(
+                return Err(BtcVanityError::KeysAndAddressError(
                     "range_max must be within the valid range for Secp256k1",
                 ));
             }
@@ -110,13 +112,13 @@ impl KeysAndAddress {
         };
 
         let private_key = PrivateKey::from_slice(&private_key_bytes, Bitcoin)
-            .map_err(|_| KeysAndAdressError("Invalid private key"))?;
+            .map_err(|_| BtcVanityError::KeysAndAddressError("Invalid private key"))?;
         let public_key = PublicKey::from_private_key(s, &private_key);
 
         Ok(KeysAndAddress {
             private_key,
             public_key,
-            comp_address: Address::p2pkh(&public_key, Bitcoin).to_string(),
+            comp_address: Address::p2pkh(public_key, Bitcoin).to_string(),
         })
     }
 
@@ -147,6 +149,37 @@ mod tests {
     use bitcoin::secp256k1::Secp256k1;
     use num_bigint::BigUint;
     use num_traits::{FromPrimitive, One};
+
+    #[test]
+    fn test_generate_random() {
+        let secp = Secp256k1::new();
+
+        // Generate a random key pair and address
+        let keys_and_address = KeysAndAddress::generate_random(&secp);
+
+        // Check if the private key can generate the same public key
+        let derived_public_key = PublicKey::from_private_key(&secp, &keys_and_address.private_key);
+        assert_eq!(keys_and_address.public_key, derived_public_key);
+
+        // Check if the derived public key generates the same address
+        let derived_address = Address::p2pkh(&derived_public_key, Bitcoin).to_string();
+        assert_eq!(keys_and_address.comp_address, derived_address);
+    }
+
+    #[test]
+    fn test_generate_random_heavy() {
+        // Generate a random key pair and address
+        let keys_and_address = KeysAndAddress::generate_random_heavy();
+
+        // Check if the private key can generate the same public key
+        let secp = Secp256k1::new();
+        let derived_public_key = PublicKey::from_private_key(&secp, &keys_and_address.private_key);
+        assert_eq!(keys_and_address.public_key, derived_public_key);
+
+        // Check if the derived public key generates the same address
+        let derived_address = Address::p2pkh(&derived_public_key, Bitcoin).to_string();
+        assert_eq!(keys_and_address.comp_address, derived_address);
+    }
 
     #[test]
     fn test_generate_with_custom_range() {
@@ -183,7 +216,7 @@ mod tests {
     fn test_generate_with_invalid_range() {
         let secp = Secp256k1::new();
 
-        // Set range_min greater than range_max to trigger the assert
+        // Set range_min greater than range_max to trigger to assert
         let range_min = BigUint::from(100u32);
         let range_max = BigUint::from(10u32);
 
