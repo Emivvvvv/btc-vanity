@@ -84,20 +84,11 @@
 //! ```bash
 //! $ btc-vanity -f -s -i inputs.txt
 //! ```
-//!
-//! # Fun facts about btc-vanity docs
-//! fun fact 1: The goal of v0.8.0 was writing docs and I did it but It never showed up
-//! because of a simple doc error (<text file> and cargo said hey this is an unclosed HTML tag `text`)!
-//! There were no docs until I checked docs.rs and publish v1.0.1.
-//!
-//! fun fact 2: I'm dumb... and fast!. Apparently my docs are in queue so no worries :D
-//!
 
-
-pub mod vanity_addr_generator;
-pub mod keys_and_address;
-pub mod error;
 pub mod cli;
-pub mod file;
 pub mod decoration;
+pub mod error;
+pub mod file;
 pub mod flags;
+pub mod keys_and_address;
+pub mod vanity_addr_generator;

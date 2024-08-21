@@ -24,8 +24,10 @@
 //! ```
 
 use crate::error::VanitiyGeneretorError;
-use crate::keys_and_address::{KeysAndAddress, KeysAndAddressString};
+use crate::keys_and_address::KeysAndAddress;
 use bitcoin::secp256k1::{All, Secp256k1};
+use num_bigint::BigUint;
+use num_traits::Num;
 use std::sync::mpsc;
 use std::thread;
 
@@ -43,7 +45,38 @@ pub enum VanityMode {
 
 impl VanityAddr {
     /// Checks all given information's before passing to the vanity address finder function.
-    /// Returns a Result type
+    /// Returns Ok if all checks were successful.
+    /// Returns Err if the string if longer than 4 chars and -d or --disable-fast-mode flags are not given.
+    /// Returns Err if the string is not in base58 format.
+    fn validate_input(string: &str, fast_mode: bool) -> Result<(), VanitiyGeneretorError> {
+        if string.is_empty() {
+            return Ok(());
+        }
+
+        if string.len() > 4 && fast_mode {
+            return Err(VanitiyGeneretorError(
+                    "You're asking for too much!\n\
+                    If you know this will take for a long time and really want to find something longer than 4 characters\n\
+                    disable fast mode with -df or --disable_fast flags.",
+                ));
+        }
+
+        let is_base58 = string
+            .chars()
+            .any(|c| c == '0' || c == 'I' || c == 'O' || c == 'l' || !c.is_alphanumeric());
+
+        if is_base58 {
+            return Err(VanitiyGeneretorError(
+                    "Your input is not in base58. Don't include zero: '0', uppercase i: 'I', uppercase o: 'O', lowercase L: 'l'\
+                    or any non-alphanumeric character in your input!",
+                ));
+        }
+
+        Ok(())
+    }
+
+    /// Checks all given information's before passing to the vanity address finder function.
+    /// Returns Result<KeysAndAddressString, VanitiyGeneretorError>
     /// Returns OK if a vanity address found successfully with keys_and_address::KeysAndAddress struct
     /// Returns Err if the string if longer than 4 chars and -d or --disable-fast-mode flags are not given.
     /// Returns Err if the string is not in base58 format.
@@ -53,27 +86,16 @@ impl VanityAddr {
         case_sensitive: bool,
         fast_mode: bool,
         vanity_mode: VanityMode,
-    ) -> Result<KeysAndAddressString, VanitiyGeneretorError> {
-        if string.is_empty() {
-            return Ok(KeysAndAddressString::generate_random());
-        }
-        if string.len() > 4 && fast_mode {
-            return Err(VanitiyGeneretorError("You're asking for too much!\n\
-            If you know this will take for a long time and really want to find something longer than 4 characters\n\
-             disable fast mode with -df or --disable_fast flags."));
-        }
-
-        let is_base58 = string
-            .chars()
-            .find(|c| c == &'0' || c == &'I' || c == &'O' || c == &'l' || !c.is_alphanumeric());
-
-        if is_base58.is_some() {
-            return Err(VanitiyGeneretorError("Your input is not in base58. Don't include zero: '0', uppercase i: 'I', uppercase o: 'O', lowercase L: 'l'
-            or any non-alphanumeric character in your input!"));
-        }
-
+    ) -> Result<KeysAndAddress, VanitiyGeneretorError> {
         let secp256k1 = Secp256k1::new();
-        Ok(SearchEngines::find_vanity_address_fast_engine(
+
+        Self::validate_input(string, fast_mode)?;
+
+        if string.is_empty() {
+            return Ok(KeysAndAddress::generate_random(&secp256k1));
+        }
+
+        Ok(SearchEngines::find_vanity_address(
             string,
             threads,
             case_sensitive,
@@ -81,98 +103,60 @@ impl VanityAddr {
             secp256k1,
         ))
     }
+
+    /// Checks all given information's before passing to the vanity address finder function.
+    /// Returns Result<KeysAndAddressString, VanitiyGeneretorError>
+    /// Returns OK if a vanity address found successfully with keys_and_address::KeysAndAddress struct
+    /// Returns Err if the string if longer than 4 chars and -d or --disable-fast-mode flags are not given.
+    /// Returns Err if the string is not in base58 format.
+    /// Returns Err if something wen't wrong while generating keypair within range
+    pub fn generate_within_range(
+        string: &str,
+        range_min: BigUint,
+        range_max: BigUint,
+        threads: u64,
+        case_sensitive: bool,
+        fast_mode: bool,
+        vanity_mode: VanityMode,
+    ) -> Result<KeysAndAddress, VanitiyGeneretorError> {
+        let secp256k1 = Secp256k1::new();
+
+        Self::validate_input(string, fast_mode)?;
+
+        if string.is_empty() {
+            return Ok(KeysAndAddress::generate_within_range(
+                &secp256k1, &range_min, &range_max, true,
+            )?);
+        }
+
+        SearchEngines::find_vanity_address_within_range(
+            string,
+            range_min,
+            range_max,
+            threads,
+            case_sensitive,
+            vanity_mode,
+            secp256k1,
+        )
+    }
 }
 
-/// An Empty Struct for a more structured code
-///
-/// At v1.0.0 the only search engine option is the new one.
-/// ```Rust
-/// fn find_vanity_address_fast_engine(
-///         string: &str,
-///         threads: u64,
-///         case_sensitive: bool,
-///         vanity_mode: VanityMode,
-///         secp256k1: Secp256k1<All>) -> KeysAndAddressString  { ... }
-/// ```
-/// You can see the benchmark results between the old one and the new one
-/// or you can just go back to v0.9.0 to have a look at the old search engine.
-///
-/// # Benchmark between old and new search engines.
-///
-/// As benchmark suggests new engine is a lot faster than the old one especially with string
-/// searches that longer than 1 character.
-///
-/// Old engine's searches took 977.27 seconds total.
-/// New engine's searches took 627.29 seconds total
-///
-/// Which means new engine is faster than the old one by ~1.58x (977.27 / 627.29)!
-/// (I think this is a better calculation than the function suggests (~1.64x))
-///
-/// This test ran on a 8 cores m1 pro macbook pro 14 inch. Fans were on full blast mode.
-///
-///```bash
-/// $ cargo test --test benchmark -- --nocapture --test-threads=1
-/// ````
-///
-/// ```bash
-///    Compiling btc-vanity v0.9.0 (/Users/emivvvvv/Documents/GitHub/btc-vanity)
-///     Finished test [optimized + debuginfo] target(s) in 0.15s
-///      Running tests/benchmark.rs (target/debug/deps/benchmark-981a0dc8e71e6fdd)
-///
-/// running 1 test
-/// test benchmarks ...
-/// Test settings ( threads: 16, case_sensititve: false, fast_mode: true, vanity_mode: Anywhere)
-///
-/// test string: e, test count: 200000
-/// Finding 200000 vanity address took average: 163.35582925s with the old engine
-/// Finding 200000 vanity address took average: 145.740485167s with the new engine
-/// New engine is 1.1208678841902788x faster than the old one!
-///
-///
-/// test string: mi, test count: 8000
-/// Finding 8000 vanity address took average: 113.937177833s with the old engine
-/// Finding 8000 vanity address took average: 50.817601375s with the new engine
-/// New engine is 2.2420809867081215x faster than the old one!
-///
-///
-/// test string: vvv, test count: 1000
-/// Finding 1000 vanity address took average: 113.463775042s with the old engine
-/// Finding 1000 vanity address took average: 64.925782208s with the new engine
-/// New engine is 1.7475919609023864x faster than the old one!
-///
-///
-/// test string: Emiv, test count: 100
-/// Finding 100 vanity address took average: 445.538857334s with the old engine
-/// Finding 100 vanity address took average: 266.378989417s with the new engine
-/// New engine is 1.6725750717393713x faster than the old one!
-///
-///
-/// test string: 3169, test count: 10
-/// Finding 10 vanity address took average: 140.982839292s with the old engine
-/// Finding 10 vanity address took average: 99.419238167s with the new engine
-/// New engine is 1.4180639672090758x faster than the old one!
-///
-/// Final result. New engine is 1.640235974149847x faster than the old one overall!
-/// ok
-///
-/// test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1604.56s
-/// ```
+/// impl's `find_vanity_address_fast_engine` and `find_vanity_address_fast_engine_with_range`
 pub struct SearchEngines;
 
 impl SearchEngines {
-    /// The faster search engine which is faster by ~1.58x than the old one!
     /// Search for the vanity address with given threads.
     /// First come served! If a thread finds a vanity address that satisfy all the requirements it sends
     /// the keys_and_address::KeysAndAddress struct wia std::sync::mpsc channel and find_vanity_address function kills all of the other
     /// threads and closes the channel and returns the found KeysAndAddress struct that includes
     /// key pair and the desired address.
-    fn find_vanity_address_fast_engine(
+    fn find_vanity_address(
         string: &str,
         threads: u64,
         case_sensitive: bool,
         vanity_mode: VanityMode,
         secp256k1: Secp256k1<All>,
-    ) -> KeysAndAddressString {
+    ) -> KeysAndAddress {
         let string_len = string.len();
         let (sender, receiver) = mpsc::channel();
 
@@ -214,13 +198,7 @@ impl SearchEngines {
                     // If the channel closed, that means another thread found a keypair and closed it
                     // so we just return and kill the thread if an error occurs.
                     if (prefix_suffix_flag || anywhere_flag)
-                        && sender
-                            .send(KeysAndAddressString::fast_engine_get(
-                                keys_and_address.get_private_key(),
-                                *keys_and_address.get_public_key(),
-                                address.to_string(),
-                            ))
-                            .is_err()
+                        && sender.send(keys_and_address).is_err()
                     {
                         return;
                     }
@@ -231,6 +209,102 @@ impl SearchEngines {
         loop {
             match receiver.try_recv() {
                 Ok(pair) => return pair,
+                Err(_) => continue,
+            }
+        }
+    }
+
+    /// Search for the vanity address with given threads, which private key is within given range.
+    /// First come served! If a thread finds a vanity address that satisfy all the requirements it sends
+    /// the keys_and_address::KeysAndAddress struct wia std::sync::mpsc channel and find_vanity_address function kills all of the other
+    /// threads and closes the channel and returns the found KeysAndAddress struct that includes
+    /// key pair and the desired address.
+    fn find_vanity_address_within_range(
+        string: &str,
+        range_min: BigUint,
+        range_max: BigUint,
+        threads: u64,
+        case_sensitive: bool,
+        vanity_mode: VanityMode,
+        secp256k1: Secp256k1<All>,
+    ) -> Result<KeysAndAddress, VanitiyGeneretorError> {
+        let string_len = string.len();
+        let (sender, receiver) = mpsc::channel();
+
+        // Ensure range_max is greater than range_min
+        if range_max < range_min {
+            return Err(VanitiyGeneretorError(
+                "range_max must be greater than range_min",
+            ));
+        }
+
+        // Private key range_max must be within the valid range for Secp256k1
+        let secp256k1_order = BigUint::from_str_radix(
+            "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141",
+            16,
+        )
+        .map_err(|_| VanitiyGeneretorError("Failed to parse hexadecimal string"))?;
+
+        if range_max > secp256k1_order {
+            return Err(VanitiyGeneretorError(
+                "range_max must be within the valid range for Secp256k1",
+            ));
+        }
+
+        for _ in 0..threads {
+            let sender = sender.clone();
+            let string = string.to_string();
+            let mut anywhere_flag = false;
+            let mut prefix_suffix_flag = false;
+            let secp256k1 = secp256k1.clone();
+            let range_min = range_min.clone();
+            let range_max = range_max.clone();
+
+            let _ = thread::spawn(move || {
+                loop {
+                    let keys_and_address = KeysAndAddress::generate_within_range(
+                        &secp256k1, &range_min, &range_max, false,
+                    )
+                    .unwrap();
+                    let address = keys_and_address.get_comp_address();
+
+                    match vanity_mode {
+                        VanityMode::Prefix => {
+                            let slice = &address[1..=string_len];
+                            prefix_suffix_flag = match case_sensitive {
+                                true => slice == string,
+                                false => slice.to_lowercase() == string.to_lowercase(),
+                            };
+                        }
+                        VanityMode::Suffix => {
+                            let address_len = address.len();
+                            let slice = &address[address_len - string_len..address_len];
+                            prefix_suffix_flag = match case_sensitive {
+                                true => slice == string,
+                                false => slice.to_lowercase() == string.to_lowercase(),
+                            };
+                        }
+                        VanityMode::Anywhere => {
+                            anywhere_flag = match case_sensitive {
+                                true => address.contains(&string),
+                                false => address.to_lowercase().contains(&string.to_lowercase()),
+                            };
+                        }
+                    }
+                    // If the channel closed, that means another thread found a keypair and closed it
+                    // so we just return and kill the thread if an error occurs.
+                    if (prefix_suffix_flag || anywhere_flag)
+                        && sender.send(keys_and_address).is_err()
+                    {
+                        return;
+                    }
+                }
+            });
+        }
+
+        loop {
+            match receiver.try_recv() {
+                Ok(pair) => return Ok(pair),
                 Err(_) => continue,
             }
         }

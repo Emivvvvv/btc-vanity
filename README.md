@@ -5,7 +5,7 @@ A bitcoin vanity address generator written with the Rust programming language.
 
 With btc-vanity you can create a private key which has a compressed bitcoin pay address that has a custom prefix, suffix or a string at somewhere in the address.
 
-You can easily run btc-vanity at you computer to get your private key securely.
+You can easily run btc-vanity terminal application locally or use it as a library to create your vanity keypair securely.
 
 ## Screenshots
 
@@ -105,6 +105,6 @@ btc-vanity is a tool designed to assist users in generating customized vanity Bi
 
 6. **Educational Purposes**: btc-vanity is intended for educational and personal use. It is your responsibility to ensure compliance with any legal, regulatory, or tax requirements in your jurisdiction related to Bitcoin and cryptocurrency usage.
 
-By using btc-vanity, you acknowledge and accept the risks associated with generating vanity addresses and handling private keys. It is your responsibility to exercise diligence, follow security best practices, and be aware of potential risks. If you are unsure about any aspect of using btc-vanity, seek guidance from experienced Bitcoin users or professionals before proceeding.
+By using btc-vanity, you acknowledge and accept the risks associated with generating vanity addresses and handling private keys. It is your responsibility to exercise diligence, follow security best practices, and be aware of potential risks.
 
 Remember, the security of your Bitcoin holdings is paramount. Always prioritize the safety and security of your assets.

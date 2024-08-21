@@ -21,3 +21,9 @@ pub struct KeysAndAdressError(pub &'static str);
 #[derive(Error, Debug)]
 #[error("Vanity address generator error: {0}")]
 pub struct VanitiyGeneretorError(pub &'static str);
+
+impl From<KeysAndAdressError> for VanitiyGeneretorError {
+    fn from(keys_and_address_err: KeysAndAdressError) -> Self {
+        VanitiyGeneretorError(keys_and_address_err.0)
+    }
+}
