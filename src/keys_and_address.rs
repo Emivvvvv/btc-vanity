@@ -122,6 +122,54 @@ impl KeysAndAddress {
         })
     }
 
+    /// Use safe mode if you're calling this function out of vanity_addr_generator.rs
+    /// Generates a the key pair and their compressed addresses from the given private key.
+    /// Returns them in a KeysAndAddress struct.
+    pub fn generate_from_biguint(
+        s: &Secp256k1<All>,
+        private_key_biguint: &BigUint,
+        safe_mode: bool,
+    ) -> Result<Self, BtcVanityError> {
+        if safe_mode {
+            if private_key_biguint == &BigUint::ZERO {
+                return Err(BtcVanityError::KeysAndAddressError("renge_min can't be 0"));
+            }
+
+            let secp256k1_order = BigUint::from_str_radix(
+                "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141",
+                16,
+            )
+            .map_err(|_| {
+                BtcVanityError::KeysAndAddressError("Failed to parse hexadecimal string")
+            })?;
+
+            if private_key_biguint > &secp256k1_order {
+                return Err(BtcVanityError::KeysAndAddressError(
+                    "range_max must be within the valid range for Secp256k1",
+                ));
+            }
+        }
+
+        // Convert the BigUint to a 32-byte array, zero-padded on the left
+        let private_key_bytes = {
+            let mut bytes = [0u8; 32];
+            let private_key_vec = private_key_biguint.to_bytes_be();
+            let start_index = 32 - private_key_vec.len();
+            bytes[start_index..].copy_from_slice(&private_key_vec);
+            bytes
+        };
+
+        let private_key = PrivateKey::from_slice(&private_key_bytes, Bitcoin)
+            .map_err(|_| BtcVanityError::KeysAndAddressError("Invalid private key"))?;
+        let public_key = PublicKey::from_private_key(s, &private_key);
+
+        Ok(KeysAndAddress {
+            private_key,
+            public_key,
+            comp_address: Address::p2pkh(public_key, Bitcoin).to_string(),
+        })
+    }
+
     pub fn get_private_key(&self) -> &PrivateKey {
         &self.private_key
     }
