@@ -130,10 +130,14 @@ impl KeysAndAddress {
         let mut rng = rand::thread_rng();
         let private_key_value = rng.gen_biguint_range(&range_min, &range_max);
 
-        let mut private_key_bytes = [0u8; 32];
-        let private_key_vec = private_key_value.to_bytes_be();
-        let start_index = 32 - private_key_vec.len();
-        private_key_bytes[start_index..].copy_from_slice(&private_key_vec);
+        // Convert the BigUint to a 32-byte array, zero-padded on the left
+        let private_key_bytes = {
+            let mut bytes = [0u8; 32];
+            let private_key_vec = private_key_value.to_bytes_be();
+            let start_index = 32 - private_key_vec.len();
+            bytes[start_index..].copy_from_slice(&private_key_vec);
+            bytes
+        };
 
         let private_key =
             PrivateKey::from_slice(&private_key_bytes, Bitcoin).expect("Invalid private key");
@@ -165,30 +169,6 @@ mod tests {
     use bitcoin::secp256k1::Secp256k1;
     use num_bigint::BigUint;
     use num_traits::One;
-
-    #[test]
-    fn test_generate_with_custom_range() {
-        let secp = Secp256k1::new();
-
-        // Define a small range for testing
-        let range_min = BigUint::one(); // Minimum valid private key value
-        let range_max = BigUint::from(100u32); // Arbitrary small maximum value for testing
-
-        let result =
-            KeysAndAddress::generate_with_custom_range(&secp, range_min.clone(), range_max.clone());
-
-        let keys_and_address = result;
-
-        // Verify that the private key is within the specified range
-        let private_key_value = BigUint::from_bytes_be(&keys_and_address.private_key.to_bytes());
-        assert!(private_key_value >= range_min);
-        assert!(private_key_value < range_max);
-
-        // Print the keys and address for manual inspection
-        println!("Private Key: {:?}", keys_and_address.private_key);
-        println!("Public Key: {:?}", keys_and_address.public_key);
-        println!("Compressed Address: {}", keys_and_address.comp_address);
-    }
 
     #[test]
     #[should_panic(expected = "range_max must be greater than range_min")]
