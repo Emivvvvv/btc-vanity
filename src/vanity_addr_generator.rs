@@ -8,7 +8,7 @@
 //! use btc_vanity::vanity_addr_generator::{VanityAddr, VanityMode};
 //!
 //! let vanity_address = VanityAddr::generate(
-//!             "Test", // the string that you want your vanity address include.
+//!             "Test", // the string that you want your vanity address to include.
 //!             16, // number of threads
 //!             false, // case sensitivity (false ex: tESt, true ex: Test)
 //!             true, // fast mode flag (to use a string longer than 4 chars this must be set to false)
