@@ -171,6 +171,37 @@ mod tests {
     use num_traits::One;
 
     #[test]
+    fn test_generate_with_custom_range() {
+        let secp = Secp256k1::new();
+
+        // Define a small range for testing
+        let range_min = BigUint::from_str_radix(
+            "0000000000000000000000000000000000000000000000100000000000000000",
+            16,
+        )
+        .unwrap();
+        let range_max = BigUint::from_str_radix(
+            "00000000000000000000000000000000000000000000001FFFFFFFFFFFFFFFFF",
+            16,
+        )
+        .unwrap();
+
+        let result =
+            KeysAndAddress::generate_with_custom_range(&secp, range_min.clone(), range_max.clone());
+
+        let keys_and_address = result;
+
+        // Verify that the private key is within the specified range
+        let private_key_bytes = keys_and_address.private_key.to_bytes();
+        println!("bytes: {:x?}", private_key_bytes);
+
+        // Print the keys and address for manual inspection
+        println!("Private Key: {:?}", keys_and_address.private_key);
+        println!("Public Key: {:?}", keys_and_address.public_key);
+        println!("Compressed Address: {}", keys_and_address.comp_address);
+    }
+
+    #[test]
     #[should_panic(expected = "range_max must be greater than range_min")]
     fn test_generate_with_invalid_range() {
         let secp = Secp256k1::new();
