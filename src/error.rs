@@ -5,5 +5,19 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-#[error("Custom Error: {0}")]
-pub struct CustomError(pub &'static str);
+#[error("File error: {0}")]
+pub struct FileError(pub String);
+
+impl From<std::io::Error> for FileError {
+    fn from(io_err: std::io::Error) -> Self {
+        FileError(io_err.to_string())
+    }
+}
+
+#[derive(Error, Debug)]
+#[error("Keys and address error: {0}")]
+pub struct KeysAndAdressError(pub &'static str);
+
+#[derive(Error, Debug)]
+#[error("Vanity address generator error: {0}")]
+pub struct VanitiyGeneretorError(pub &'static str);

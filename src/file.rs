@@ -2,11 +2,11 @@
 //!
 //! This module is used for reading multiple strings and flags from files and writing found vanity wallets to desired destination.
 
+use crate::error::FileError;
+use crate::vanity_addr_generator::VanityMode;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
-use crate::error::CustomError;
-use crate::vanity_addr_generator::VanityMode;
 
 /// This struct is used to get set flags for each string input
 /// from the file.
@@ -38,12 +38,21 @@ impl FileFlags {
 pub fn get_flags(line: &str) -> FileFlags {
     let args = line.split(' ').collect::<Vec<_>>();
 
-    if args.len() == 1 { return FileFlags::use_cli_flags() }
+    if args.len() == 1 {
+        return FileFlags::use_cli_flags();
+    }
 
     let force_flags = args.contains(&"-f") || args.contains(&"--force-flags");
     let is_case_sensitive = args.contains(&"-c") || args.contains(&"--case-sensitive");
     let disable_fast_mode = args.contains(&"-d") || args.contains(&"--disable-fast");
-    let vanity_option = args.iter().find(|&&arg| arg == "-p" || arg == "-s" || arg == "-a" || arg == "--prefix" || arg == "--suffix" || arg == "--anywhere");
+    let vanity_option = args.iter().find(|&&arg| {
+        arg == "-p"
+            || arg == "-s"
+            || arg == "-a"
+            || arg == "--prefix"
+            || arg == "--suffix"
+            || arg == "--anywhere"
+    });
     let vanity_mode = match vanity_option {
         Some(&vanity) => match vanity {
             "-p" | "--prefix" => Some(VanityMode::Prefix),
@@ -77,13 +86,18 @@ pub fn get_flags(line: &str) -> FileFlags {
 /// 3169
 /// test -o test-output.txt
 /// ```
-pub fn get_strings_and_flags_from_file(file_name: &String) -> Result<(Vec<String>, Vec<FileFlags>), Box<dyn std::error::Error>>{
+pub fn get_strings_and_flags_from_file(
+    file_name: &String,
+) -> Result<(Vec<String>, Vec<FileFlags>), FileError> {
     let data = fs::read_to_string(file_name)?;
     let lines: Vec<&str> = data.lines().collect::<Vec<_>>();
-    let strings: Vec<_> = lines.iter().map(|line| {
-        let line_split = line.split(' ').collect::<Vec<_>>();
-        line_split[0].to_string()
-    }).collect();
+    let strings: Vec<_> = lines
+        .iter()
+        .map(|line| {
+            let line_split = line.split(' ').collect::<Vec<_>>();
+            line_split[0].to_string()
+        })
+        .collect();
     let flags: Vec<FileFlags> = lines.iter().map(|&string| get_flags(string)).collect();
 
     Ok((strings, flags))
@@ -115,9 +129,13 @@ pub fn get_strings_and_flags_from_file(file_name: &String) -> Result<(Vec<String
 ///
 /// Skipping because of error: Custom Error: Your input is not in base58. Don't include zero: '0', uppercase i: 'I', uppercase o: 'O', lowercase L: 'l', in your input!
 /// ```
-pub fn write_output_file(output_file_name: &String, buffer: &String) -> Result<(), Box<dyn std::error::Error>> {
+pub fn write_output_file(output_file_name: &String, buffer: &String) -> Result<(), FileError> {
     let ofn_len = output_file_name.len();
-    if &output_file_name[ofn_len - 4..ofn_len] != ".txt" { return Err(Box::new(CustomError("file must be a text file. ex: output.txt"))) }
+    if &output_file_name[ofn_len - 4..ofn_len] != ".txt" {
+        return Err(FileError(
+            "file must be a text file. ex: output.txt".to_string(),
+        ));
+    }
     let file_result = OpenOptions::new().append(true).open(output_file_name);
     let mut file = match file_result {
         Ok(file) => file,

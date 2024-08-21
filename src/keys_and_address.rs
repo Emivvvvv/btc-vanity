@@ -17,6 +17,7 @@
 //!                 random_address.get_comp_address())
 //! ```
 
+use crate::error::KeysAndAdressError;
 use bitcoin::key::{PrivateKey, PublicKey};
 use bitcoin::secp256k1::{rand, All, Secp256k1};
 use bitcoin::Address;
@@ -105,25 +106,24 @@ impl KeysAndAddress {
         s: &Secp256k1<All>,
         range_min: BigUint,
         range_max: BigUint,
-    ) -> Self {
+    ) -> Result<Self, KeysAndAdressError> {
         // Ensure range_max is greater than range_min
-        assert!(
-            range_max > range_min,
-            "range_max must be greater than range_min"
-        );
+        if range_max < range_min {
+            return Err(KeysAndAdressError(
+                "range_max must be greater than range_min",
+            ));
+        }
 
         let secp256k1_order = BigUint::from_str_radix(
             "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141",
             16,
         )
-        .expect("Failed to parse hexadecimal string");
+        .map_err(|_| KeysAndAdressError("Failed to parse hexadecimal string"))?;
 
         if range_max > secp256k1_order {
-            eprintln!(
-                "range_max: {}, secp256k1_order: {}",
-                range_max, secp256k1_order
-            );
-            panic!("range_max must be within the valid range for Secp256k1");
+            return Err(KeysAndAdressError(
+                "range_max must be within the valid range for Secp256k1",
+            ));
         }
 
         // Generate a random private key within the specified range
@@ -139,15 +139,15 @@ impl KeysAndAddress {
             bytes
         };
 
-        let private_key =
-            PrivateKey::from_slice(&private_key_bytes, Bitcoin).expect("Invalid private key");
+        let private_key = PrivateKey::from_slice(&private_key_bytes, Bitcoin)
+            .map_err(|_| KeysAndAdressError("Invalid private key"))?;
         let public_key = PublicKey::from_private_key(s, &private_key);
 
-        KeysAndAddress {
+        Ok(KeysAndAddress {
             private_key,
             public_key,
             comp_address: Address::p2pkh(&public_key, Bitcoin).to_string(),
-        }
+        })
     }
 
     pub fn get_private_key(&self) -> &PrivateKey {
@@ -168,37 +168,37 @@ mod tests {
     use super::*;
     use bitcoin::secp256k1::Secp256k1;
     use num_bigint::BigUint;
-    use num_traits::One;
+    use num_traits::{FromPrimitive, One};
 
     #[test]
     fn test_generate_with_custom_range() {
         let secp = Secp256k1::new();
 
-        // Define a small range for testing
-        let range_min = BigUint::from_str_radix(
-            "0000000000000000000000000000000000000000000000100000000000000000",
-            16,
-        )
-        .unwrap();
-        let range_max = BigUint::from_str_radix(
-            "00000000000000000000000000000000000000000000001FFFFFFFFFFFFFFFFF",
-            16,
-        )
-        .unwrap();
+        // We're testing private key `1`
+        let range_min = BigUint::from_u8(1).unwrap();
+        let range_max = BigUint::from_u8(2).unwrap();
 
         let result =
             KeysAndAddress::generate_with_custom_range(&secp, range_min.clone(), range_max.clone());
 
-        let keys_and_address = result;
+        let keys_and_address = result.unwrap();
 
-        // Verify that the private key is within the specified range
-        let private_key_bytes = keys_and_address.private_key.to_bytes();
-        println!("bytes: {:x?}", private_key_bytes);
+        let private_key_as_array = [
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 1,
+        ];
+        let private_key_wif = "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn";
+        let public_key_comp = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+        let address_comp = "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH";
 
-        // Print the keys and address for manual inspection
-        println!("Private Key: {:?}", keys_and_address.private_key);
-        println!("Public Key: {:?}", keys_and_address.public_key);
-        println!("Compressed Address: {}", keys_and_address.comp_address);
+        // Verify that the private key and other values are correct.
+        assert_eq!(
+            private_key_as_array,
+            keys_and_address.private_key.to_bytes().as_slice()
+        );
+        assert_eq!(private_key_wif, keys_and_address.private_key.to_wif());
+        assert_eq!(public_key_comp, keys_and_address.public_key.to_string());
+        assert_eq!(address_comp, keys_and_address.comp_address);
     }
 
     #[test]
@@ -210,7 +210,7 @@ mod tests {
         let range_min = BigUint::from(100u32);
         let range_max = BigUint::from(10u32);
 
-        let _ = KeysAndAddress::generate_with_custom_range(&secp, range_min, range_max);
+        let _ = KeysAndAddress::generate_with_custom_range(&secp, range_min, range_max).unwrap();
     }
 
     #[test]
@@ -226,6 +226,6 @@ mod tests {
         )
         .unwrap();
 
-        let _ = KeysAndAddress::generate_with_custom_range(&secp, range_min, range_max);
+        let _ = KeysAndAddress::generate_with_custom_range(&secp, range_min, range_max).unwrap();
     }
 }

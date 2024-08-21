@@ -23,7 +23,7 @@
 //!                 vanity_address.get_comp_address())
 //! ```
 
-use crate::error::CustomError;
+use crate::error::VanitiyGeneretorError;
 use crate::keys_and_address::{KeysAndAddress, KeysAndAddressString};
 use bitcoin::secp256k1::{All, Secp256k1};
 use std::sync::mpsc;
@@ -53,14 +53,14 @@ impl VanityAddr {
         case_sensitive: bool,
         fast_mode: bool,
         vanity_mode: VanityMode,
-    ) -> Result<KeysAndAddressString, CustomError> {
+    ) -> Result<KeysAndAddressString, VanitiyGeneretorError> {
         if string.is_empty() {
             return Ok(KeysAndAddressString::generate_random());
         }
         if string.len() > 4 && fast_mode {
-            return Err(CustomError("You're asking for too much!\n\
+            return Err(VanitiyGeneretorError("You're asking for too much!\n\
             If you know this will take for a long time and really want to find something longer than 4 characters\n\
-             disable fast mode with -df or --disable_fas flags."));
+             disable fast mode with -df or --disable_fast flags."));
         }
 
         let is_base58 = string
@@ -68,7 +68,7 @@ impl VanityAddr {
             .find(|c| c == &'0' || c == &'I' || c == &'O' || c == &'l' || !c.is_alphanumeric());
 
         if is_base58.is_some() {
-            return Err(CustomError("Your input is not in base58. Don't include zero: '0', uppercase i: 'I', uppercase o: 'O', lowercase L: 'l'
+            return Err(VanitiyGeneretorError("Your input is not in base58. Don't include zero: '0', uppercase i: 'I', uppercase o: 'O', lowercase L: 'l'
             or any non-alphanumeric character in your input!"));
         }
 
