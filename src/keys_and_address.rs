@@ -118,10 +118,13 @@ impl KeysAndAddress {
         )
         .expect("Failed to parse hexadecimal string");
 
-        assert!(
-            range_max > secp256k1_order,
-            "range_max must be within the valid range for Secp256k1"
-        );
+        if range_max > secp256k1_order {
+            eprintln!(
+                "range_max: {}, secp256k1_order: {}",
+                range_max, secp256k1_order
+            );
+            panic!("range_max must be within the valid range for Secp256k1");
+        }
 
         // Generate a random private key within the specified range
         let mut rng = rand::thread_rng();
@@ -129,9 +132,9 @@ impl KeysAndAddress {
 
         let mut private_key_bytes = [0u8; 32];
         let private_key_vec = private_key_value.to_bytes_be();
-        private_key_bytes[..private_key_vec.len()].copy_from_slice(&private_key_vec);
+        let start_index = 32 - private_key_vec.len();
+        private_key_bytes[start_index..].copy_from_slice(&private_key_vec);
 
-        // Generate the key pair
         let private_key =
             PrivateKey::from_slice(&private_key_bytes, Bitcoin).expect("Invalid private key");
         let public_key = PublicKey::from_private_key(s, &private_key);
@@ -153,5 +156,65 @@ impl KeysAndAddress {
 
     pub fn get_comp_address(&self) -> &String {
         &self.comp_address
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bitcoin::secp256k1::Secp256k1;
+    use num_bigint::BigUint;
+    use num_traits::One;
+
+    #[test]
+    fn test_generate_with_custom_range() {
+        let secp = Secp256k1::new();
+
+        // Define a small range for testing
+        let range_min = BigUint::one(); // Minimum valid private key value
+        let range_max = BigUint::from(100u32); // Arbitrary small maximum value for testing
+
+        let result =
+            KeysAndAddress::generate_with_custom_range(&secp, range_min.clone(), range_max.clone());
+
+        let keys_and_address = result;
+
+        // Verify that the private key is within the specified range
+        let private_key_value = BigUint::from_bytes_be(&keys_and_address.private_key.to_bytes());
+        assert!(private_key_value >= range_min);
+        assert!(private_key_value < range_max);
+
+        // Print the keys and address for manual inspection
+        println!("Private Key: {:?}", keys_and_address.private_key);
+        println!("Public Key: {:?}", keys_and_address.public_key);
+        println!("Compressed Address: {}", keys_and_address.comp_address);
+    }
+
+    #[test]
+    #[should_panic(expected = "range_max must be greater than range_min")]
+    fn test_generate_with_invalid_range() {
+        let secp = Secp256k1::new();
+
+        // Set range_min greater than range_max to trigger the assert
+        let range_min = BigUint::from(100u32);
+        let range_max = BigUint::from(10u32);
+
+        let _ = KeysAndAddress::generate_with_custom_range(&secp, range_min, range_max);
+    }
+
+    #[test]
+    #[should_panic(expected = "range_max must be within the valid range for Secp256k1")]
+    fn test_generate_with_out_of_bounds_range() {
+        let secp = Secp256k1::new();
+
+        // Set range_max greater than the secp256k1 order
+        let range_min = BigUint::one();
+        let range_max = BigUint::from_str_radix(
+            "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364142", // One more than the secp256k1 order
+            16,
+        )
+        .unwrap();
+
+        let _ = KeysAndAddress::generate_with_custom_range(&secp, range_min, range_max);
     }
 }
