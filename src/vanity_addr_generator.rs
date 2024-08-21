@@ -105,17 +105,12 @@ impl VanityAddr {
         ))
     }
 
-    /// This function is **NOT** loop-proof. Consider using [`generate_within_range_loop_proof`] instead.
-    /// However, this function is faster than generate_within_range_loop_proof.
     /// Checks all given information's before passing to the vanity address finder function.
     /// Returns Result<KeysAndAddressString, VanityGeneratorError>
     /// Returns OK if a vanity address found successfully with keys_and_address::KeysAndAddress struct
     /// Returns Err if the string is longer than 4 chars and -d or --disable-fast-mode flags are not given.
     /// Returns Err if the string is not in base58 format.
     /// Returns Err if something went wrong while generating keypair within range
-    #[deprecated(
-        note = "This function is NOT loop-proof. Use `find_vanity_address_within_range_loop_proof` instead."
-    )]
     pub fn generate_within_range(
         string: &str,
         range_min: BigUint,
@@ -133,43 +128,7 @@ impl VanityAddr {
             return KeysAndAddress::generate_within_range(&secp256k1, &range_min, &range_max, true);
         }
 
-        #[allow(deprecated)]
         SearchEngines::find_vanity_address_within_range(
-            string,
-            range_min,
-            range_max,
-            threads,
-            case_sensitive,
-            vanity_mode,
-            secp256k1,
-        )
-    }
-
-    /// Checks all given information's before passing to the vanity address finder function.
-    /// This function is loop-proof, but slower than generate_within_range
-    /// Returns Result<KeysAndAddressString, VanityGeneratorError>
-    /// Returns OK if a vanity address found successfully with keys_and_address::KeysAndAddress struct
-    /// Returns Err if the string is longer than 4 chars and -d or --disable-fast-mode flags are not given.
-    /// Returns Err if the string is not in base58 format.
-    /// Returns Err if something went wrong while generating keypair within range
-    pub fn generate_within_range_loop_proof(
-        string: &str,
-        range_min: BigUint,
-        range_max: BigUint,
-        threads: u64,
-        case_sensitive: bool,
-        fast_mode: bool,
-        vanity_mode: VanityMode,
-    ) -> Result<KeysAndAddress, BtcVanityError> {
-        let secp256k1 = Secp256k1::new();
-
-        Self::validate_input(string, fast_mode)?;
-
-        if string.is_empty() {
-            return KeysAndAddress::generate_within_range(&secp256k1, &range_min, &range_max, true);
-        }
-
-        SearchEngines::find_vanity_address_within_range_loop_proof(
             string,
             range_min,
             range_max,
@@ -254,120 +213,13 @@ impl SearchEngines {
         }
     }
 
-    /// This function is **NOT** loop-proof. Consider using [`find_vanity_address_within_range_loop_proof`] instead.
-    /// However, this function is faster than find_vanity_address_within_range_loop_proof.
-    ///
-    /// Search for the vanity address with given threads, which private key is within given range.
-    /// First come served! If a thread finds a vanity address that satisfy all the requirements it sends
-    /// the keys_and_address::KeysAndAddress struct wia std::sync::mpsc channel and find_vanity_address function kills all the other
-    /// threads and closes the channel and returns the found KeysAndAddress struct that includes
-    /// key pair and the desired address.
-    #[deprecated(
-        note = "This function is NOT loop-proof. Use `find_vanity_address_within_range_loop_proof` instead."
-    )]
-    fn find_vanity_address_within_range(
-        string: &str,
-        range_min: BigUint,
-        range_max: BigUint,
-        threads: u64,
-        case_sensitive: bool,
-        vanity_mode: VanityMode,
-        secp256k1: Secp256k1<All>,
-    ) -> Result<KeysAndAddress, BtcVanityError> {
-        let string_len = string.len();
-        let (sender, receiver) = mpsc::channel();
-
-        // Ensure range_max is greater than range_min
-        if range_max < range_min {
-            return Err(BtcVanityError::VanityGeneratorError(
-                "range_max must be greater than range_min",
-            ));
-        }
-
-        if range_min == BigUint::ZERO {
-            return Err(BtcVanityError::VanityGeneratorError("range_min can't be 0"));
-        }
-
-        // Private key range_max must be within the valid range for Secp256k1
-        let secp256k1_order = BigUint::from_str_radix(
-            "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141",
-            16,
-        )
-        .map_err(|_| BtcVanityError::VanityGeneratorError("Failed to parse hexadecimal string"))?;
-
-        if range_max > secp256k1_order {
-            return Err(BtcVanityError::VanityGeneratorError(
-                "range_max must be within the valid range for Secp256k1",
-            ));
-        }
-
-        for _ in 0..threads {
-            let sender = sender.clone();
-            let string = string.to_string();
-            let mut anywhere_flag = false;
-            let mut prefix_suffix_flag = false;
-            let secp256k1 = secp256k1.clone();
-            let range_min = range_min.clone();
-            let range_max = range_max.clone();
-
-            let _ = thread::spawn(move || {
-                loop {
-                    let keys_and_address = KeysAndAddress::generate_within_range(
-                        &secp256k1, &range_min, &range_max, false,
-                    )
-                    .unwrap();
-                    let address = keys_and_address.get_comp_address();
-
-                    match vanity_mode {
-                        VanityMode::Prefix => {
-                            let slice = &address[1..=string_len];
-                            prefix_suffix_flag = match case_sensitive {
-                                true => slice == string,
-                                false => slice.to_lowercase() == string.to_lowercase(),
-                            };
-                        }
-                        VanityMode::Suffix => {
-                            let address_len = address.len();
-                            let slice = &address[address_len - string_len..address_len];
-                            prefix_suffix_flag = match case_sensitive {
-                                true => slice == string,
-                                false => slice.to_lowercase() == string.to_lowercase(),
-                            };
-                        }
-                        VanityMode::Anywhere => {
-                            anywhere_flag = match case_sensitive {
-                                true => address.contains(&string),
-                                false => address.to_lowercase().contains(&string.to_lowercase()),
-                            };
-                        }
-                    }
-                    // If the channel closed, that means another thread found a keypair and closed it
-                    // so we just return and kill the thread if an error occurs.
-                    if (prefix_suffix_flag || anywhere_flag)
-                        && sender.send(keys_and_address).is_err()
-                    {
-                        return;
-                    }
-                }
-            });
-        }
-
-        loop {
-            match receiver.try_recv() {
-                Ok(pair) => return Ok(pair),
-                Err(_) => continue,
-            }
-        }
-    }
-
     /// Search for the vanity address with given threads within given range.
-    /// This function is loop-proof, but slower than find_vanity_address_within_range
     /// First come served! If a thread finds a vanity address that satisfy all the requirements it sends
     /// the keys_and_address::KeysAndAddress struct wia std::sync::mpsc channel and find_vanity_address function kills all the other
     /// threads and closes the channel and returns the found KeysAndAddress struct that includes
     /// key pair and the desired address.
     /// returns error if there is no match withing given range.
-    fn find_vanity_address_within_range_loop_proof(
+    fn find_vanity_address_within_range(
         string: &str,
         range_min: BigUint,
         range_max: BigUint,
@@ -645,7 +497,7 @@ mod tests {
         )
         .unwrap();
 
-        let _ = VanityAddr::generate_within_range_loop_proof(
+        let _ = VanityAddr::generate_within_range(
             vanity_string,
             range_min,
             range_max,
