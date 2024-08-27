@@ -1,6 +1,6 @@
 //! # Vanity Address Generation Module
 //!
-//! This module is used to generate Bitcoin vanity addresses with multithreading.
+//! This module is the core of btc-vanity. It provides the functionality to generate Bitcoin vanity addresses.
 //!
 //! # Example Usage
 //!
@@ -21,6 +21,41 @@
 //!                 vanity_address.get_wif_private_key(),
 //!                 vanity_address.get_comp_public_key(),
 //!                 vanity_address.get_comp_address())
+//! ```
+//!
+//! ```rust
+//! use btc_vanity::vanity_addr_generator::{VanityAddr, VanityMode};
+//! use num_bigint::BigUint;
+//! use num_traits::Num;
+//!
+//! fn main() {
+//!     // Define the minimum range for the private key in hexadecimal format.
+//!     let range_min = BigUint::from_str_radix("0000000000000000000000000000000000000000000000100000000000000000", 16).unwrap();
+//!
+//!     // Define the maximum range for the private key in hexadecimal format.
+//!     let range_max = BigUint::from_str_radix("00000000000000000000000000000000000000000000001FFFFFFFFFFFFFFFFF", 16).unwrap();
+//!
+//!     // Generate a vanity address with the desired pattern within the specified range.
+//!     let vanity_address = VanityAddr::generate_within_range(
+//!         "abc",          // The string that you want your vanity address to include (as a prefix in this case).
+//!         range_min,      // The minimum value of the private key range.
+//!         range_max,      // The maximum value of the private key range.
+//!         16,             // The number of threads to use for faster processing.
+//!         true,           // Case sensitivity flag: true means exact match, false means case-insensitive match.
+//!         true,           // Fast mode flag: enables fast mode, limiting the string length to 4 characters.
+//!         VanityMode::Prefix, // Where to match the string in the address (Prefix in this case).
+//!     ).unwrap();         // Unwrap the result to get the generated address or panic on error.
+//!
+//!     // Print the generated private key, public key, and address in their respective formats.
+//!     println!(
+//!         "private_key (wif): {}\n\
+//!         public_key (compressed): {}\n\
+//!         address (compressed): {}\n\n",
+//!         vanity_address.get_wif_private_key(),
+//!         vanity_address.get_comp_public_key(),
+//!         vanity_address.get_comp_address()
+//!     )
+//! }
 //! ```
 
 use crate::error::BtcVanityError;
