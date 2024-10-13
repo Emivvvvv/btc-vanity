@@ -5,7 +5,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum BtcVanityError {
     #[error("File error: {0}")]
-    FileError(#[from] io::Error), // Automatically converts io::Error into BtcVanityError::FileError
+    FileError(#[from] io::Error),
 
     #[error("Keys and address error: {0}")]
     KeysAndAddressError(&'static str),
@@ -13,12 +13,6 @@ pub enum BtcVanityError {
     #[error("Vanity address generator error: {0}")]
     VanityGeneratorError(&'static str),
 }
-
-// impl From<io::Error> for BtcVanityError {
-//     fn from(io_err: io::Error) -> Self {
-//         BtcVanityError::FileError(io_err)
-//     }
-// }
 
 impl From<KeysAndAddressError> for BtcVanityError {
     fn from(keys_and_address_err: KeysAndAddressError) -> Self {
