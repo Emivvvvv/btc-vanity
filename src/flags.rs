@@ -5,7 +5,7 @@
 
 use crate::file::{get_strings_and_flags_from_file, FileFlags};
 use crate::vanity_addr_generator::VanityMode;
-use clap::Command;
+use clap::ArgMatches;
 
 /// This struct is used to save the cli flags
 pub struct CliFlags {
@@ -30,9 +30,7 @@ impl CliFlags {
 }
 
 /// Gets all the set flags, file names from cli and returns them with CliFlags struct
-pub fn get_cli_flags(app: Command) -> CliFlags {
-    // Gets all the arguments from the cli.
-    let matches = app.get_matches();
+pub fn get_cli_flags(matches: ArgMatches) -> CliFlags {
     let threads = matches
         .get_one::<String>("threads")
         .expect("This was unexpected :(. Something went wrong while getting -t or --threads arg")

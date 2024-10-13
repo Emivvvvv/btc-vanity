@@ -3,6 +3,7 @@ use btc_vanity::decoration::get_decoration_strings;
 use btc_vanity::file::write_output_file;
 use btc_vanity::flags::{get_cli_flags, get_strings_flags};
 use btc_vanity::vanity_addr_generator::VanityAddr;
+use clap::error::ErrorKind;
 use std::fmt::Write;
 use std::time::Instant;
 
@@ -10,7 +11,25 @@ fn main() {
     // Sets the cli app.
     let app = cli();
 
-    let cli_flags = get_cli_flags(app);
+    // Try to parse the arguments and catch errors
+    let cli_flags = match app.try_get_matches() {
+        Ok(matches) => get_cli_flags(matches),
+        Err(err) => {
+            // Check if it's a missing argument error
+            if err.kind() == ErrorKind::MissingRequiredArgument {
+                // Customize the error message
+                eprintln!(
+                    "error: the following required arguments were not provided:\n  --input-file <input-file> OR <string>\n"
+                );
+                // Optionally, show the help message
+                eprintln!("Usage: btc-vanity [OPTIONS] <string>");
+            } else {
+                // Otherwise, print the default error
+                eprintln!("{}", err);
+            }
+            std::process::exit(1); // Exit with an error code
+        }
+    };
 
     // Loop for multiple wallet inputs from text file.
     for (i, string) in cli_flags.get_strings().iter().enumerate() {
