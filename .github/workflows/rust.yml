@@ -1,0 +1,42 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      run: rustup update stable
+
+    - name: Install Clippy
+      run: rustup component add clippy
+
+    - name: Install Rustfmt
+      run: rustup component add rustfmt
+
+    - name: Run cargo fmt (check formatting)
+      run: cargo fmt -- --check
+
+    - name: Run Clippy (code linting)
+      run: cargo clippy -- -D warnings
+
+    - name: Build
+      run: cargo build --verbose
+
+    - name: Run tests
+      run: cargo test --verbose
+
+    - name: Run tests for 'test_only' feature
+      run: cargo test --verbose --features test_only
