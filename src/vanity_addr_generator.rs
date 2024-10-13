@@ -22,49 +22,12 @@
 //!                 vanity_address.get_comp_public_key(),
 //!                 vanity_address.get_comp_address())
 //! ```
-//!
-//! ```rust
-//! use btc_vanity::vanity_addr_generator::{VanityAddr, VanityMode};
-//! use num_bigint::BigUint;
-//! use num_traits::Num;
-//!
-//! fn main() {
-//!     // Define the minimum range for the private key in hexadecimal format.
-//!     let range_min = BigUint::from_str_radix("0000000000000000000000000000000000000000000000100000000000000000", 16).unwrap();
-//!
-//!     // Define the maximum range for the private key in hexadecimal format.
-//!     let range_max = BigUint::from_str_radix("00000000000000000000000000000000000000000000001FFFFFFFFFFFFFFFFF", 16).unwrap();
-//!
-//!     // Generate a vanity address with the desired pattern within the specified range.
-//!     let vanity_address = VanityAddr::generate_within_range(
-//!         "abc",          // The string that you want your vanity address to include (as a prefix in this case).
-//!         range_min,      // The minimum value of the private key range.
-//!         range_max,      // The maximum value of the private key range.
-//!         16,             // The number of threads to use for faster processing.
-//!         true,           // Case sensitivity flag: true means exact match, false means case-insensitive match.
-//!         true,           // Fast mode flag: enables fast mode, limiting the string length to 4 characters.
-//!         VanityMode::Prefix, // Where to match the string in the address (Prefix in this case).
-//!     ).unwrap();         // Unwrap the result to get the generated address or panic on error.
-//!
-//!     // Print the generated private key, public key, and address in their respective formats.
-//!     println!(
-//!         "private_key (wif): {}\n\
-//!         public_key (compressed): {}\n\
-//!         address (compressed): {}\n\n",
-//!         vanity_address.get_wif_private_key(),
-//!         vanity_address.get_comp_public_key(),
-//!         vanity_address.get_comp_address()
-//!     )
-//! }
-//! ```
 
 use crate::error::BtcVanityError;
 use crate::keys_and_address::KeysAndAddress;
+
 use bitcoin::secp256k1::{All, Secp256k1};
-use num_bigint::BigUint;
-use num_traits::Num;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::mpsc;
 use std::thread;
 
 /// An Empty Struct for a more structured code
@@ -138,40 +101,6 @@ impl VanityAddr {
             vanity_mode,
             secp256k1,
         ))
-    }
-
-    /// Checks all given information's before passing to the vanity address finder function.
-    /// Returns Result<KeysAndAddressString, VanityGeneratorError>
-    /// Returns OK if a vanity address found successfully with keys_and_address::KeysAndAddress struct
-    /// Returns Err if the string is longer than 4 chars and -d or --disable-fast-mode flags are not given.
-    /// Returns Err if the string is not in base58 format.
-    /// Returns Err if something went wrong while generating keypair within range
-    pub fn generate_within_range(
-        string: &str,
-        range_min: BigUint,
-        range_max: BigUint,
-        threads: u64,
-        case_sensitive: bool,
-        fast_mode: bool,
-        vanity_mode: VanityMode,
-    ) -> Result<KeysAndAddress, BtcVanityError> {
-        let secp256k1 = Secp256k1::new();
-
-        Self::validate_input(string, fast_mode)?;
-
-        if string.is_empty() {
-            return KeysAndAddress::generate_within_range(&secp256k1, &range_min, &range_max, true);
-        }
-
-        SearchEngines::find_vanity_address_within_range(
-            string,
-            range_min,
-            range_max,
-            threads,
-            case_sensitive,
-            vanity_mode,
-            secp256k1,
-        )
     }
 }
 
@@ -247,144 +176,204 @@ impl SearchEngines {
             }
         }
     }
+}
 
-    /// Search for the vanity address with given threads within given range.
-    /// First come served! If a thread finds a vanity address that satisfy all the requirements it sends
-    /// the keys_and_address::KeysAndAddress struct wia std::sync::mpsc channel and find_vanity_address function kills all the other
-    /// threads and closes the channel and returns the found KeysAndAddress struct that includes
-    /// key pair and the desired address.
-    /// returns error if there is no match withing given range.
-    fn find_vanity_address_within_range(
-        string: &str,
-        range_min: BigUint,
-        range_max: BigUint,
-        threads: u64,
-        case_sensitive: bool,
-        vanity_mode: VanityMode,
-        secp256k1: Secp256k1<All>,
-    ) -> Result<KeysAndAddress, BtcVanityError> {
-        let string_len = string.len();
-        let (sender, receiver) = mpsc::channel();
+#[cfg(feature = "test_only")]
+mod test_only_features {
+    use super::*;
+    use num_bigint::BigUint;
+    use num_traits::Num;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
 
-        // Ensure range_max is greater than range_min
-        if range_max <= range_min {
-            return Err(BtcVanityError::VanityGeneratorError(
-                "range_max must be greater than range_min",
-            ));
+    impl VanityAddr {
+        /// USE ONLY FOR TESTING. USING THIS FUNCTION FOR CREATING A VALIDITY KEY IS NOT SAFE!!!
+        ///
+        /// Checks all given information's before passing to the vanity address finder function.
+        /// Returns Result<KeysAndAddressString, VanityGeneratorError>
+        /// Returns OK if a vanity address found successfully with keys_and_address::KeysAndAddress struct
+        /// Returns Err if the string is longer than 4 chars and -d or --disable-fast-mode flags are not given.
+        /// Returns Err if the string is not in base58 format.
+        /// Returns Err if something went wrong while generating keypair within range
+        pub fn generate_within_range(
+            string: &str,
+            range_min: BigUint,
+            range_max: BigUint,
+            threads: u64,
+            case_sensitive: bool,
+            fast_mode: bool,
+            vanity_mode: VanityMode,
+        ) -> Result<KeysAndAddress, BtcVanityError> {
+            let secp256k1 = Secp256k1::new();
+
+            Self::validate_input(string, fast_mode)?;
+
+            if string.is_empty() {
+                return KeysAndAddress::generate_within_range(
+                    &secp256k1, &range_min, &range_max, true,
+                );
+            }
+
+            SearchEngines::find_vanity_address_within_range(
+                string,
+                range_min,
+                range_max,
+                threads,
+                case_sensitive,
+                vanity_mode,
+                secp256k1,
+            )
         }
+    }
 
-        if range_min == BigUint::ZERO {
-            return Err(BtcVanityError::VanityGeneratorError("range_min can't be 0"));
-        }
+    impl SearchEngines {
+        /// USE ONLY FOR TESTING. USING THIS FUNCTION FOR CREATING A VALIDITY KEY IS NOT SAFE!!!
+        /// AS THIS FUNCTION ITERATES FROM THE MIN TO MAX, IT MIGHT FIND THE SAME ADDRESS WITH THE GIVEN RANGE IN
+        /// DIFFERENT TRIALS SO USING THIS FUNCTION TO FIND A VANITY ADDRESS IS NOT SAFE.
+        /// USE IT ONLY FOR TESTING. USING THE KEYPAIR FROM THIS FUNCTION MAY CAUSE YOU TO LOSE YOUR ASSETS!!!
+        ///
+        /// Search for the vanity address with given threads within given range.
+        /// First come served! If a thread finds a vanity address that satisfy all the requirements it sends
+        /// the keys_and_address::KeysAndAddress struct wia std::sync::mpsc channel and find_vanity_address function kills all the other
+        /// threads and closes the channel and returns the found KeysAndAddress struct that includes
+        /// key pair and the desired address.
+        /// returns error if there is no match withing given range.
+        fn find_vanity_address_within_range(
+            string: &str,
+            range_min: BigUint,
+            range_max: BigUint,
+            threads: u64,
+            case_sensitive: bool,
+            vanity_mode: VanityMode,
+            secp256k1: Secp256k1<All>,
+        ) -> Result<KeysAndAddress, BtcVanityError> {
+            let string_len = string.len();
+            let (sender, receiver) = mpsc::channel();
 
-        // Private key range_max must be within the valid range for Secp256k1
-        let secp256k1_order = BigUint::from_str_radix(
-            "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141",
-            16,
-        )
-        .map_err(|_| BtcVanityError::VanityGeneratorError("Failed to parse hexadecimal string"))?;
+            // Ensure range_max is greater than range_min
+            if range_max <= range_min {
+                return Err(BtcVanityError::VanityGeneratorError(
+                    "range_max must be greater than range_min",
+                ));
+            }
 
-        if range_max > secp256k1_order {
-            return Err(BtcVanityError::VanityGeneratorError(
-                "range_max must be within the valid range for Secp256k1",
-            ));
-        }
+            if range_min == BigUint::ZERO {
+                return Err(BtcVanityError::VanityGeneratorError("range_min can't be 0"));
+            }
 
-        // Calculate the total range size
-        let range_size = &range_max - &range_min;
+            // Private key range_max must be within the valid range for Secp256k1
+            let secp256k1_order = BigUint::from_str_radix(
+                "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141",
+                16,
+            )
+            .map_err(|_| {
+                BtcVanityError::VanityGeneratorError("Failed to parse hexadecimal string")
+            })?;
 
-        // Divide the range equally among the threads
-        let step = &range_size / BigUint::from(threads);
+            if range_max > secp256k1_order {
+                return Err(BtcVanityError::VanityGeneratorError(
+                    "range_max must be within the valid range for Secp256k1",
+                ));
+            }
 
-        // Track the number of threads that have finished their work
-        let finished_threads = Arc::new(AtomicUsize::new(0));
+            // Calculate the total range size
+            let range_size = &range_max - &range_min;
 
-        for i in 0..threads {
-            let sender = sender.clone();
-            let string = string.to_string();
-            let mut anywhere_flag = false;
-            let mut prefix_suffix_flag = false;
-            let secp256k1 = secp256k1.clone();
-            let finished_threads = Arc::clone(&finished_threads);
+            // Divide the range equally among the threads
+            let step = &range_size / BigUint::from(threads);
 
-            // Calculate the starting point for this thread
-            let thread_range_min = &range_min + (&step * BigUint::from(i));
-            let thread_range_max = if i == threads - 1 {
-                range_max.clone()
-            } else {
-                &thread_range_min + &step
-            };
+            // Track the number of threads that have finished their work
+            let finished_threads = Arc::new(AtomicUsize::new(0));
 
-            let _ = thread::spawn(move || {
-                let mut key_value = thread_range_min.clone();
+            for i in 0..threads {
+                let sender = sender.clone();
+                let string = string.to_string();
+                let mut anywhere_flag = false;
+                let mut prefix_suffix_flag = false;
+                let secp256k1 = secp256k1.clone();
+                let finished_threads = Arc::clone(&finished_threads);
 
-                loop {
-                    // If the current key value exceeds the max range for this thread, exit the loop
-                    if key_value > thread_range_max {
-                        break;
+                // Calculate the starting point for this thread
+                let thread_range_min = &range_min + (&step * BigUint::from(i));
+                let thread_range_max = if i == threads - 1 {
+                    range_max.clone()
+                } else {
+                    &thread_range_min + &step
+                };
+
+                let _ = thread::spawn(move || {
+                    let mut key_value = thread_range_min.clone();
+
+                    loop {
+                        // If the current key value exceeds the max range for this thread, exit the loop
+                        if key_value > thread_range_max {
+                            break;
+                        }
+
+                        // Generate the key pair and address using generate_from_biguint
+                        let keys_and_address = match KeysAndAddress::generate_from_biguint(
+                            &secp256k1, &key_value, false,
+                        ) {
+                            Ok(keys) => keys,
+                            Err(_) => return,
+                        };
+
+                        let address = keys_and_address.get_comp_address();
+
+                        match vanity_mode {
+                            VanityMode::Prefix => {
+                                let slice = &address[1..=string_len];
+                                prefix_suffix_flag = match case_sensitive {
+                                    true => slice == string,
+                                    false => slice.to_lowercase() == string.to_lowercase(),
+                                };
+                            }
+                            VanityMode::Suffix => {
+                                let address_len = address.len();
+                                let slice = &address[address_len - string_len..address_len];
+                                prefix_suffix_flag = match case_sensitive {
+                                    true => slice == string,
+                                    false => slice.to_lowercase() == string.to_lowercase(),
+                                };
+                            }
+                            VanityMode::Anywhere => {
+                                anywhere_flag = match case_sensitive {
+                                    true => address.contains(&string),
+                                    false => {
+                                        address.to_lowercase().contains(&string.to_lowercase())
+                                    }
+                                };
+                            }
+                        }
+                        // If the channel is closed, another thread found a keypair, so we kill this thread
+                        if (prefix_suffix_flag || anywhere_flag)
+                            && sender.send(keys_and_address).is_err()
+                        {
+                            return;
+                        }
+
+                        // Increment the key value and continue
+                        key_value += BigUint::from(1u64);
                     }
 
-                    // Generate the key pair and address using generate_from_biguint
-                    let keys_and_address = match KeysAndAddress::generate_from_biguint(
-                        &secp256k1, &key_value, false,
-                    ) {
-                        Ok(keys) => keys,
-                        Err(_) => return,
-                    };
+                    // Indicate that this thread has finished
+                    finished_threads.fetch_add(1, Ordering::SeqCst);
+                });
+            }
 
-                    let address = keys_and_address.get_comp_address();
-
-                    match vanity_mode {
-                        VanityMode::Prefix => {
-                            let slice = &address[1..=string_len];
-                            prefix_suffix_flag = match case_sensitive {
-                                true => slice == string,
-                                false => slice.to_lowercase() == string.to_lowercase(),
-                            };
-                        }
-                        VanityMode::Suffix => {
-                            let address_len = address.len();
-                            let slice = &address[address_len - string_len..address_len];
-                            prefix_suffix_flag = match case_sensitive {
-                                true => slice == string,
-                                false => slice.to_lowercase() == string.to_lowercase(),
-                            };
-                        }
-                        VanityMode::Anywhere => {
-                            anywhere_flag = match case_sensitive {
-                                true => address.contains(&string),
-                                false => address.to_lowercase().contains(&string.to_lowercase()),
-                            };
+            loop {
+                match receiver.try_recv() {
+                    Ok(pair) => return Ok(pair),
+                    Err(mpsc::TryRecvError::Empty) => {
+                        // Check if all threads have finished their work
+                        if finished_threads.load(Ordering::SeqCst) == threads as usize {
+                            return Err(BtcVanityError::VanityGeneratorError(
+                                "Vanity address not found within the given range",
+                            ));
                         }
                     }
-                    // If the channel is closed, another thread found a keypair, so we kill this thread
-                    if (prefix_suffix_flag || anywhere_flag)
-                        && sender.send(keys_and_address).is_err()
-                    {
-                        return;
-                    }
-
-                    // Increment the key value and continue
-                    key_value += BigUint::from(1u64);
+                    Err(_) => continue,
                 }
-
-                // Indicate that this thread has finished
-                finished_threads.fetch_add(1, Ordering::SeqCst);
-            });
-        }
-
-        loop {
-            match receiver.try_recv() {
-                Ok(pair) => return Ok(pair),
-                Err(mpsc::TryRecvError::Empty) => {
-                    // Check if all threads have finished their work
-                    if finished_threads.load(Ordering::SeqCst) == threads as usize {
-                        return Err(BtcVanityError::VanityGeneratorError(
-                            "Vanity address not found within the given range",
-                        ));
-                    }
-                }
-                Err(_) => continue,
             }
         }
     }
@@ -393,8 +382,6 @@ impl SearchEngines {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use num_bigint::BigUint;
-    use num_traits::{FromPrimitive, Num};
 
     #[test]
     fn test_generate_vanity_prefix() {
@@ -471,6 +458,14 @@ mod tests {
         )
         .unwrap();
     }
+}
+
+#[cfg(test)]
+#[cfg(feature = "test_only")]
+mod test_only_tests {
+    use super::*;
+    use num_bigint::BigUint;
+    use num_traits::{FromPrimitive, Num};
 
     #[test]
     fn test_generate_within_range_prefix() {

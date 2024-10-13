@@ -49,9 +49,7 @@ fn main() {
         let seconds = start.elapsed().as_secs_f64();
 
         // Second buffer/print after the vanity address found
-        #[allow(unused_assignments)]
-        let mut buffer2 = String::new();
-        match result {
+        let buffer2 = match result {
             Ok(res) => {
                 println!("FOUND IN {:.4} SECONDS!\n", seconds);
 
@@ -66,7 +64,7 @@ fn main() {
                         });
 
                 // Prints the found key pair and the address which has the string.
-                buffer2 = format!(
+                format!(
                     "private_key (hex): {}\n\
                     private_key (wif): {}\n\
                     public_key (compressed): {}\n\
@@ -77,8 +75,8 @@ fn main() {
                     res.get_comp_address()
                 )
             }
-            Err(err) => buffer2 = format!("Skipping because of error: {}\n\n", err),
-        }
+            Err(err) => format!("Skipping because of error: {}\n\n", err),
+        };
 
         // If string_output_file_name is empty it just prints the buffer2 to stdout else writes the wallet to the output file.
         if !string_flags.get_output_file_name().is_empty() {

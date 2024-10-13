@@ -14,23 +14,17 @@ DO NOT USE THE PRIVATE KEYS ON THE SCREENSHOTS! NEVER EVER SHARE YOUR PRIVATE KE
 ![My Image](example.png)
 ![My Image](examples-input-file.png)
 
-## Roadmap
+Here’s how you could rewrite the features section based on the information provided:
 
-| Status |                               Feature                                | Version |
-|:------:|:--------------------------------------------------------------------:|:-------:|
-|   ✅    |               Creating vanity addresses with a prefix                | v0.1.0  |
-|   ✅    |                  Adding suffix and anywhere options                  | v0.2.0  |
-|   ✅    |                  Implementing case_sensitive: false                  | v0.3.0  |
-|   ✅    |        Taking input from a file to generate multiple wallets         | v0.4.0  |
-|   ✅    |         Implementing output file that contains found wallets         | v0.5.0  |
-|   ✅    |     Getting flags from input file for each string and implement      | v0.6.0  |
-|   ✅    | More optimized, improved and structured code. A general refactoring  | v0.7.0  |
-|   ✅    |                            Documentation                             | v0.8.0  |
-|   ✅    |             Testing ~1.58x faster search engine function             | v0.9.0  |
-|   ✅    | Setting fast engine as default and making last touches to launch v1! | v1.0.0  |
-|  ...   |                                 ...                                  |   ...   |
+## Features
 
-Using v1.0.0 or later is highly suggested!
+- **Flexible Address Customization**: Generate Bitcoin addresses with prefixes, suffixes, or the desired pattern located anywhere in the address.
+- **Case Insensitivity Support**: Option to ignore case when searching for vanity addresses.
+- **Batch Wallet Generation**: Input a file containing multiple desired addresses and generate wallets in bulk.
+- **Output Wallets to File**: Automatically save generated wallet addresses to an output file for easy access.
+- **Configurable Flags**: Use an input file to pass custom flags for each desired wallet address.
+- **Comprehensive Documentation**: Full library documentation to help you get started and understand the available features.
+- **Versioned and Maintained**: The latest version is highly recommended for optimal performance and features.
 
 ## Installation
 
