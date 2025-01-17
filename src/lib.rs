@@ -112,4 +112,5 @@ pub mod error;
 pub mod file;
 pub mod flags;
 pub mod keys_and_address;
+pub mod utils;
 pub mod vanity_addr_generator;

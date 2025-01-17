@@ -13,8 +13,17 @@ pub enum BtcVanityError {
     #[error("Vanity address generator error: {0}")]
     VanityGeneratorError(&'static str),
 
-    #[error("Invalid Regex")]
+    #[error("Fast mode enabled, input is too long!")]
+    FastModeEnabled,
+
+    #[error("Input is not Base58 encoded!")]
+    InputNotBase58,
+
+    #[error("Invalid Regex!")]
     InvalidRegex,
+
+    #[error("Regex is not Base58 encoded!")]
+    RegexNotBase58,
 }
 
 impl From<KeysAndAddressError> for BtcVanityError {

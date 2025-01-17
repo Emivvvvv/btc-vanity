@@ -25,12 +25,18 @@
 
 use crate::error::BtcVanityError;
 use crate::keys_and_address::KeysAndAddress;
+use crate::utils::is_valid_base58_char;
 
 use bitcoin::secp256k1::{All, Secp256k1};
-use std::sync::{mpsc, Arc};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread;
 use regex::Regex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
+use std::thread;
+
+/// Allowed "meta" characters for a simple subset of regex usage.
+const ALLOWED_REGEX_META: &[char] = &[
+    '^', '$', '.', '*', '+', '?', '(', ')', '[', ']', '{', '}', '|', '-',
+];
 
 /// An Empty Struct for a more structured code
 /// implements the only public function generate
@@ -42,46 +48,56 @@ pub enum VanityMode {
     Prefix,
     Suffix,
     Anywhere,
-    Regex
+    Regex,
 }
 
 impl VanityAddr {
-    /// Checks all given information's before passing to the vanity address finder function.
-    /// Returns Ok if all checks were successful.
-    /// Returns Err if the string is longer than 4 chars and -d or --disable-fast-mode flags are not given.
-    /// Returns Err if the string is not in base58 format.
-    fn validate_input(string: &str, fast_mode: bool) -> Result<(), BtcVanityError> {
-        if string.is_empty() {
-            return Ok(());
-        }
-
+    /// Checks all given information before passing to the vanity address finder function.
+    /// 1) If length > 4 and `fast_mode` is true, reject (too long).
+    /// 2) If any character is not base58, reject.
+    pub fn validate_input(string: &str, fast_mode: bool) -> Result<(), BtcVanityError> {
+        // 1) If length > 4 and `fast_mode` is true, reject (too long).
         if string.len() > 4 && fast_mode {
-            return Err(BtcVanityError::VanityGeneratorError(
-                    "You're asking for too much!\n\
-                    If you know this will take for a long time and really want to find something longer than 4 characters\n\
-                    disable fast mode with -df or --disable_fast flags.",
-                ));
+            return Err(BtcVanityError::FastModeEnabled);
         }
 
-        let is_base58 = string
-            .chars()
-            .any(|c| c == '0' || c == 'I' || c == 'O' || c == 'l' || !c.is_alphanumeric());
+        // 2) If any character is not base58, reject.
+        if string.chars().any(|c| !is_valid_base58_char(c)) {
+            return Err(BtcVanityError::InputNotBase58);
+        }
 
-        if is_base58 {
-            return Err(BtcVanityError::VanityGeneratorError(
-                    "Your input is not in base58. Don't include zero: '0', uppercase i: 'I', uppercase o: 'O', lowercase L: 'l' \
-                    or any non-alphanumeric character in your input!",
-                ));
+        Ok(())
+    }
+
+    /// Checks regex input before passing to the vanity address finder function.
+    /// 1) If it's a recognized regex meta character, allow it.
+    /// 2) If it's alphanumeric, ensure it's valid base58
+    /// 3) Neither a recognized meta char, nor a valid base58 alphanumeric => reject
+    pub fn validate_regex_input(regex_str: &str) -> Result<(), BtcVanityError> {
+        // For each character in the pattern:
+        for c in regex_str.chars() {
+            // 1) If it's a recognized regex meta character, allow it.
+            if ALLOWED_REGEX_META.contains(&c) {
+                continue;
+            }
+
+            // 2) If it's alphanumeric, ensure it's valid base58
+            if c.is_alphanumeric() {
+                if !is_valid_base58_char(c) {
+                    return Err(BtcVanityError::RegexNotBase58);
+                }
+            } else {
+                // 3) Neither a recognized meta char, nor a valid base58 alphanumeric => reject
+                return Err(BtcVanityError::InvalidRegex);
+            }
         }
 
         Ok(())
     }
 
     /// Checks all given information's before passing to the vanity address finder function.
-    /// Returns Result<KeysAndAddressString, VanityGeneratorError>
-    /// Returns OK if a vanity address found successfully with keys_and_address::KeysAndAddress struct
-    /// Returns Err if the string is longer than 4 chars and -d or --disable-fast-mode flags are not given.
-    /// Returns Err if the string is not in base58 format.
+    /// See `[validate_input]` for passing conditions.
+    /// Returns Result<[keys_and_address::KeysAndAddress], VanityGeneratorError>
     pub fn generate(
         string: &str,
         threads: u64,
@@ -104,6 +120,21 @@ impl VanityAddr {
             vanity_mode,
             secp256k1,
         ))
+    }
+
+    /// Checks regex before passing to the vanity address finder function.
+    /// See [validate_regex_input] for passing conditions.
+    /// Returns Result<[keys_and_address::KeysAndAddress], VanityGeneratorError>
+    pub fn generate_regex(regex_str: &str, threads: u64) -> Result<KeysAndAddress, BtcVanityError> {
+        let secp256k1 = Secp256k1::new();
+
+        Self::validate_regex_input(regex_str)?;
+
+        if regex_str.is_empty() {
+            return Ok(KeysAndAddress::generate_random(&secp256k1));
+        }
+
+        SearchEngines::find_vanity_address_regex(regex_str, threads, secp256k1)
     }
 }
 
@@ -164,7 +195,7 @@ impl SearchEngines {
                                 false => address.to_lowercase().contains(&lowered_string),
                             };
                         }
-                        VanityMode::Regex => unreachable!()
+                        VanityMode::Regex => unreachable!(),
                     }
 
                     // If match found...
@@ -184,7 +215,9 @@ impl SearchEngines {
 
         // The main thread just waits for the first successful result.
         // As soon as one thread sends over the channel, we have our vanity address.
-        receiver.recv().expect("Receiver closed before a vanity address was found")
+        receiver
+            .recv()
+            .expect("Receiver closed before a vanity address was found")
     }
 
     /// Search for the vanity address satisfies the given Regex.
@@ -206,7 +239,8 @@ impl SearchEngines {
             pattern_str.insert_str(1, "1");
         }
 
-        let pattern = Arc::new(Regex::new(&pattern_str).map_err(|e| BtcVanityError::InvalidRegex)?);
+        let pattern =
+            Arc::new(Regex::new(&pattern_str).map_err(|_e| BtcVanityError::InvalidRegex)?);
 
         let (sender, receiver) = mpsc::channel();
         let found_any = Arc::new(AtomicBool::new(false));
@@ -240,7 +274,9 @@ impl SearchEngines {
 
         // The main thread just waits for the first successful result.
         // As soon as one thread sends over the channel, we have our vanity address.
-        Ok(receiver.recv().expect("Receiver closed before a matching address was found"))
+        Ok(receiver
+            .recv()
+            .expect("Receiver closed before a matching address was found"))
     }
 }
 
@@ -297,7 +333,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "You're asking for too much!")]
+    #[should_panic(expected = "FastModeEnabled")]
     fn test_generate_vanity_string_too_long_with_fast_mode() {
         let vanity_string = "12345"; // String longer than 4 characters
         let _ = VanityAddr::generate(
@@ -311,7 +347,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Your input is not in base58.")]
+    #[should_panic(expected = "InputNotBase58")]
     fn test_generate_vanity_invalid_base58() {
         let vanity_string = "emiO"; // Contains invalid base58 character 'O'
         let _ = VanityAddr::generate(
@@ -322,5 +358,113 @@ mod tests {
             VanityMode::Prefix, // Vanity mode set to Prefix
         )
         .unwrap();
+    }
+
+    #[test]
+    fn test_generate_regex_et_ends() {
+        let pattern = "ET$";
+        let keys_and_address =
+            VanityAddr::generate_regex(pattern, 4).expect("Failed to generate address for 'ET$'");
+        let address = keys_and_address.get_comp_address();
+
+        // The final pattern is "ET$" => ends with "ET"
+        assert!(
+            address.ends_with("ET"),
+            "Address should end with 'ET': {}",
+            address
+        );
+    }
+
+    #[test]
+    fn test_generate_regex_rewrite() {
+        // Original pattern is '^E' (not '^1'), so the code will insert '1', resulting in '^1E'.
+        // We expect it eventually to find an address starting with "1E".
+        let pattern = "^E";
+        let keys_and_address = VanityAddr::generate_regex(pattern, 4).unwrap();
+        let address = keys_and_address.get_comp_address();
+        // Now that we know it's '^1E', check the first two characters:
+        assert!(
+            address.starts_with("1E"),
+            "Address should start with '1E': {}",
+            address
+        );
+    }
+
+    #[test]
+    fn test_generate_regex_e_any_t() {
+        // Must start with "1E" (rewritten from "^E") and end with "T".
+        let pattern = "^E.*T$";
+        let keys_and_address = VanityAddr::generate_regex(pattern, 4)
+            .expect("Failed to generate address for '^E.*T$'");
+        let address = keys_and_address.get_comp_address();
+
+        // Because of rewriting, the actual pattern used is '^1E.*T$'.
+        // 1) Check it starts with "1E"
+        assert!(
+            address.starts_with("1E"),
+            "Address should start with '1E': {}",
+            address
+        );
+        // 2) Check it ends with 'T'
+        assert!(
+            address.ends_with('T'),
+            "Address should end with 'T': {}",
+            address
+        );
+    }
+
+    #[test]
+    fn test_generate_regex_e_69_any_t() {
+        // Must start with "1E", contain "69", and end with "T".
+        // Rewritten from "^E.*69.*T$" => "^1E.*69.*T$"
+        let pattern = "^E.*69.*T$";
+        let keys_and_address = VanityAddr::generate_regex(pattern, 4)
+            .expect("Failed to generate address for '^E.*69.*T$'");
+        let address = keys_and_address.get_comp_address();
+
+        // After rewriting: '^1E.*69.*T$'
+        assert!(
+            address.starts_with("1E"),
+            "Address should start with '1E': {}",
+            address
+        );
+        assert!(
+            address.contains("69"),
+            "Address should contain '69': {}",
+            address
+        );
+        assert!(
+            address.ends_with('T'),
+            "Address should end with 'T': {}",
+            address
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "InvalidRegex")]
+    fn test_generate_regex_invalid_syntax() {
+        let pattern = "^(abc";
+        let _ = VanityAddr::generate_regex(pattern, 4).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "RegexNotBase58")]
+    fn test_generate_regex_forbidden_char_zero() {
+        let pattern = "^0";
+        let _ = VanityAddr::generate_regex(pattern, 4).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "RegexNotBase58")]
+    fn test_generate_regex_forbidden_char_o() {
+        let pattern = "^O";
+        let _ = VanityAddr::generate_regex(pattern, 4).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "RegexNotBase58")]
+    fn test_generate_regex_forbidden_char_i() {
+        let pattern = "^I";
+        let _ = VanityAddr::generate_regex(pattern, 4).unwrap();
     }
 }
