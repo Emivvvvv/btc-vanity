@@ -12,6 +12,9 @@ pub enum BtcVanityError {
 
     #[error("Vanity address generator error: {0}")]
     VanityGeneratorError(&'static str),
+
+    #[error("Invalid Regex")]
+    InvalidRegex,
 }
 
 impl From<KeysAndAddressError> for BtcVanityError {

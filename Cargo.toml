@@ -11,12 +11,13 @@ documentation = "https://docs.rs/btc-vanity/latest/btc_vanity/index.html"
 
 
 [dependencies]
-rand = "0.9.0-alpha.2"
-bitcoin = { version = "0.32.3", features = ["rand-std"] }
-thiserror = "1.0.64"
-clap = "4.5.20"
+rand = "0.9.0-beta.3"
+bitcoin = { version = "0.32.5", features = ["rand-std"] }
+thiserror = "2.0.11"
+clap = "4.5.26"
 num-bigint = { version = "0.4.6", features = ["rand"] }
 num-traits = "0.2.19"
+regex = "1.11.1"
 
 [profile.test]
 opt-level = 3

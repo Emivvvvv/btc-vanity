@@ -4,7 +4,7 @@
 
 use crate::vanity_addr_generator::VanityMode;
 
-const VANITY_MODE_STR: [&str; 3] = ["has the prefix", "has the suffix", "has the string"];
+const VANITY_MODE_STR: [&str; 4] = ["has the prefix", "has the suffix", "has the string", "satisfies the given regex"];
 const CASE_SENSITIVITY_STR: [&str; 2] = ["(case sensitive)", "(case sensitivity disabled)"];
 
 /// Returns string literals of desired mode's styled string.
@@ -17,6 +17,7 @@ pub fn get_decoration_strings<'a>(
         VanityMode::Prefix => VANITY_MODE_STR[0],
         VanityMode::Suffix => VANITY_MODE_STR[1],
         VanityMode::Anywhere => VANITY_MODE_STR[2],
+        VanityMode::Regex => VANITY_MODE_STR[3],
     };
 
     // Sets case sensitivity decoration string.

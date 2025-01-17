@@ -30,6 +30,7 @@ use bitcoin::secp256k1::{All, Secp256k1};
 use std::sync::{mpsc, Arc};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
+use regex::Regex;
 
 /// An Empty Struct for a more structured code
 /// implements the only public function generate
@@ -41,6 +42,7 @@ pub enum VanityMode {
     Prefix,
     Suffix,
     Anywhere,
+    Regex
 }
 
 impl VanityAddr {
@@ -126,12 +128,11 @@ impl SearchEngines {
 
         for _ in 0..threads {
             let sender = sender.clone();
-            let secp256k1 = secp256k1.clone();
             let found_any = found_any.clone();
 
+            let secp256k1 = secp256k1.clone();
             let string = string.to_string();
             let lowered_string = string.to_lowercase();
-
             let mut anywhere_flag = false;
             let mut prefix_suffix_flag = false;
 
@@ -163,6 +164,7 @@ impl SearchEngines {
                                 false => address.to_lowercase().contains(&lowered_string),
                             };
                         }
+                        VanityMode::Regex => unreachable!()
                     }
 
                     // If match found...
@@ -183,6 +185,62 @@ impl SearchEngines {
         // The main thread just waits for the first successful result.
         // As soon as one thread sends over the channel, we have our vanity address.
         receiver.recv().expect("Receiver closed before a vanity address was found")
+    }
+
+    /// Search for the vanity address satisfies the given Regex.
+    /// First come served! If a thread finds a vanity address that satisfy all the requirements,
+    /// it sends the `KeysAndAddress` via an `mpsc` channel. The main thread then signals
+    /// all other threads to stop via an `AtomicBool`.
+    pub fn find_vanity_address_regex(
+        regex_str: &str,
+        threads: u64,
+        secp256k1: Secp256k1<All>,
+    ) -> Result<KeysAndAddress, BtcVanityError> {
+        // If the user gave a pattern that starts with '^' but not '^1',
+        // insert '1' right after '^'.
+        //
+        // Example:
+        // ^E.*T$  ==>  ^1E.*T$
+        let mut pattern_str = regex_str.to_string();
+        if pattern_str.starts_with('^') && !pattern_str.starts_with("^1") {
+            pattern_str.insert_str(1, "1");
+        }
+
+        let pattern = Arc::new(Regex::new(&pattern_str).map_err(|e| BtcVanityError::InvalidRegex)?);
+
+        let (sender, receiver) = mpsc::channel();
+        let found_any = Arc::new(AtomicBool::new(false));
+
+        for _ in 0..threads {
+            let sender = sender.clone();
+            let found_any = Arc::clone(&found_any);
+
+            let secp256k1 = secp256k1.clone();
+            let pattern = Arc::clone(&pattern);
+
+            thread::spawn(move || {
+                while !found_any.load(Ordering::Relaxed) {
+                    let keys_and_address = KeysAndAddress::generate_random(&secp256k1);
+                    let address = keys_and_address.get_comp_address();
+
+                    // Check if this address matches the given regex
+                    if pattern.is_match(address) && !found_any.load(Ordering::Relaxed) {
+                        // Mark as found (and check if we are the first)
+                        if !found_any.swap(true, Ordering::Relaxed) {
+                            // We're the first thread to set found_any = true
+                            // Attempt to send the result
+                            let _ = sender.send(keys_and_address);
+                        }
+                        // Stop this thread immediately
+                        return;
+                    }
+                }
+            });
+        }
+
+        // The main thread just waits for the first successful result.
+        // As soon as one thread sends over the channel, we have our vanity address.
+        Ok(receiver.recv().expect("Receiver closed before a matching address was found"))
     }
 }
 
