@@ -1,3 +1,7 @@
+//! # Utils Module
+//!
+//! This module is used in [crate::vanity_addr_generator] to check only contains Base58 characters or not.
+
 /// Returns true if `c` is a valid Base58 character for (legacy) Bitcoin addresses.
 ///
 /// Valid base58:

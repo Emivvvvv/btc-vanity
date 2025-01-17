@@ -43,7 +43,7 @@ const ALLOWED_REGEX_META: &[char] = &[
 pub struct VanityAddr;
 
 /// Vanity mode enum
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum VanityMode {
     Prefix,
     Suffix,
@@ -236,7 +236,7 @@ impl SearchEngines {
         // ^E.*T$  ==>  ^1E.*T$
         let mut pattern_str = regex_str.to_string();
         if pattern_str.starts_with('^') && !pattern_str.starts_with("^1") {
-            pattern_str.insert_str(1, "1");
+            pattern_str.insert(1, '1');
         }
 
         let pattern =

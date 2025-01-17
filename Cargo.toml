@@ -1,6 +1,6 @@
 [package]
 name = "btc-vanity"
-version = "1.3.2"
+version = "1.4.0"
 authors = ["Emirhan TALA <tala.emirhan@gmail.com>"]
 description = "A bitcoin vanity address generator written with the Rust programming language."
 edition = "2021"

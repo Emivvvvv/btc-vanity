@@ -26,9 +26,13 @@ pub fn get_decoration_strings<'a>(
     };
 
     // Sets case sensitivity decoration string.
-    let case_sensitive_str = match is_case_sensitive {
-        true => CASE_SENSITIVITY_STR[0],
-        false => CASE_SENSITIVITY_STR[1],
+    let case_sensitive_str = if vanity_mode == VanityMode::Regex {
+        CASE_SENSITIVITY_STR[0]
+    } else {
+        match is_case_sensitive {
+            true => CASE_SENSITIVITY_STR[0],
+            false => CASE_SENSITIVITY_STR[1],
+        }
     };
 
     (vanity_mode_str, case_sensitive_str)

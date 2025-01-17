@@ -10,6 +10,7 @@ use std::{fs, io};
 
 /// This struct is used to get set flags for each string input
 /// from the file.
+#[derive(Debug)]
 pub struct FileFlags {
     pub force_flags: bool,
     pub is_case_sensitive: bool,
@@ -49,14 +50,17 @@ pub fn get_flags(line: &str) -> FileFlags {
         arg == "-p"
             || arg == "-s"
             || arg == "-a"
+            || arg == "-r"
             || arg == "--prefix"
             || arg == "--suffix"
             || arg == "--anywhere"
+            || arg == "--regex"
     });
     let vanity_mode = match vanity_option {
         Some(&vanity) => match vanity {
             "-p" | "--prefix" => Some(VanityMode::Prefix),
             "-s" | "--suffix" => Some(VanityMode::Suffix),
+            "-r" | "--regex" => Some(VanityMode::Regex),
             _ => Some(VanityMode::Anywhere),
         },
         None => None,

@@ -8,6 +8,7 @@ use crate::vanity_addr_generator::VanityMode;
 use clap::ArgMatches;
 
 /// This struct is used to save the cli flags
+#[derive(Debug)]
 pub struct CliFlags {
     threads: u64,
     strings: Vec<String>,
@@ -16,7 +17,7 @@ pub struct CliFlags {
     is_case_sensitive: bool,
     is_fast_disabled: bool,
     output_file_name: String,
-    vanity_mode: VanityMode,
+    pub vanity_mode: VanityMode,
 }
 
 impl CliFlags {
@@ -54,7 +55,9 @@ pub fn get_cli_flags(matches: ArgMatches) -> CliFlags {
     };
 
     // Sets vanity_mode for searching and mode to predefined decoration strings.
-    let cli_vanity_mode = if matches.get_flag("anywhere") {
+    let cli_vanity_mode = if matches.get_flag("regex") {
+        VanityMode::Regex
+    } else if matches.get_flag("anywhere") {
         VanityMode::Anywhere
     } else if matches.get_flag("suffix") {
         VanityMode::Suffix
@@ -80,7 +83,7 @@ pub struct StringsFlags {
     is_case_sensitive: bool,
     is_fast_disabled: bool,
     output_file_name: String,
-    vanity_mode: VanityMode,
+    pub vanity_mode: VanityMode,
 }
 
 impl StringsFlags {

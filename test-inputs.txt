@@ -1,7 +1,0 @@
-Emiv -p -c
-TALA -a
-susy -s -o amogus-wallet.txt
-baka -o amogus-wallet.txt
-3169 -o wallets.txt
-hihi -a -o wallets.txt
-tala

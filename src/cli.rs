@@ -6,28 +6,6 @@
 //!
 //! ```bash
 //! $ btc-vanity --help
-//! A bitcoin vanity address generator written with the Rust programming language.
-//!
-//! Usage: btc-vanity [OPTIONS] [string]
-//!
-//! Arguments:
-//! [string]  String used to match addresses.
-//!
-//! Options:
-//! -i, --input-file <input-file>    File with strings to match addresses with.
-//! Important: Write every string in a separate line.
-//! -f, --force-flags                Use this flag to override the flags in the input file
-//! or use in file to override cli flags for only that string.
-//! Note: Cli -f is stronger than input-file -f.
-//! -o, --output-file <output-file>  Crates a file that contains found wallet/s.
-//! -p, --prefix                     Finds a vanity address which has 'string' prefix. [default]
-//! -s, --suffix                     Finds a vanity address which has 'string' suffix.
-//! -a, --anywhere                   Finds a vanity address which includes 'string' at any part of the address.
-//! -t, --threads <threads>          Number of threads to be used. [default: 16]
-//! -c, --case-sensitive             Use case sensitive comparison to match addresses.
-//! -d, --disable-fast               Disables fast mode to find a prefix more than 4 characters.
-//! -h, --help                       Print help
-//! -V, --version                    Print version
 //! ```
 //!
 //! # Some Usage Examples
@@ -54,83 +32,112 @@
 //! $ btc-vanity -f -s -i inputs.txt
 //! ```
 
-use clap;
+use clap::{Arg, ArgAction, ArgGroup, Command};
 
-/// Runs the clap app in order to use cli
-pub fn cli() -> clap::Command {
-    clap::Command::new(env!("CARGO_PKG_NAME"))
+/// Runs the clap app to create the CLI
+pub fn cli() -> Command {
+    Command::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .about(env!("CARGO_PKG_DESCRIPTION"))
+        .next_line_help(true)
         .arg(
-            clap::Arg::new("string")
+            Arg::new("string")
                 .index(1)
                 .required_unless_present_any(["input-file"])
-                .help("String used to match addresses."),
+                .help("The string (or regex) used to match Bitcoin vanity addresses."),
         )
         .arg(
-            clap::Arg::new("input-file")
+            Arg::new("input-file")
                 .short('i')
                 .long("input-file")
                 .required_unless_present_any(["string"])
-                .help("File with strings to match addresses with.\nImportant: Write every string in a separate line.")
+                .value_name("FILE")
+                .help("Path to a file containing strings to match addresses. \
+                      \nImportant: Each string should be written on a separate line."),
         )
         .arg(
-            clap::Arg::new("force-flags")
-                .short('f')
-                .long("force-flags")
-                .action(clap::ArgAction::SetTrue)
-                .help("Use this flag to override the flags in the input file\nor use in file to override cli flags for only that string.\nNote: Cli -f is stronger than input-file -f.")
-        )
-        .arg(
-            clap::Arg::new("output-file")
+            Arg::new("output-file")
                 .short('o')
                 .long("output-file")
-                .help("Crates a file that contains found wallet/s."),
+                .value_name("FILE")
+                .help("Creates or appends found wallet(s) to the specified file."),
         )
         .arg(
-            clap::Arg::new("prefix")
-                .conflicts_with("suffix")
-                .conflicts_with("anywhere")
+            Arg::new("force-flags")
+                .short('f')
+                .long("force-flags")
+                .action(ArgAction::SetTrue)
+                .help("Overrides the flags in the input file. \
+                      \nIf set, this will enforce CLI-provided flags. \
+                      \nNote: CLI -f is stronger than input-file -f."),
+        )
+        .group(
+            ArgGroup::new("pattern")
+                .args(["prefix", "suffix", "anywhere", "regex"])
+                .multiple(false) // Only one pattern type can be used
+                .required(false), // Not required globally
+        )
+        .arg(
+            Arg::new("prefix")
                 .short('p')
                 .long("prefix")
-                .action(clap::ArgAction::SetTrue)
-                .help("Finds a vanity address which has 'string' prefix. [default]")
+                .action(ArgAction::SetTrue)
+                .conflicts_with_all(["suffix", "anywhere", "regex"])
+                .help("Finds a vanity address with the specified string as a prefix. [default]"),
         )
         .arg(
-            clap::Arg::new("suffix")
-                .conflicts_with("prefix")
-                .conflicts_with("anywhere")
+            Arg::new("suffix")
                 .short('s')
                 .long("suffix")
-                .action(clap::ArgAction::SetTrue)
-                .help("Finds a vanity address which has 'string' suffix.")
+                .action(ArgAction::SetTrue)
+                .conflicts_with_all(["prefix", "anywhere", "regex"])
+                .help("Finds a vanity address with the specified string as a suffix."),
         )
         .arg(
-            clap::Arg::new("anywhere")
+            Arg::new("anywhere")
                 .short('a')
                 .long("anywhere")
-                .action(clap::ArgAction::SetTrue)
-                .help("Finds a vanity address which includes 'string' at any part of the address.")
+                .action(ArgAction::SetTrue)
+                .conflicts_with_all(["prefix", "suffix", "regex"])
+                .help("Finds a vanity address containing the specified string anywhere in the address."),
         )
         .arg(
-            clap::Arg::new("threads")
+            Arg::new("regex")
+                .short('r')
+                .long("regex")
+                .action(ArgAction::SetTrue)
+                .conflicts_with_all(["prefix", "suffix", "anywhere"])
+                .long_help(
+                    "Specifies a regex pattern for your desired vanity address. \
+                    \nSupports common regex syntax, such as anchors (^, $), character classes, and wildcards. \
+                    \nExample: '^1abc.*xyz$' matches addresses starting with '1abc' and ending with 'xyz'. \
+                    \nNote: If your pattern starts with '^' but not '^1', '1' will automatically be prepended \
+                    \n(e.g., '^E' becomes '^1E'). \
+                    \nOnly Base58 characters (excluding '0', 'I', 'O', 'l') are valid in matches. \
+                    \nRegex mode has no length restriction. However, long or restrictive patterns may \
+                    \nsignificantly increase search time and could make finding a match impossible.",
+                ),
+        )
+        .arg(
+            Arg::new("threads")
                 .short('t')
                 .long("threads")
-                .default_value("16")
-                .help("Number of threads to be used."),
+                .value_name("N")
+                .default_value("8")
+                .help("Sets the number of threads to use."),
         )
         .arg(
-            clap::Arg::new("case-sensitive")
+            Arg::new("case-sensitive")
                 .short('c')
                 .long("case-sensitive")
-                .action(clap::ArgAction::SetTrue)
-                .help("Use case sensitive comparison to match addresses."),
+                .action(ArgAction::SetTrue)
+                .help("Enables case-sensitive matching for addresses."),
         )
         .arg(
-            clap::Arg::new("disable-fast-mode")
+            Arg::new("disable-fast-mode")
                 .short('d')
                 .long("disable-fast")
-                .action(clap::ArgAction::SetTrue)
-                .help("Disables fast mode to find a prefix more than 4 characters."),
+                .action(ArgAction::SetTrue)
+                .help("Disables fast mode, allowing for prefixes longer than 4 characters."),
         )
 }

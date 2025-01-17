@@ -1,9 +1,8 @@
-
 # <img src='Bitcoin.svg.png' width='22'> btc-vanity
 
 A bitcoin vanity address generator written with the Rust programming language.
 
-With btc-vanity you can create a private key which has a compressed bitcoin pay address that has a custom prefix, suffix or a string at somewhere in the address.
+With btc-vanity, you can create a private key that generates a compressed Bitcoin pay address featuring a custom prefix, suffix, a specific string, or even a pattern matching your custom regex!
 
 You can easily run btc-vanity terminal application locally or use it as a library to create your vanity keypair securely.
 
@@ -16,12 +15,11 @@ DO NOT USE THE PRIVATE KEYS ON THE SCREENSHOTS! NEVER EVER SHARE YOUR PRIVATE KE
 
 ## Features
 
-- **Flexible Address Customization**: Generate Bitcoin addresses with prefixes, suffixes, or the desired pattern located anywhere in the address.
+- **Flexible Address Customization**: Generate Bitcoin addresses with custom prefixes, suffixes, patterns matching your desired regex, or specific strings located anywhere in the address, with optional case insensitivity for enhanced flexibility.
 - **Case Insensitivity Support**: Option to ignore case when searching for vanity addresses.
 - **Batch Wallet Generation**: Input a file containing multiple desired addresses and generate wallets in bulk.
 - **Output Wallets to File**: Automatically save generated wallet addresses to an output file for easy access.
 - **Configurable Flags**: Use an input file to pass custom flags for each desired wallet address.
-- **Comprehensive Documentation**: Full library documentation to help you get started and understand the available features.
 
 ## Installation
 
@@ -38,39 +36,15 @@ $ btc-vanity -c -a Emiv
 ```
 
 ```
-$ btc-vanity -s -o wallet.txt TALA
+$ btc-vanity -s -o wallet.txt fart
+```
+
+```
+$ btc-vanity -r ^E.*99.*T$
 ```
 
 ```
 $ btc-vanity -f -p -c -i inputs.txt -o wallets.txt
-```
-
-## CLI
-
-```
-$ btc-vanity --help
-A bitcoin vanity address generator written with the Rust programming language.
-
-Usage: btc-vanity [OPTIONS] [string]
-
-Arguments:
-  [string]  String used to match addresses.
-
-Options:
-  -i, --input-file <input-file>    File with strings to match addresses with.
-                                   Important: Write every string in a separate line.
-  -f, --force-flags                Use this flag to override the flags in the input file
-                                   or use in file to override cli flags for only that string.
-                                   Note: Cli -f is stronger than input-file -f.
-  -o, --output-file <output-file>  Crates a file that contains found wallet/s.
-  -p, --prefix                     Finds a vanity address which has 'string' prefix. [default]
-  -s, --suffix                     Finds a vanity address which has 'string' suffix.
-  -a, --anywhere                   Finds a vanity address which includes 'string' at any part of the address.
-  -t, --threads <threads>          Number of threads to be used. [default: 16]
-  -c, --case-sensitive             Use case sensitive comparison to match addresses.
-  -d, --disable-fast               Disables fast mode to find a prefix more than 4 characters.
-  -h, --help                       Print help
-  -V, --version                    Print version
 ```
 
 ## Documentation

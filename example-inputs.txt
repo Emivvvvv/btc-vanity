@@ -1,3 +1,4 @@
 Emiv -c -p
-TALA -c -s
+fart -s
 3169 -a
+^E.*99.*T$ -r
