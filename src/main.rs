@@ -8,7 +8,7 @@ use std::fmt::Write;
 use std::time::Instant;
 
 fn main() {
-    // Sets the cli app.
+    // Sets the cli app
     let app = cli();
 
     // Try to parse the arguments and catch errors
@@ -31,7 +31,7 @@ fn main() {
         }
     };
 
-    // Loop for multiple wallet inputs from text file.
+    // Loop for multiple wallet inputs from text file
     for (i, string) in cli_flags.get_strings().iter().enumerate() {
         let string_flags = get_strings_flags(&cli_flags, i);
 
@@ -82,7 +82,7 @@ fn main() {
                             acc
                         });
 
-                // Prints the found key pair and the address which has the string.
+                // Prints the found key pair and the address which has the string
                 format!(
                     "private_key (hex): {}\n\
                     private_key (wif): {}\n\
@@ -97,7 +97,8 @@ fn main() {
             Err(err) => format!("Skipping because of error: {}\n\n", err),
         };
 
-        // If string_output_file_name is empty it just prints the buffer2 to stdout else writes the wallet to the output file.
+        // If string_output_file_name is empty it just prints the buffer2 to stdout
+        // else writes the wallet to the output file
         if !string_flags.get_output_file_name().is_empty() {
             write_output_file(
                 string_flags.get_output_file_name(),

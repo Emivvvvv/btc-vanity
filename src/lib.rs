@@ -1,10 +1,15 @@
 #![allow(rustdoc::invalid_html_tags)]
 
 //! # btc-vanity
-//! btc-vanity is a Rust library and CLI tool that allows you to generate Bitcoin addresses that contain a specific pattern or substring, known as a "vanity address." Whether you need a prefix, suffix, or a specific string anywhere in the address, btc-vanity provides a highly customizable and multithreaded solution to find your desired address quickly and efficiently.
+//! btc-vanity is a Rust library and CLI tool that allows you to generate Bitcoin addresses that
+//! contain a specific pattern or substring, known as a "vanity address." Whether you need a prefix,
+//! suffix, or a specific string anywhere in the address, btc-vanity provides a highly customizable
+//! and multithreaded solution to find your desired address quickly and efficiently.
 //!
 //! ## Why Use btc-vanity?
-//! Bitcoin vanity addresses can be used to create recognizable, memorable, or branded addresses. This tool leverages Rust's performance and safety features to deliver a reliable and fast solution for generating these custom addresses.
+//! Bitcoin vanity addresses can be used to create recognizable, memorable, or branded addresses.
+//! This tool leverages Rust's performance and safety features to deliver a reliable and
+//! fast solution for generating these custom addresses.
 //!
 //! # Example Usage in Your Code: Creating a vanity address
 //! ```rust

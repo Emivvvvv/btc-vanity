@@ -1,6 +1,6 @@
 //! # Key Pair and Address Generation Module
 //!
-//! This module is used to get a randomly generated key pair and their address.
+//! This module is to get a randomly generated key pair and their address.
 //!
 //! # Example Usage At Your Code
 //! ```rust
