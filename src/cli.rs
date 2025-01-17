@@ -133,14 +133,4 @@ pub fn cli() -> clap::Command {
                 .action(clap::ArgAction::SetTrue)
                 .help("Disables fast mode to find a prefix more than 4 characters."),
         )
-        .arg(
-            clap::Arg::new("range-min")
-                .long("range-min")
-                .help("Minimum range for private key in hexadecimal format.")
-        )
-        .arg(
-            clap::Arg::new("range-max")
-                .long("range-max")
-                .help("Maximum range for private key in hexadecimal format.")
-            )
 }

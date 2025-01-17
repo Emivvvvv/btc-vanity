@@ -14,8 +14,6 @@ DO NOT USE THE PRIVATE KEYS ON THE SCREENSHOTS! NEVER EVER SHARE YOUR PRIVATE KE
 ![My Image](example.png)
 ![My Image](examples-input-file.png)
 
-Here’s how you could rewrite the features section based on the information provided:
-
 ## Features
 
 - **Flexible Address Customization**: Generate Bitcoin addresses with prefixes, suffixes, or the desired pattern located anywhere in the address.
@@ -24,7 +22,6 @@ Here’s how you could rewrite the features section based on the information pro
 - **Output Wallets to File**: Automatically save generated wallet addresses to an output file for easy access.
 - **Configurable Flags**: Use an input file to pass custom flags for each desired wallet address.
 - **Comprehensive Documentation**: Full library documentation to help you get started and understand the available features.
-- **Versioned and Maintained**: The latest version is highly recommended for optimal performance and features.
 
 ## Installation
 
