@@ -15,11 +15,10 @@ DO NOT USE THE PRIVATE KEYS ON THE SCREENSHOTS! NEVER EVER SHARE YOUR PRIVATE KE
 
 ## Features
 
-- **Flexible Address Customization**: Generate Bitcoin addresses with custom prefixes, suffixes, patterns matching your desired regex, or specific strings located anywhere in the address, with optional case insensitivity for enhanced flexibility.
-- **Case Insensitivity Support**: Option to ignore case when searching for vanity addresses.
-- **Batch Wallet Generation**: Input a file containing multiple desired addresses and generate wallets in bulk.
+- **Flexible Address Customization**: Generate Bitcoin addresses with custom prefixes, suffixes, patterns matching your desired regex, 
+- or specific strings located anywhere in the address, with optional case insensitivity for enhanced flexibility.
+- **Batch Wallet Generation with Custom Flags**: Generate multiple wallets in bulk using an input file with desired addresses and configurable flags for each.
 - **Output Wallets to File**: Automatically save generated wallet addresses to an output file for easy access.
-- **Configurable Flags**: Use an input file to pass custom flags for each desired wallet address.
 
 ## Installation
 
