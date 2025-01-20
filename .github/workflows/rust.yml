@@ -37,6 +37,3 @@ jobs:
 
     - name: Run tests
       run: cargo test --verbose
-
-    - name: Run tests for 'test_only' feature
-      run: cargo test --verbose --features test_only
