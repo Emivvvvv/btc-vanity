@@ -433,6 +433,7 @@ dependencies = [
  "clap",
  "hex",
  "libsecp256k1 0.7.1",
+ "log",
  "num-bigint",
  "num-traits",
  "rand 0.9.0-beta.3",

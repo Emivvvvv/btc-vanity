@@ -39,7 +39,7 @@ impl KeyPairGenerator for EthereumKeyPair {
         })
     }
 
-    fn get_vanity_search_address(&self) -> &str {
+    fn get_address(&self) -> &String {
         &self.address
     }
 }

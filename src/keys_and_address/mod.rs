@@ -18,7 +18,7 @@ pub trait KeyPairGenerator {
         Self: Sized;
 
     /// Retrieves the address associated with the keypair.
-    fn get_vanity_search_address(&self) -> &str;
+    fn get_address(&self) -> &String;
 }
 
 /// A struct to hold generated Bitcoin keypair and their address.

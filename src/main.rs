@@ -4,9 +4,10 @@ use btc_vanity::file::write_output_file;
 use btc_vanity::flags::{get_cli_flags, get_strings_flags};
 use btc_vanity::keys_and_address::BitcoinKeyPair;
 use btc_vanity::vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};
-use clap::error::ErrorKind;
+
 use std::fmt::Write;
 use std::time::Instant;
+use clap::error::ErrorKind;
 
 fn main() {
     // Sets the cli app

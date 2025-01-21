@@ -1,11 +1,10 @@
 use crate::error::VanityError;
 use crate::vanity_addr_generator::chain::Chain;
 
+use regex::Regex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread;
-
-use regex::Regex;
 
 /// An Empty Struct for a more structured code
 /// implements the only public function generate
@@ -91,7 +90,7 @@ impl SearchEngines {
                 // Each thread runs until 'found_any' is set to true
                 while !found_any.load(Ordering::Relaxed) {
                     let keys_and_address = T::generate_random();
-                    let address = keys_and_address.get_vanity_search_address();
+                    let address = keys_and_address.get_address();
 
                     let matches = match vanity_mode {
                         VanityMode::Prefix => {
@@ -150,17 +149,9 @@ impl SearchEngines {
         regex_str: &str,
         threads: u64,
     ) -> Result<T, VanityError> {
-        // If the user gave a pattern that starts with '^' but not '^1',
-        // insert '1' right after '^'.
-        //
-        // Example:
-        // ^E.*T$  ==>  ^1E.*T$
-        let mut pattern_str = regex_str.to_string();
-        if pattern_str.starts_with('^') && !pattern_str.starts_with("^1") {
-            pattern_str.insert(1, '1');
-        }
-
-        let pattern = Arc::new(Regex::new(&pattern_str).map_err(|_e| VanityError::InvalidRegex)?);
+        let pattern = Arc::new(
+            Regex::new(&T::adjust_pattern(regex_str)).map_err(|_e| VanityError::InvalidRegex)?,
+        );
 
         let (sender, receiver) = mpsc::channel();
         let found_any = Arc::new(AtomicBool::new(false));
@@ -174,7 +165,7 @@ impl SearchEngines {
             thread::spawn(move || {
                 while !found_any.load(Ordering::Relaxed) {
                     let keys_and_address = T::generate_random();
-                    let address = keys_and_address.get_vanity_search_address();
+                    let address = keys_and_address.get_address();
 
                     // Check if this address matches the given regex
                     if pattern.is_match(address) && !found_any.load(Ordering::Relaxed) {
@@ -256,7 +247,7 @@ mod tests {
     #[should_panic(expected = "FastModeEnabled")]
     fn test_generate_vanity_string_too_long_with_fast_mode() {
         let vanity_string = "12345"; // String longer than 4 characters
-        let keys_and_address = VanityAddr::generate::<BitcoinKeyPair>(
+        let _ = VanityAddr::generate::<BitcoinKeyPair>(
             vanity_string,
             4,                  // Use 4 threads
             false,              // Case-insensitivity
@@ -270,7 +261,7 @@ mod tests {
     #[should_panic(expected = "InputNotBase58")]
     fn test_generate_vanity_invalid_base58() {
         let vanity_string = "emiO"; // Contains invalid base58 character 'O'
-        let keys_and_address = VanityAddr::generate::<BitcoinKeyPair>(
+        let _ = VanityAddr::generate::<BitcoinKeyPair>(
             vanity_string,
             4,                  // Use 4 threads
             false,              // Case-insensitivity

@@ -35,7 +35,7 @@ impl KeyPairGenerator for BitcoinKeyPair {
         })
     }
 
-    fn get_vanity_search_address(&self) -> &str {
+    fn get_address(&self) -> &String {
         &self.comp_address
     }
 }

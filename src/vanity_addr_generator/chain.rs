@@ -13,6 +13,8 @@ pub trait Chain: KeyPairGenerator + Send {
 
     /// Validates regex input for the specific chain.
     fn validate_regex_input(regex_str: &str) -> Result<(), VanityError>;
+
+    fn adjust_pattern(regex_str: &str) -> String;
 }
 
 impl Chain for BitcoinKeyPair {
@@ -58,6 +60,14 @@ impl Chain for BitcoinKeyPair {
 
         Ok(())
     }
+
+    fn adjust_pattern(regex_str: &str) -> String {
+        let mut pattern_str = regex_str.to_string();
+        if pattern_str.starts_with('^') && !pattern_str.starts_with("^1") {
+            pattern_str.insert(1, '1');
+        }
+        pattern_str
+    }
 }
 
 impl Chain for EthereumKeyPair {
@@ -102,5 +112,13 @@ impl Chain for EthereumKeyPair {
         }
 
         Ok(())
+    }
+
+    fn adjust_pattern(regex_str: &str) -> String {
+        let mut pattern_str = regex_str.to_string();
+        if pattern_str.starts_with("^0x") {
+            pattern_str = pattern_str.replacen("^0x", "^", 1);
+        }
+        pattern_str
     }
 }
