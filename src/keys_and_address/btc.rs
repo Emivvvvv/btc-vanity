@@ -7,7 +7,7 @@ use bitcoin::Address;
 use bitcoin::Network::Bitcoin;
 use std::cell::RefCell;
 
-use crate::keys_and_address::{KeyPairGenerator, BitcoinKeyPair};
+use crate::keys_and_address::{BitcoinKeyPair, KeyPairGenerator};
 
 thread_local! {
     static THREAD_LOCAL_SECP256K1: Secp256k1<All> = Secp256k1::new();

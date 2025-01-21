@@ -1,5 +1,5 @@
-use crate::keys_and_address::{KeyPairGenerator, BitcoinKeyPair, EthereumKeyPair};
 use crate::error::VanityError;
+use crate::keys_and_address::{BitcoinKeyPair, EthereumKeyPair, KeyPairGenerator};
 use crate::utils::is_valid_base58_char;
 
 /// Allowed "meta" characters for a simple subset of regex usage.

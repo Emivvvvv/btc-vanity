@@ -1,11 +1,11 @@
 use crate::error::VanityError;
-use crate::keys_and_address::{KeyPairGenerator};
+use crate::vanity_addr_generator::chain::Chain;
 
-use regex::Regex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread;
-use crate::vanity_addr_generator::chain::Chain;
+
+use regex::Regex;
 
 /// An Empty Struct for a more structured code
 /// implements the only public function generate
@@ -160,8 +160,7 @@ impl SearchEngines {
             pattern_str.insert(1, '1');
         }
 
-        let pattern =
-            Arc::new(Regex::new(&pattern_str).map_err(|_e| VanityError::InvalidRegex)?);
+        let pattern = Arc::new(Regex::new(&pattern_str).map_err(|_e| VanityError::InvalidRegex)?);
 
         let (sender, receiver) = mpsc::channel();
         let found_any = Arc::new(AtomicBool::new(false));
@@ -202,8 +201,8 @@ impl SearchEngines {
 
 #[cfg(test)]
 mod tests {
-    use crate::keys_and_address::BitcoinKeyPair;
     use super::*;
+    use crate::keys_and_address::BitcoinKeyPair;
 
     #[test]
     fn test_generate_vanity_prefix() {
@@ -215,7 +214,7 @@ mod tests {
             true,               // Fast mode (limits string size with 4 characters)
             VanityMode::Prefix, // Vanity mode set to Prefix
         )
-            .unwrap();
+        .unwrap();
 
         let vanity_addr_starts_with = "1et";
         assert!(keys_and_address
@@ -233,7 +232,7 @@ mod tests {
             true,               // Fast mode (limits string size with 4 characters)
             VanityMode::Suffix, // Vanity mode set to Suffix
         )
-            .unwrap();
+        .unwrap();
 
         assert!(keys_and_address.get_comp_address().ends_with(vanity_string));
     }
@@ -248,7 +247,7 @@ mod tests {
             true,                 // Fast mode (limits string size with 4 characters)
             VanityMode::Anywhere, // Vanity mode set to Anywhere
         )
-            .unwrap();
+        .unwrap();
 
         assert!(keys_and_address.get_comp_address().contains(vanity_string));
     }
@@ -264,7 +263,7 @@ mod tests {
             true,               // Fast mode (limits string size with 4 characters)
             VanityMode::Prefix, // Vanity mode set to Prefix
         )
-            .unwrap();
+        .unwrap();
     }
 
     #[test]
@@ -278,14 +277,14 @@ mod tests {
             true,               // Fast mode (limits string size with 4 characters)
             VanityMode::Prefix, // Vanity mode set to Prefix
         )
-            .unwrap();
+        .unwrap();
     }
 
     #[test]
     fn test_generate_regex_et_ends() {
         let pattern = "ET$";
-        let keys_and_address =
-            VanityAddr::generate_regex::<BitcoinKeyPair>(pattern, 4).expect("Failed to generate address for 'ET$'");
+        let keys_and_address = VanityAddr::generate_regex::<BitcoinKeyPair>(pattern, 4)
+            .expect("Failed to generate address for 'ET$'");
         let address = keys_and_address.get_comp_address();
 
         // The final pattern is "ET$" => ends with "ET"

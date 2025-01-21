@@ -2,11 +2,11 @@ use btc_vanity::cli::cli;
 use btc_vanity::decoration::get_decoration_strings;
 use btc_vanity::file::write_output_file;
 use btc_vanity::flags::{get_cli_flags, get_strings_flags};
+use btc_vanity::keys_and_address::BitcoinKeyPair;
 use btc_vanity::vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};
 use clap::error::ErrorKind;
 use std::fmt::Write;
 use std::time::Instant;
-use btc_vanity::keys_and_address::BitcoinKeyPair;
 
 fn main() {
     // Sets the cli app
@@ -60,7 +60,9 @@ fn main() {
         // Generates the vanity address and measures the time elapsed while finding the address.
         let start = Instant::now();
         let result = match string_flags.vanity_mode {
-            VanityMode::Regex => VanityAddr::generate_regex::<BitcoinKeyPair>(string, cli_flags.get_threads()),
+            VanityMode::Regex => {
+                VanityAddr::generate_regex::<BitcoinKeyPair>(string, cli_flags.get_threads())
+            }
             _ => VanityAddr::generate::<BitcoinKeyPair>(
                 string,
                 cli_flags.get_threads(),

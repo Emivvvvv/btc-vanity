@@ -105,5 +105,5 @@ pub mod keys_and_address;
 pub mod utils;
 pub mod vanity_addr_generator;
 
-pub use vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};
 pub use keys_and_address::{BitcoinKeyPair, EthereumKeyPair, KeyPairGenerator};
+pub use vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};
