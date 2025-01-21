@@ -39,7 +39,7 @@ impl AddressGenerator for BitcoinKeyPair {
     }
 
     fn get_vanity_search_address(&self) -> &str {
-        unsafe { self.comp_address.get_unchecked(1..) }
+        &self.comp_address
     }
 }
 

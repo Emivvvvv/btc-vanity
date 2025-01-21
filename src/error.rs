@@ -19,11 +19,17 @@ pub enum BtcVanityError {
     #[error("Input is not Base58 encoded!")]
     InputNotBase58,
 
+    #[error("Input is not Base16 encoded!")]
+    InputNotBase16,
+
     #[error("Invalid Regex!")]
     InvalidRegex,
 
     #[error("Regex is not Base58 encoded!")]
     RegexNotBase58,
+
+    #[error("Regex is not Base16 encoded!")]
+    RegexNotBase16,
 }
 
 impl From<KeysAndAddressError> for BtcVanityError {
