@@ -24,7 +24,7 @@
 //! ```
 
 use crate::error::BtcVanityError;
-use crate::keys_and_address::BitcoinKeyPair;
+use crate::keys_and_address::{AddressGenerator, BitcoinKeyPair};
 use crate::utils::is_valid_base58_char;
 
 use regex::Regex;

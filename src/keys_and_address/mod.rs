@@ -1,10 +1,25 @@
+//! # Key Pair and Address Generation Module
+//!
+//! This module is to get a randomly generated key pair and their address.
+//! Currently, Bitcoin and Ethereum key pair and address generation is supported.
+
 pub mod btc;
 pub mod eth;
 
 use bitcoin::{PrivateKey, PublicKey};
 use secp256k1::{PublicKey as SecpPublicKey, SecretKey};
 
+/// Trait to generic address creation. `BitcoinKeyPair` and `EthereumKeyPair` implements it.
+pub trait AddressGenerator {
+    fn generate_random() -> Self
+    where
+        Self: Sized;
+    fn get_vanity_search_address(&self) -> &str;
+}
+
 /// A struct to hold generated Bitcoin keypair and their address.
+/// Implements `AddressGenerator` trait.
+///
 /// private_key: `bitcoin::PrivateKey`
 /// public_key: `bitcoin::PublicKey`
 /// comp_address: String
@@ -15,6 +30,8 @@ pub struct BitcoinKeyPair {
 }
 
 /// A struct to hold generated Bitcoin keypair and their address.
+/// Implements `AddressGenerator` trait.
+///
 /// private_key: `secp256k1::SecretKey`
 /// public_key: `secp256k1::PublicKey`
 /// comp_address: String

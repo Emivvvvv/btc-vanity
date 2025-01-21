@@ -1,6 +1,4 @@
-//! # Key Pair and Address Generation Module
-//!
-//! This module is to get a randomly generated key pair and their address.
+//! # Bitcoin Key Pair and Address Generation
 
 use bitcoin::key::rand::rngs::ThreadRng;
 use bitcoin::key::{PrivateKey, PublicKey};
@@ -9,17 +7,17 @@ use bitcoin::Address;
 use bitcoin::Network::Bitcoin;
 use std::cell::RefCell;
 
-use crate::keys_and_address::BitcoinKeyPair;
+use crate::keys_and_address::{AddressGenerator, BitcoinKeyPair};
 
 thread_local! {
     static THREAD_LOCAL_SECP256K1: Secp256k1<All> = Secp256k1::new();
     static THREAD_LOCAL_RNG: RefCell<ThreadRng> = RefCell::new(rand::thread_rng());
 }
 
-impl BitcoinKeyPair {
-    /// Generates a randomly generated key pair and their compressed addresses with using given Secp256k1.
-    /// and Returns them in a KeysAndAddress struct.
-    pub fn generate_random() -> Self {
+impl AddressGenerator for BitcoinKeyPair {
+    /// Generates a randomly generated Bitcoin key pair and their compressed address.
+    /// Returns `BitcoinKeyPair` struct.
+    fn generate_random() -> Self {
         THREAD_LOCAL_SECP256K1.with(|secp256k1| {
             THREAD_LOCAL_RNG.with(|rng| {
                 let mut rng = rng.borrow_mut(); // Mutably borrow the RNG
@@ -40,6 +38,12 @@ impl BitcoinKeyPair {
         })
     }
 
+    fn get_vanity_search_address(&self) -> &str {
+        unsafe { self.comp_address.get_unchecked(1..) }
+    }
+}
+
+impl BitcoinKeyPair {
     pub fn get_private_key(&self) -> &PrivateKey {
         &self.private_key
     }
@@ -68,22 +72,6 @@ mod tests {
 
     #[test]
     fn test_generate_random() {
-        let secp = Secp256k1::new();
-
-        // Generate a random key pair and address
-        let keys_and_address = BitcoinKeyPair::generate_random();
-
-        // Check if the private key can generate the same public key
-        let derived_public_key = PublicKey::from_private_key(&secp, &keys_and_address.private_key);
-        assert_eq!(keys_and_address.public_key, derived_public_key);
-
-        // Check if the derived public key generates the same address
-        let derived_address = Address::p2pkh(&derived_public_key, Bitcoin).to_string();
-        assert_eq!(keys_and_address.comp_address, derived_address);
-    }
-
-    #[test]
-    fn test_generate_random_heavy() {
         let secp = Secp256k1::new();
 
         // Generate a random key pair and address

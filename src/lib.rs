@@ -11,7 +11,7 @@
 //!
 //! Creating a keypair
 //! ```rust
-//! use btc_vanity::keys_and_address::BitcoinKeyPair;
+//! use btc_vanity::keys_and_address::{AddressGenerator, BitcoinKeyPair};
 //! use bitcoin::secp256k1::Secp256k1;
 //!
 //! let random_address = BitcoinKeyPair::generate_random();
