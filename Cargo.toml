@@ -19,6 +19,11 @@ clap = "4.5.26"
 num-bigint = { version = "0.4.6", features = ["rand"] }
 num-traits = "0.2.19"
 regex = "1.11.1"
+hex = "0.4.3"
+libsecp256k1 = "0.7.1"
+secp256k1 = { version = "0.30.0", features = ["rand"] }
+sha3 = "0.11.0-pre.4"
+solana-sdk = "2.1.9"
 
 [profile.test]
 opt-level = 3

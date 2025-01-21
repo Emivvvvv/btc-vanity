@@ -24,10 +24,9 @@
 //! ```
 
 use crate::error::BtcVanityError;
-use crate::keys_and_address::KeysAndAddress;
+use crate::keys_and_address::BitcoinKeyPair;
 use crate::utils::is_valid_base58_char;
 
-use bitcoin::secp256k1::{All, Secp256k1};
 use regex::Regex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
@@ -104,13 +103,11 @@ impl VanityAddr {
         case_sensitive: bool,
         fast_mode: bool,
         vanity_mode: VanityMode,
-    ) -> Result<KeysAndAddress, BtcVanityError> {
-        let secp256k1 = Secp256k1::new();
-
+    ) -> Result<BitcoinKeyPair, BtcVanityError> {
         Self::validate_input(string, fast_mode)?;
 
         if string.is_empty() {
-            return Ok(KeysAndAddress::generate_random(&secp256k1));
+            return Ok(BitcoinKeyPair::generate_random());
         }
 
         Ok(SearchEngines::find_vanity_address(
@@ -118,23 +115,20 @@ impl VanityAddr {
             threads,
             case_sensitive,
             vanity_mode,
-            secp256k1,
         ))
     }
 
     /// Checks regex before passing to the vanity address finder function.
     /// See [validate_regex_input] for passing conditions.
     /// Returns Result<[keys_and_address::KeysAndAddress], VanityGeneratorError>
-    pub fn generate_regex(regex_str: &str, threads: u64) -> Result<KeysAndAddress, BtcVanityError> {
-        let secp256k1 = Secp256k1::new();
-
+    pub fn generate_regex(regex_str: &str, threads: u64) -> Result<BitcoinKeyPair, BtcVanityError> {
         Self::validate_regex_input(regex_str)?;
 
         if regex_str.is_empty() {
-            return Ok(KeysAndAddress::generate_random(&secp256k1));
+            return Ok(BitcoinKeyPair::generate_random());
         }
 
-        SearchEngines::find_vanity_address_regex(regex_str, threads, secp256k1)
+        SearchEngines::find_vanity_address_regex(regex_str, threads)
     }
 }
 
@@ -151,8 +145,7 @@ impl SearchEngines {
         threads: u64,
         case_sensitive: bool,
         vanity_mode: VanityMode,
-        secp256k1: Secp256k1<All>,
-    ) -> KeysAndAddress {
+    ) -> BitcoinKeyPair {
         let string_len = string.len();
         let (sender, receiver) = mpsc::channel();
         let found_any = Arc::new(AtomicBool::new(false));
@@ -161,7 +154,6 @@ impl SearchEngines {
             let sender = sender.clone();
             let found_any = found_any.clone();
 
-            let secp256k1 = secp256k1.clone();
             let string = string.to_string();
             let lowered_string = string.to_lowercase();
             let mut anywhere_flag = false;
@@ -170,7 +162,7 @@ impl SearchEngines {
             thread::spawn(move || {
                 // Each thread runs until 'found_any' is set to true
                 while !found_any.load(Ordering::Relaxed) {
-                    let keys_and_address = KeysAndAddress::generate_random(&secp256k1);
+                    let keys_and_address = BitcoinKeyPair::generate_random();
                     let address = keys_and_address.get_comp_address();
 
                     match vanity_mode {
@@ -227,8 +219,7 @@ impl SearchEngines {
     pub fn find_vanity_address_regex(
         regex_str: &str,
         threads: u64,
-        secp256k1: Secp256k1<All>,
-    ) -> Result<KeysAndAddress, BtcVanityError> {
+    ) -> Result<BitcoinKeyPair, BtcVanityError> {
         // If the user gave a pattern that starts with '^' but not '^1',
         // insert '1' right after '^'.
         //
@@ -249,12 +240,11 @@ impl SearchEngines {
             let sender = sender.clone();
             let found_any = Arc::clone(&found_any);
 
-            let secp256k1 = secp256k1.clone();
             let pattern = Arc::clone(&pattern);
 
             thread::spawn(move || {
                 while !found_any.load(Ordering::Relaxed) {
-                    let keys_and_address = KeysAndAddress::generate_random(&secp256k1);
+                    let keys_and_address = BitcoinKeyPair::generate_random();
                     let address = keys_and_address.get_comp_address();
 
                     // Check if this address matches the given regex
