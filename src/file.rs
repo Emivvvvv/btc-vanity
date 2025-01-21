@@ -2,8 +2,8 @@
 //!
 //! This module is used for reading multiple strings and flags from files and writing found vanity wallets to desired destination.
 
-use crate::error::BtcVanityError;
-use crate::vanity_addr_generator::VanityMode;
+use crate::error::VanityError;
+use crate::vanity_addr_generator::vanity_addr::VanityMode;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::{fs, io};
@@ -92,7 +92,7 @@ pub fn get_flags(line: &str) -> FileFlags {
 /// ```
 pub fn get_strings_and_flags_from_file(
     file_name: &String,
-) -> Result<(Vec<String>, Vec<FileFlags>), BtcVanityError> {
+) -> Result<(Vec<String>, Vec<FileFlags>), VanityError> {
     let data = fs::read_to_string(file_name)?;
     let lines: Vec<&str> = data.lines().collect::<Vec<_>>();
     let strings: Vec<_> = lines
@@ -133,10 +133,10 @@ pub fn get_strings_and_flags_from_file(
 ///
 /// Skipping because of error: Custom Error: Your input is not in base58. Don't include zero: '0', uppercase i: 'I', uppercase o: 'O', lowercase L: 'l', in your input!
 /// ```
-pub fn write_output_file(output_file_name: &String, buffer: &String) -> Result<(), BtcVanityError> {
+pub fn write_output_file(output_file_name: &String, buffer: &String) -> Result<(), VanityError> {
     let ofn_len = output_file_name.len();
     if &output_file_name[ofn_len - 4..ofn_len] != ".txt" {
-        return Err(BtcVanityError::FileError(io::Error::new(
+        return Err(VanityError::FileError(io::Error::new(
             io::ErrorKind::InvalidInput,
             "file must be a text file. ex: output.txt",
         )));

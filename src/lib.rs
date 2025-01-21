@@ -11,8 +11,7 @@
 //!
 //! Creating a keypair
 //! ```rust
-//! use btc_vanity::keys_and_address::{AddressGenerator, BitcoinKeyPair};
-//! use bitcoin::secp256k1::Secp256k1;
+//! use btc_vanity::{BitcoinKeyPair, KeyPairGenerator};
 //!
 //! let random_address = BitcoinKeyPair::generate_random();
 //!
@@ -28,10 +27,10 @@
 //! Generating a vanity address that has a substring `test` (not case-sensitive) in our vanity
 //! address with using 16 threads.
 //! ```rust
-//! use btc_vanity::vanity_addr_generator::{VanityAddr, VanityMode};
+//! use btc_vanity::{BitcoinKeyPair, VanityAddr, VanityMode};
 //!
 //! // Generate a vanity address with the desired pattern
-//! let vanity_address = VanityAddr::generate(
+//! let vanity_address: BitcoinKeyPair = VanityAddr::generate(
 //!             "Test", // The string that you want your vanity address to include.
 //!             16,     // The number of threads
 //!             false,  // Case sensitivity flag: false means "tESt" is valid, true means only "Test".
@@ -50,10 +49,10 @@
 //! Generating a vanity address that satisfies regex `^E.*99.*T$` (case-sensitive) in our vanity
 //! address with using 8 threads.
 //! ```rust
-//! use btc_vanity::vanity_addr_generator::{VanityAddr, VanityMode};
+//! use btc_vanity::{BitcoinKeyPair, VanityAddr, VanityMode};
 //!
 //! // Generate a vanity address that satisfies given regex
-//! let vanity_address = VanityAddr::generate_regex(
+//! let vanity_address = VanityAddr::generate_regex::<BitcoinKeyPair>(
 //!             "^E.*99.*T$", // The regex as string
 //!             16,     // The number of threads
 //!             ).unwrap(); // Unwrap the result to get the generated address or panic on error.
@@ -105,3 +104,6 @@ pub mod flags;
 pub mod keys_and_address;
 pub mod utils;
 pub mod vanity_addr_generator;
+
+pub use vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};
+pub use keys_and_address::{BitcoinKeyPair, EthereumKeyPair, KeyPairGenerator};

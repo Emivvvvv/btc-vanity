@@ -5,14 +5,14 @@ use secp256k1::{All, PublicKey, Secp256k1, SecretKey};
 use sha3::{Digest, Keccak256};
 use std::cell::RefCell;
 
-use crate::keys_and_address::{AddressGenerator, EthereumKeyPair};
+use crate::keys_and_address::{KeyPairGenerator, EthereumKeyPair};
 
 thread_local! {
     static THREAD_LOCAL_SECP256K1: Secp256k1<All> = Secp256k1::new();
     static THREAD_LOCAL_RNG: RefCell<ThreadRng> = RefCell::new(rand::rng());
 }
 
-impl AddressGenerator for EthereumKeyPair {
+impl KeyPairGenerator for EthereumKeyPair {
     /// Generates a randomly generated Ethereum key pair and their address.
     /// Returns `EthereumKeyPair` struct.
     fn generate_random() -> Self {

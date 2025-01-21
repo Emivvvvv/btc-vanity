@@ -4,7 +4,7 @@
 //! and change flags for each string iteration if any other flags set in input file.
 
 use crate::file::{get_strings_and_flags_from_file, FileFlags};
-use crate::vanity_addr_generator::VanityMode;
+use crate::vanity_addr_generator::vanity_addr::VanityMode;
 use clap::ArgMatches;
 
 /// This struct is used to save the cli flags

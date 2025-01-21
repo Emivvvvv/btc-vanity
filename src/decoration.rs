@@ -2,7 +2,7 @@
 //!
 //! This module is used for creating a better stylized outputs for btc-vanity.
 
-use crate::vanity_addr_generator::VanityMode;
+use crate::vanity_addr_generator::vanity_addr::VanityMode;
 
 const VANITY_MODE_STR: [&str; 4] = [
     "has the prefix",

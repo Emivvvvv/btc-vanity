@@ -9,11 +9,15 @@ pub mod eth;
 use bitcoin::{PrivateKey, PublicKey};
 use secp256k1::{PublicKey as SecpPublicKey, SecretKey};
 
-/// Trait to generic address creation. `BitcoinKeyPair` and `EthereumKeyPair` implements it.
-pub trait AddressGenerator {
+/// Trait to generic keypair and address creation.
+/// Implemented by `BitcoinKeyPair` and `EthereumKeyPair`.
+pub trait KeyPairGenerator {
+    /// Generates a random keypair.
     fn generate_random() -> Self
     where
         Self: Sized;
+
+    /// Retrieves the address associated with the keypair.
     fn get_vanity_search_address(&self) -> &str;
 }
 
@@ -29,6 +33,8 @@ pub struct BitcoinKeyPair {
     comp_address: String,
 }
 
+unsafe impl Send for BitcoinKeyPair {}
+
 /// A struct to hold generated Bitcoin keypair and their address.
 /// Implements `AddressGenerator` trait.
 ///
@@ -41,3 +47,5 @@ pub struct EthereumKeyPair {
     public_key: SecpPublicKey,
     address: String,
 }
+
+unsafe impl Send for EthereumKeyPair {}

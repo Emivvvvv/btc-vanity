@@ -7,26 +7,23 @@ use bitcoin::Address;
 use bitcoin::Network::Bitcoin;
 use std::cell::RefCell;
 
-use crate::keys_and_address::{AddressGenerator, BitcoinKeyPair};
+use crate::keys_and_address::{KeyPairGenerator, BitcoinKeyPair};
 
 thread_local! {
     static THREAD_LOCAL_SECP256K1: Secp256k1<All> = Secp256k1::new();
     static THREAD_LOCAL_RNG: RefCell<ThreadRng> = RefCell::new(rand::thread_rng());
 }
 
-impl AddressGenerator for BitcoinKeyPair {
+impl KeyPairGenerator for BitcoinKeyPair {
     /// Generates a randomly generated Bitcoin key pair and their compressed address.
     /// Returns `BitcoinKeyPair` struct.
     fn generate_random() -> Self {
         THREAD_LOCAL_SECP256K1.with(|secp256k1| {
             THREAD_LOCAL_RNG.with(|rng| {
-                let mut rng = rng.borrow_mut(); // Mutably borrow the RNG
-                let (secret_key, pk) = secp256k1.generate_keypair(&mut *rng); // Use thread-local RNG
+                let mut rng = rng.borrow_mut();
+                let (secret_key, pk) = secp256k1.generate_keypair(&mut *rng);
+
                 let private_key = PrivateKey::new(secret_key, Bitcoin);
-
-                println!("secret key: {:?}", secret_key);
-                println!("private key: {:?}", private_key);
-
                 let public_key = PublicKey::new(pk);
 
                 BitcoinKeyPair {

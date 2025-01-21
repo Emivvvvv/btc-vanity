@@ -3,7 +3,7 @@ use thiserror::Error;
 
 /// A unified error type that encapsulates all possible errors in the btc-vanity application.
 #[derive(Error, Debug)]
-pub enum BtcVanityError {
+pub enum VanityError {
     #[error("File error: {0}")]
     FileError(#[from] io::Error),
 
@@ -32,15 +32,15 @@ pub enum BtcVanityError {
     RegexNotBase16,
 }
 
-impl From<KeysAndAddressError> for BtcVanityError {
+impl From<KeysAndAddressError> for VanityError {
     fn from(keys_and_address_err: KeysAndAddressError) -> Self {
-        BtcVanityError::KeysAndAddressError(keys_and_address_err.0)
+        VanityError::KeysAndAddressError(keys_and_address_err.0)
     }
 }
 
-impl From<VanityGeneratorError> for BtcVanityError {
+impl From<VanityGeneratorError> for VanityError {
     fn from(vanity_err: VanityGeneratorError) -> Self {
-        BtcVanityError::VanityGeneratorError(vanity_err.0)
+        VanityError::VanityGeneratorError(vanity_err.0)
     }
 }
 
