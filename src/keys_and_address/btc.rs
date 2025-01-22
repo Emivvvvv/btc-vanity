@@ -17,6 +17,7 @@ thread_local! {
 impl KeyPairGenerator for BitcoinKeyPair {
     /// Generates a randomly generated Bitcoin key pair and their compressed address.
     /// Returns `BitcoinKeyPair` struct.
+    #[inline(always)]
     fn generate_random() -> Self {
         THREAD_LOCAL_SECP256K1.with(|secp256k1| {
             THREAD_LOCAL_RNG.with(|rng| {
@@ -37,6 +38,11 @@ impl KeyPairGenerator for BitcoinKeyPair {
 
     fn get_address(&self) -> &String {
         &self.comp_address
+    }
+
+    #[inline(always)]
+    fn get_address_bytes(&self) -> &[u8] {
+        self.comp_address.as_bytes()
     }
 }
 

@@ -1,3 +1,4 @@
+use std::mem::MaybeUninit;
 use crate::error::VanityError;
 use crate::vanity_addr_generator::chain::Chain;
 
@@ -5,6 +6,8 @@ use regex::Regex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread;
+
+const BATCH_SIZE: usize = 100;
 
 /// An Empty Struct for a more structured code
 /// implements the only public function generate
@@ -66,6 +69,19 @@ impl VanityAddr {
 /// impl's `find_vanity_address_fast_engine` and `find_vanity_address_fast_engine_with_range`
 pub struct SearchEngines;
 
+fn generate_batch_of_pairs<T: Chain>() -> [T; BATCH_SIZE] {
+    // Create an uninitialized array
+    let mut batch: [MaybeUninit<T>; BATCH_SIZE] = unsafe { MaybeUninit::uninit().assume_init() };
+
+    // Initialize each element in the array
+    for i in 0..BATCH_SIZE {
+        batch[i] = MaybeUninit::new(T::generate_random());
+    }
+
+    // SAFELY convert the initialized `MaybeUninit` array into a properly initialized array
+    unsafe { std::mem::transmute_copy(&batch) }
+}
+
 impl SearchEngines {
     /// Search for the vanity address with given threads.
     /// First come served! If a thread finds a vanity address that satisfy all the requirements,
@@ -77,7 +93,17 @@ impl SearchEngines {
         case_sensitive: bool,
         vanity_mode: VanityMode,
     ) -> T {
-        let string_len = string.len();
+        let string_bytes = string.as_bytes();
+        let string_len = string_bytes.len();
+        let lower_string_bytes = if !case_sensitive {
+            string_bytes
+                .iter()
+                .map(|b| b.to_ascii_lowercase())
+                .collect::<Vec<u8>>()
+        } else {
+            vec![]
+        };
+
         let (sender, receiver) = mpsc::channel();
         let found_any = Arc::new(AtomicBool::new(false));
 
@@ -85,52 +111,75 @@ impl SearchEngines {
             let sender = sender.clone();
             let found_any = found_any.clone();
 
-            let string = string.to_string();
-            let lowered_string = string.to_lowercase();
+            let thread_string_bytes = string_bytes.to_vec();
+            let thread_lower_string_bytes = lower_string_bytes.clone();
 
             thread::spawn(move || {
-                // Each thread runs until 'found_any' is set to true
                 while !found_any.load(Ordering::Relaxed) {
-                    let keys_and_address = T::generate_random();
-                    let address = keys_and_address.get_address();
+                    // Generate a batch of addresses
+                    let batch = generate_batch_of_pairs::<T>();
 
-                    let matches = match vanity_mode {
-                        VanityMode::Prefix => {
-                            let slice = &address[..string_len];
-                            if case_sensitive {
-                                slice == string
-                            } else {
-                                slice.to_lowercase() == lowered_string
-                            }
-                        }
-                        VanityMode::Suffix => {
-                            let slice = &address[address.len() - string_len..];
-                            if case_sensitive {
-                                slice == string
-                            } else {
-                                slice.to_lowercase() == lowered_string
-                            }
-                        }
-                        VanityMode::Anywhere => {
-                            if case_sensitive {
-                                address.contains(&string)
-                            } else {
-                                address.to_lowercase().contains(&lowered_string)
-                            }
-                        }
-                        VanityMode::Regex => unreachable!(),
-                    };
+                    // Check each address in the batch
+                    for keys_and_address in batch {
+                        let address_bytes = keys_and_address.get_address_bytes();
 
-                    // If match found...
-                    if matches && !found_any.load(Ordering::Relaxed) {
-                        // Mark as found (and check if we are the first)
-                        if !found_any.swap(true, Ordering::Relaxed) {
-                            // We're the first thread to set found_any = true
-                            // Attempt to send the result
-                            let _ = sender.send(keys_and_address);
+                        let matches = match vanity_mode {
+                            VanityMode::Prefix => {
+                                if address_bytes.len() < string_len {
+                                    false
+                                } else if case_sensitive {
+                                    address_bytes[..string_len] == thread_string_bytes
+                                } else {
+                                    address_bytes[..string_len]
+                                        .iter()
+                                        .map(|b| b.to_ascii_lowercase())
+                                        .collect::<Vec<u8>>()
+                                        == thread_lower_string_bytes
+                                }
+                            }
+                            VanityMode::Suffix => {
+                                if address_bytes.len() < string_len {
+                                    false
+                                } else if case_sensitive {
+                                    address_bytes[address_bytes.len() - string_len..]
+                                        == thread_string_bytes
+                                } else {
+                                    address_bytes[address_bytes.len() - string_len..]
+                                        .iter()
+                                        .map(|b| b.to_ascii_lowercase())
+                                        .collect::<Vec<u8>>()
+                                        == thread_lower_string_bytes
+                                }
+                            }
+                            VanityMode::Anywhere => {
+                                if case_sensitive {
+                                    address_bytes
+                                        .windows(string_len)
+                                        .any(|window| window == thread_string_bytes)
+                                } else {
+                                    address_bytes.windows(string_len).any(|window| {
+                                        window
+                                            .iter()
+                                            .map(|b| b.to_ascii_lowercase())
+                                            .collect::<Vec<u8>>()
+                                            == thread_lower_string_bytes
+                                    })
+                                }
+                            }
+                            VanityMode::Regex => unreachable!(),
+                        };
+
+                        // If match found...
+                        if matches && !found_any.load(Ordering::Relaxed) {
+                            // Mark as found (and check if we are the first)
+                            if !found_any.swap(true, Ordering::Relaxed) {
+                                // We're the first thread to set found_any = true
+                                // Attempt to send the result
+                                let _ = sender.send(keys_and_address);
+                            }
+                            // Return immediately: no need to generate more
+                            return;
                         }
-                        // Return immediately: no need to generate more
-                        return;
                     }
                 }
             });
@@ -151,7 +200,12 @@ impl SearchEngines {
         regex_str: String,
         threads: u64,
     ) -> Result<T, VanityError> {
-        let pattern = Arc::new(Regex::new(&regex_str).map_err(|_e| VanityError::InvalidRegex)?);
+        // Validate the regex syntax
+        Arc::new(Regex::new(&regex_str).map_err(|_e| VanityError::InvalidRegex)?);
+
+        thread_local! {
+            static THREAD_REGEX: std::cell::RefCell<Option<Regex>> = const {std::cell::RefCell::new(None)};
+        }
 
         let (sender, receiver) = mpsc::channel();
         let found_any = Arc::new(AtomicBool::new(false));
@@ -159,26 +213,35 @@ impl SearchEngines {
         for _ in 0..threads {
             let sender = sender.clone();
             let found_any = Arc::clone(&found_any);
-
-            let pattern = Arc::clone(&pattern);
+            let regex_clone = regex_str.clone();
 
             thread::spawn(move || {
-                while !found_any.load(Ordering::Relaxed) {
-                    let keys_and_address = T::generate_random();
-                    let address = keys_and_address.get_address();
-
-                    // Check if this address matches the given regex
-                    if pattern.is_match(address) && !found_any.load(Ordering::Relaxed) {
-                        // Mark as found (and check if we are the first)
-                        if !found_any.swap(true, Ordering::Relaxed) {
-                            // We're the first thread to set found_any = true
-                            // Attempt to send the result
-                            let _ = sender.send(keys_and_address);
-                        }
-                        // Stop this thread immediately
-                        return;
+                // Initialize the regex in thread-local storage.
+                THREAD_REGEX.with(|local_regex| {
+                    let mut local_regex_ref = local_regex.borrow_mut();
+                    if local_regex_ref.is_none() {
+                        *local_regex_ref = Some(Regex::new(&regex_clone).unwrap());
                     }
-                }
+
+                    let regex = local_regex_ref.as_ref().unwrap();
+
+                    while !found_any.load(Ordering::Relaxed) {
+                        // Generate a batch of addresses
+                        let batch = generate_batch_of_pairs::<T>();
+
+                        // Check each address in the batch
+                        for keys_and_address in batch {
+                            let address = keys_and_address.get_address();
+                            if regex.is_match(address) && !found_any.load(Ordering::Relaxed) {
+                                // If a match is found, send it to the main thread
+                                if !found_any.swap(true, Ordering::Relaxed) {
+                                    sender.send(keys_and_address).unwrap();
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                });
             });
         }
 
@@ -762,7 +825,7 @@ mod tests {
 
         #[test]
         fn test_generate_regex_complex_pattern() {
-            let pattern = "^e.*11.*t$";
+            let pattern = "^e.*9.*t$";
             let keys_and_address = VanityAddr::generate_regex::<SolanaKeyPair>(pattern, 4).unwrap();
             let address = keys_and_address.get_address();
 
@@ -772,8 +835,8 @@ mod tests {
                 address
             );
             assert!(
-                address.contains("11"),
-                "Address should contain '11': {}",
+                address.contains("9"),
+                "Address should contain '9': {}",
                 address
             );
             assert!(

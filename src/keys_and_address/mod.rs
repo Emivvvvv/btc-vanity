@@ -21,6 +21,9 @@ pub trait KeyPairGenerator {
 
     /// Retrieves the address associated with the keypair.
     fn get_address(&self) -> &String;
+
+    /// Retrieves the address bytes associated with the keypair.
+    fn get_address_bytes(&self) -> &[u8];
 }
 
 /// A struct to hold generated Bitcoin keypair and their address.

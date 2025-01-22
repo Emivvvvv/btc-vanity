@@ -15,6 +15,7 @@ thread_local! {
 impl KeyPairGenerator for EthereumKeyPair {
     /// Generates a randomly generated Ethereum key pair and their address.
     /// Returns `EthereumKeyPair` struct.
+    #[inline(always)]
     fn generate_random() -> Self {
         THREAD_LOCAL_SECP256K1.with(|secp256k1| {
             THREAD_LOCAL_RNG.with(|rng| {
@@ -41,6 +42,11 @@ impl KeyPairGenerator for EthereumKeyPair {
 
     fn get_address(&self) -> &String {
         &self.address
+    }
+
+    #[inline(always)]
+    fn get_address_bytes(&self) -> &[u8] {
+        self.address.as_bytes()
     }
 }
 

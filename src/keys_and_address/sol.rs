@@ -14,6 +14,7 @@ thread_local! {
 impl KeyPairGenerator for SolanaKeyPair {
     /// Generates a randomly generated Solana key pair and their address.
     /// Returns `SolanaKeyPair` struct.
+    #[inline(always)]
     fn generate_random() -> Self {
         THREAD_LOCAL_RNG.with(|rng| {
             let mut seed = [0u8; 32];
@@ -27,6 +28,11 @@ impl KeyPairGenerator for SolanaKeyPair {
 
     fn get_address(&self) -> &String {
         &self.address
+    }
+
+    #[inline(always)]
+    fn get_address_bytes(&self) -> &[u8] {
+        self.address.as_bytes()
     }
 }
 

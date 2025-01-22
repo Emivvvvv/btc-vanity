@@ -1,15 +1,15 @@
 use btc_vanity::cli::cli;
 use btc_vanity::decoration::get_decoration_strings;
+use btc_vanity::error::VanityError;
 use btc_vanity::file::write_output_file;
 use btc_vanity::flags::{get_cli_flags, get_strings_flags, Chain, CliFlags};
 use btc_vanity::keys_and_address::{BitcoinKeyPair, EthereumKeyPair, SolanaKeyPair};
 use btc_vanity::vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};
-use btc_vanity::error::VanityError;
 
+use btc_vanity::KeyPairGenerator;
 use clap::error::ErrorKind;
 use std::fmt::Write as FmtWrite;
 use std::time::Instant;
-use btc_vanity::KeyPairGenerator;
 
 /// Validates and parses CLI arguments
 fn parse_cli() -> CliFlags {
@@ -58,9 +58,7 @@ fn generate_vanity_address(
         Chain::Bitcoin => {
             // 1) Generate the Bitcoin vanity
             let result: Result<BitcoinKeyPair, VanityError> = match cli_flags.vanity_mode {
-                VanityMode::Regex => {
-                    VanityAddr::generate_regex::<BitcoinKeyPair>(pattern, threads)
-                }
+                VanityMode::Regex => VanityAddr::generate_regex::<BitcoinKeyPair>(pattern, threads),
                 _ => VanityAddr::generate::<BitcoinKeyPair>(
                     pattern,
                     threads,
@@ -74,14 +72,13 @@ fn generate_vanity_address(
             match result {
                 Ok(res) => {
                     // Convert to hex
-                    let private_key_hex = res
-                        .get_private_key()
-                        .to_bytes()
-                        .iter()
-                        .fold(String::new(), |mut acc: String, &byte: &u8| {
+                    let private_key_hex = res.get_private_key().to_bytes().iter().fold(
+                        String::new(),
+                        |mut acc: String, &byte: &u8| {
                             write!(&mut acc, "{:02X}", byte).unwrap();
                             acc
-                        });
+                        },
+                    );
 
                     // Build the final output string
                     let s = format!(
@@ -119,14 +116,13 @@ fn generate_vanity_address(
             match result {
                 Ok(res) => {
                     // Convert private key to hex
-                    let private_key_hex = res
-                        .private_key
-                        .as_ref()
-                        .iter()
-                        .fold(String::new(), |mut acc: String, &byte: &u8| {
+                    let private_key_hex = res.private_key.as_ref().iter().fold(
+                        String::new(),
+                        |mut acc: String, &byte: &u8| {
                             write!(&mut acc, "{:02X}", byte).unwrap();
                             acc
-                        });
+                        },
+                    );
 
                     // Convert uncompressed pubkey to hex
                     let pub_uncompressed = res.public_key.serialize_uncompressed();
@@ -155,9 +151,7 @@ fn generate_vanity_address(
         Chain::Solana => {
             // 1) Generate the Solana vanity
             let result: Result<SolanaKeyPair, VanityError> = match cli_flags.vanity_mode {
-                VanityMode::Regex => {
-                    VanityAddr::generate_regex::<SolanaKeyPair>(pattern, threads)
-                }
+                VanityMode::Regex => VanityAddr::generate_regex::<SolanaKeyPair>(pattern, threads),
                 _ => VanityAddr::generate::<SolanaKeyPair>(
                     pattern,
                     threads,
@@ -172,13 +166,13 @@ fn generate_vanity_address(
                 Ok(res) => {
                     // Keypair -> hex
                     let keypair_bytes = res.keypair.to_bytes();
-                    let private_key_hex = keypair_bytes.iter().fold(
-                        String::new(),
-                        |mut acc: String, &byte: &u8| {
-                            write!(&mut acc, "{:02X}", byte).unwrap();
-                            acc
-                        },
-                    );
+                    let private_key_hex =
+                        keypair_bytes
+                            .iter()
+                            .fold(String::new(), |mut acc: String, &byte: &u8| {
+                                write!(&mut acc, "{:02X}", byte).unwrap();
+                                acc
+                            });
 
                     let address = res.get_address();
                     let s = format!(
@@ -211,7 +205,7 @@ fn handle_output(cli_flags: &CliFlags, buffer1: &str, buffer2: &str) {
             &cli_flags.output_file_name,
             &format!("{}\n{}", buffer1, buffer2),
         )
-            .unwrap();
+        .unwrap();
     } else {
         println!("{}", buffer2);
     }
