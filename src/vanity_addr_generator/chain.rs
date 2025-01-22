@@ -1,6 +1,7 @@
 use crate::error::VanityError;
 use crate::keys_and_address::{BitcoinKeyPair, EthereumKeyPair, KeyPairGenerator};
 use crate::utils::is_valid_base58_char;
+use crate::VanityMode;
 
 /// Allowed "meta" characters for a simple subset of regex usage.
 const ALLOWED_REGEX_META: &[char] = &[
@@ -12,9 +13,11 @@ pub trait Chain: KeyPairGenerator + Send {
     fn validate_input(string: &str, fast_mode: bool) -> Result<(), VanityError>;
 
     /// Validates regex input for the specific chain.
-    fn validate_regex_input(regex_str: &str) -> Result<(), VanityError>;
+    fn validate_regex_pattern(regex_str: &str) -> Result<(), VanityError>;
 
-    fn adjust_pattern(regex_str: &str) -> String;
+    fn adjust_input(input: &str, vanity_mode: VanityMode) -> String;
+
+    fn adjust_regex_pattern(regex_str: &str) -> String;
 }
 
 impl Chain for BitcoinKeyPair {
@@ -39,7 +42,7 @@ impl Chain for BitcoinKeyPair {
     /// 1) If it's a recognized regex meta character, allow it.
     /// 2) If it's alphanumeric, ensure it's valid base58
     /// 3) Neither a recognized meta char, nor a valid base58 alphanumeric => reject
-    fn validate_regex_input(regex_str: &str) -> Result<(), VanityError> {
+    fn validate_regex_pattern(regex_str: &str) -> Result<(), VanityError> {
         // For each character in the pattern:
         for c in regex_str.chars() {
             // 1) If it's a recognized regex meta character, allow it.
@@ -61,7 +64,14 @@ impl Chain for BitcoinKeyPair {
         Ok(())
     }
 
-    fn adjust_pattern(regex_str: &str) -> String {
+    fn adjust_input(input: &str, vanity_mode: VanityMode) -> String {
+        match vanity_mode {
+            VanityMode::Prefix => format!("1{input}"),
+            _ => input.to_string(),
+        }
+    }
+
+    fn adjust_regex_pattern(regex_str: &str) -> String {
         let mut pattern_str = regex_str.to_string();
         if pattern_str.starts_with('^') && !pattern_str.starts_with("^1") {
             pattern_str.insert(1, '1');
@@ -92,7 +102,7 @@ impl Chain for EthereumKeyPair {
     /// 1) If it's a recognized regex meta character, allow it.
     /// 2) If it's alphanumeric, ensure it's valid base16.
     /// 3) Neither a recognized meta char, nor a valid base16 alphanumeric => reject.
-    fn validate_regex_input(regex_str: &str) -> Result<(), VanityError> {
+    fn validate_regex_pattern(regex_str: &str) -> Result<(), VanityError> {
         // For each character in the pattern:
         for c in regex_str.chars() {
             // 1) If it's a recognized regex meta character, allow it.
@@ -114,7 +124,11 @@ impl Chain for EthereumKeyPair {
         Ok(())
     }
 
-    fn adjust_pattern(regex_str: &str) -> String {
+    fn adjust_input(input: &str, _vanity_mode: VanityMode) -> String {
+        input.to_string()
+    }
+
+    fn adjust_regex_pattern(regex_str: &str) -> String {
         let mut pattern_str = regex_str.to_string();
         if pattern_str.starts_with("^0x") {
             pattern_str = pattern_str.replacen("^0x", "^", 1);
