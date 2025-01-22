@@ -5,9 +5,11 @@
 
 pub mod btc;
 pub mod eth;
+mod sol;
 
 use bitcoin::{PrivateKey, PublicKey};
 use secp256k1::{PublicKey as SecpPublicKey, SecretKey};
+use solana_sdk::signature::Keypair;
 
 /// Trait to generic keypair and address creation.
 /// Implemented by `BitcoinKeyPair` and `EthereumKeyPair`.
@@ -35,17 +37,28 @@ pub struct BitcoinKeyPair {
 
 unsafe impl Send for BitcoinKeyPair {}
 
-/// A struct to hold generated Bitcoin keypair and their address.
+/// A struct to hold generated Ethereum keypair and their address.
 /// Implements `AddressGenerator` trait.
 ///
 /// private_key: `secp256k1::SecretKey`
 /// public_key: `secp256k1::PublicKey`
-/// comp_address: String
+/// address: String
 pub struct EthereumKeyPair {
     private_key: SecretKey,
-    #[allow(dead_code)]
     public_key: SecpPublicKey,
     address: String,
 }
 
 unsafe impl Send for EthereumKeyPair {}
+
+/// A struct to hold generated Solana keypair and their address.
+/// Implements `AddressGenerator` trait.
+///
+/// keypair: `solana_sdk::signer::Keypair`
+/// address: String
+pub struct SolanaKeyPair {
+    keypair: Keypair,
+    address: String,
+}
+
+unsafe impl Send for SolanaKeyPair {}
