@@ -41,6 +41,14 @@ pub fn cli() -> Command {
         .about(env!("CARGO_PKG_DESCRIPTION"))
         .next_line_help(true)
         .arg(
+            Arg::new("chain")
+                .short('n')
+                .long("chain")
+                .value_name("CHAIN")
+                .default_value("bitcoin")
+                .help("Specifies the blockchain to use. Options: bitcoin, ethereum, solana."),
+        )
+        .arg(
             Arg::new("string")
                 .index(1)
                 .required_unless_present_any(["input-file"])

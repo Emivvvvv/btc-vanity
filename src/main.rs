@@ -1,7 +1,7 @@
 use btc_vanity::cli::cli;
 use btc_vanity::decoration::get_decoration_strings;
 use btc_vanity::file::write_output_file;
-use btc_vanity::flags::{get_cli_flags, get_strings_flags};
+use btc_vanity::flags::{get_cli_flags, get_strings_flags, Chain, CliFlags};
 use btc_vanity::keys_and_address::BitcoinKeyPair;
 use btc_vanity::vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};
 
@@ -9,31 +9,102 @@ use clap::error::ErrorKind;
 use std::fmt::Write;
 use std::time::Instant;
 
-fn main() {
-    // Sets the cli app
+/// Validates and parses CLI arguments
+fn parse_cli() -> CliFlags {
     let app = cli();
-
-    // Try to parse the arguments and catch errors
-    let cli_flags = match app.try_get_matches() {
+    match app.try_get_matches() {
         Ok(matches) => get_cli_flags(matches),
         Err(err) => {
-            // Check if it's a missing argument error
             if err.kind() == ErrorKind::MissingRequiredArgument {
-                // Customize the error message
                 eprintln!(
                     "error: the following required arguments were not provided:\n  --input-file <input-file> OR <string>\n"
                 );
-                // Optionally, show the help message
                 eprintln!("Usage: btc-vanity [OPTIONS] <string>");
             } else {
-                // Otherwise, print the default error
                 eprintln!("{}", err);
             }
-            std::process::exit(1); // Exit with an error code
+            std::process::exit(1);
         }
-    };
+    }
+}
 
-    // Loop for multiple wallet inputs from text file
+/// Prints the initial search message
+fn print_initial_message(
+    chain: Chain,
+    threads: u64,
+    vanity_mode_str: &str,
+    string: &str,
+    case_sensitive_str: &str,
+) {
+    println!(
+        "Searching key pair for {} chain where the address {}: '{}' {} with {} threads.\n",
+        chain, vanity_mode_str, string, case_sensitive_str, threads
+    );
+}
+
+/// Handles the vanity address generation and returns the result as a formatted string
+fn generate_vanity_address(
+    string: &str,
+    threads: u64,
+    string_flags: &CliFlags,
+) -> Result<String, String> {
+    let start = Instant::now();
+    let result = match string_flags.vanity_mode {
+        VanityMode::Regex => VanityAddr::generate_regex::<BitcoinKeyPair>(string, threads),
+        _ => VanityAddr::generate::<BitcoinKeyPair>(
+            string,
+            threads,
+            string_flags.is_case_sensitive,
+            !string_flags.is_fast_disabled,
+            string_flags.vanity_mode,
+        ),
+    };
+    let seconds = start.elapsed().as_secs_f64();
+
+    match result {
+        Ok(res) => {
+            println!("FOUND IN {:.4} SECONDS!\n", seconds);
+
+            let formatted_private_key_hex =
+                res.get_private_key()
+                    .to_bytes()
+                    .iter()
+                    .fold(String::new(), |mut acc, byte| {
+                        write!(&mut acc, "{:02X}", byte).unwrap();
+                        acc
+                    });
+
+            Ok(format!(
+                "private_key (hex): {}\n\
+                private_key (wif): {}\n\
+                public_key (compressed): {}\n\
+                address (compressed): {}\n\n",
+                formatted_private_key_hex,
+                res.get_wif_private_key(),
+                res.get_comp_public_key(),
+                res.get_comp_address()
+            ))
+        }
+        Err(err) => Err(format!("Skipping because of error: {}\n\n", err)),
+    }
+}
+
+/// Writes the result to an output file or prints to stdout
+fn handle_output(string_flags: &CliFlags, buffer1: &str, buffer2: &str) {
+    if !string_flags.output_file_name.is_empty() {
+        write_output_file(
+            &string_flags.output_file_name,
+            &format!("{}\n{}", buffer1, buffer2),
+        )
+        .unwrap();
+    } else {
+        println!("{}", buffer2);
+    }
+}
+
+fn main() {
+    let cli_flags = parse_cli();
+
     for (i, string) in cli_flags.get_strings().iter().enumerate() {
         let string_flags = get_strings_flags(&cli_flags, i);
 
@@ -42,79 +113,24 @@ fn main() {
             string_flags.get_case_sensitivity(),
         );
 
-        // First buffer/print before starting calculation
-        let mut buffer1 = String::new();
-        println!(
-            "Searching key pair which their address {}: '{}' {} with {} threads.\n",
+        print_initial_message(
+            cli_flags.chain,
+            cli_flags.threads,
             vanity_mode_str,
             string,
             case_sensitive_str,
-            cli_flags.get_threads()
         );
-        if !string_flags.get_output_file_name().is_empty() {
-            buffer1 = format!(
-                "Key pair which their address {}: '{}' {}\n",
-                vanity_mode_str, string, case_sensitive_str
-            )
-        }
 
-        // Generates the vanity address and measures the time elapsed while finding the address.
-        let start = Instant::now();
-        let result = match string_flags.vanity_mode {
-            VanityMode::Regex => {
-                VanityAddr::generate_regex::<BitcoinKeyPair>(string, cli_flags.get_threads())
-            }
-            _ => VanityAddr::generate::<BitcoinKeyPair>(
-                string,
-                cli_flags.get_threads(),
-                string_flags.get_case_sensitivity(),
-                !string_flags.get_is_fast_mode_disabled(),
-                string_flags.get_vanity_mode(),
-            ),
-        };
+        let buffer1 = format!(
+            "Key pair which their address {}: '{}' {}\n",
+            vanity_mode_str, string, case_sensitive_str
+        );
 
-        let seconds = start.elapsed().as_secs_f64();
+        let result = generate_vanity_address(string, cli_flags.threads, &cli_flags);
 
-        // Second buffer/print after the vanity address found
-        let buffer2 = match result {
-            Ok(res) => {
-                println!("FOUND IN {:.4} SECONDS!\n", seconds);
-
-                // Format the private key hex value
-                let formatted_private_key_hex =
-                    res.get_private_key()
-                        .to_bytes()
-                        .iter()
-                        .fold(String::new(), |mut acc, byte| {
-                            write!(&mut acc, "{:02X}", byte).unwrap();
-                            acc
-                        });
-
-                // Prints the found key pair and the address which has the string
-                format!(
-                    "private_key (hex): {}\n\
-                    private_key (wif): {}\n\
-                    public_key (compressed): {}\n\
-                    address (compressed): {}\n\n",
-                    formatted_private_key_hex,
-                    res.get_wif_private_key(),
-                    res.get_comp_public_key(),
-                    res.get_comp_address()
-                )
-            }
-            Err(err) => format!("Skipping because of error: {}\n\n", err),
-        };
-
-        // If string_output_file_name is empty it just prints the buffer2 to stdout
-        // else writes the wallet to the output file
-        if !string_flags.get_output_file_name().is_empty() {
-            write_output_file(
-                string_flags.get_output_file_name(),
-                &format!("{}\n{}", buffer1, buffer2),
-            )
-            .unwrap()
-        } else {
-            println!("{}", buffer2)
+        match result {
+            Ok(buffer2) => handle_output(&cli_flags, &buffer1, &buffer2),
+            Err(error_message) => eprintln!("{}", error_message),
         }
     }
 }

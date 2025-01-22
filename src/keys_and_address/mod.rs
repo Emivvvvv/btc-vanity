@@ -45,6 +45,7 @@ unsafe impl Send for BitcoinKeyPair {}
 /// address: String
 pub struct EthereumKeyPair {
     private_key: SecretKey,
+    #[allow(dead_code)]
     public_key: SecpPublicKey,
     address: String,
 }

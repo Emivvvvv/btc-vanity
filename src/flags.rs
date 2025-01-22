@@ -10,14 +10,15 @@ use clap::ArgMatches;
 /// This struct is used to save the cli flags
 #[derive(Debug)]
 pub struct CliFlags {
-    threads: u64,
-    strings: Vec<String>,
-    flags: Vec<FileFlags>,
-    force_flags: bool,
-    is_case_sensitive: bool,
-    is_fast_disabled: bool,
-    output_file_name: String,
+    pub threads: u64,
+    pub strings: Vec<String>,
+    pub flags: Vec<FileFlags>,
+    pub force_flags: bool,
+    pub is_case_sensitive: bool,
+    pub is_fast_disabled: bool,
+    pub output_file_name: String,
     pub vanity_mode: VanityMode,
+    pub chain: Chain,
 }
 
 impl CliFlags {
@@ -65,6 +66,17 @@ pub fn get_cli_flags(matches: ArgMatches) -> CliFlags {
         VanityMode::Prefix
     };
 
+    let cli_chain = matches
+        .get_one::<String>("chain")
+        .expect("This was unexpected :(. Missing --chain argument.")
+        .parse::<Chain>()
+        .unwrap_or_else(|err| {
+            eprintln!("Error: {}", err);
+            std::process::exit(1);
+        });
+
+    validate_args(cli_chain, cli_is_case_sensitive);
+
     CliFlags {
         threads,
         strings,
@@ -74,6 +86,7 @@ pub fn get_cli_flags(matches: ArgMatches) -> CliFlags {
         is_fast_disabled: cli_is_fast_disabled,
         output_file_name: cli_output_file_name,
         vanity_mode: cli_vanity_mode,
+        chain: cli_chain,
     }
 }
 
@@ -168,5 +181,46 @@ pub fn get_strings_flags(cli_args: &CliFlags, index: usize) -> StringsFlags {
                 string_vanity_mode,
             )
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Chain {
+    Bitcoin,
+    Ethereum,
+    Solana,
+}
+
+impl std::str::FromStr for Chain {
+    type Err = String;
+
+    fn from_str(chain: &str) -> Result<Self, Self::Err> {
+        match chain.to_lowercase().as_str() {
+            "bitcoin" => Ok(Chain::Bitcoin),
+            "ethereum" => Ok(Chain::Ethereum),
+            "solana" => Ok(Chain::Solana),
+            _ => Err(format!("Unsupported chain: {}", chain)),
+        }
+    }
+}
+
+impl std::fmt::Display for Chain {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Chain::Bitcoin => "bitcoin",
+                Chain::Ethereum => "ethereum",
+                Chain::Solana => "solana",
+            }
+        )
+    }
+}
+
+fn validate_args(chain: Chain, is_case_sensitive: bool) {
+    if chain == Chain::Ethereum && is_case_sensitive {
+        eprintln!("Error: --case-sensitive is not supported for Ethereum.");
+        std::process::exit(1);
     }
 }
