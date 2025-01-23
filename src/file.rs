@@ -3,6 +3,7 @@
 //! This module is used for reading multiple strings and flags from files and writing found vanity wallets to desired destination.
 
 use crate::error::VanityError;
+use crate::flags::Chain;
 use crate::vanity_addr_generator::vanity_addr::VanityMode;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -17,6 +18,7 @@ pub struct FileFlags {
     pub disable_fast_mode: bool,
     pub output_file_name: Option<String>,
     pub vanity_mode: Option<VanityMode>,
+    pub chain: Option<Chain>,
 }
 
 impl FileFlags {
@@ -30,6 +32,7 @@ impl FileFlags {
             disable_fast_mode: false,
             output_file_name: None,
             vanity_mode: None,
+            chain: None,
         }
     }
 }
@@ -56,6 +59,9 @@ pub fn get_flags(line: &str) -> FileFlags {
             || arg == "--anywhere"
             || arg == "--regex"
     });
+    let chain_option = args
+        .iter()
+        .find(|&&arg| arg == "--btc" || arg == "--sol" || arg == "--eth");
     let vanity_mode = match vanity_option {
         Some(&vanity) => match vanity {
             "-p" | "--prefix" => Some(VanityMode::Prefix),
@@ -65,6 +71,15 @@ pub fn get_flags(line: &str) -> FileFlags {
         },
         None => None,
     };
+    let chain = match chain_option {
+        Some(&chain) => match chain {
+            "--eth" => Some(Chain::Ethereum),
+            "--sol" => Some(Chain::Solana),
+            _ => Some(Chain::Bitcoin),
+        },
+        None => None,
+    };
+
     let ofn_index = args
         .iter()
         .position(|&arg| arg == "-o" || arg == "--output-file");
@@ -78,6 +93,7 @@ pub fn get_flags(line: &str) -> FileFlags {
         disable_fast_mode,
         output_file_name,
         vanity_mode,
+        chain,
     }
 }
 

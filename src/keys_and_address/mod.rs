@@ -47,9 +47,8 @@ unsafe impl Send for BitcoinKeyPair {}
 /// public_key: `secp256k1::PublicKey`
 /// address: String
 pub struct EthereumKeyPair {
-    pub private_key: SecretKey,
-    #[allow(dead_code)]
-    pub public_key: SecpPublicKey,
+    private_key: SecretKey,
+    public_key: SecpPublicKey,
     address: String,
 }
 
@@ -61,7 +60,7 @@ unsafe impl Send for EthereumKeyPair {}
 /// keypair: `solana_sdk::signer::Keypair`
 /// address: String
 pub struct SolanaKeyPair {
-    pub keypair: Keypair,
+    keypair: Keypair,
     address: String,
 }
 

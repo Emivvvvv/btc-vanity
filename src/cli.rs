@@ -41,12 +41,22 @@ pub fn cli() -> Command {
         .about(env!("CARGO_PKG_DESCRIPTION"))
         .next_line_help(true)
         .arg(
-            Arg::new("chain")
-                .short('n')
-                .long("chain")
-                .value_name("CHAIN")
-                .default_value("bitcoin")
-                .help("Specifies the blockchain to use. Options: bitcoin, ethereum, solana."),
+            Arg::new("bitcoin")
+                .long("btc")
+                .action(ArgAction::SetTrue)
+                .conflicts_with_all(["ethereum", "solana"])
+        )
+        .arg(
+            Arg::new("ethereum")
+                .long("eth")
+                .action(ArgAction::SetTrue)
+                .conflicts_with_all(["bitcoin", "solana"])
+        )
+        .arg(
+            Arg::new("solana")
+                .long("sol")
+                .action(ArgAction::SetTrue)
+                .conflicts_with_all(["bitcoin", "ethereum"])
         )
         .arg(
             Arg::new("string")

@@ -43,7 +43,7 @@ pub fn get_cli_flags(matches: ArgMatches) -> CliFlags {
         Some(string) => (vec![string.to_owned()], vec![FileFlags::use_cli_flags()]),
         None => {
             let file_name = matches.get_one::<String>("input-file").unwrap();
-            get_strings_and_flags_from_file(file_name).unwrap()
+            get_strings_and_flags_from_file(file_name).expect("File does not exist!")
         }
     };
 
@@ -66,16 +66,13 @@ pub fn get_cli_flags(matches: ArgMatches) -> CliFlags {
         VanityMode::Prefix
     };
 
-    let cli_chain = matches
-        .get_one::<String>("chain")
-        .expect("This was unexpected :(. Missing --chain argument.")
-        .parse::<Chain>()
-        .unwrap_or_else(|err| {
-            eprintln!("Error: {}", err);
-            std::process::exit(1);
-        });
-
-    validate_args(cli_chain, cli_is_case_sensitive);
+    let cli_chain = if matches.get_flag("ethereum") {
+        Chain::Ethereum
+    } else if matches.get_flag("solana") {
+        Chain::Solana
+    } else {
+        Chain::Bitcoin
+    };
 
     CliFlags {
         threads,
@@ -93,10 +90,11 @@ pub fn get_cli_flags(matches: ArgMatches) -> CliFlags {
 /// This struct is used to save the strings flags for each string in the input file.
 /// Each iteration means a new StringFlag structure will be created.
 pub struct StringsFlags {
-    is_case_sensitive: bool,
-    is_fast_disabled: bool,
+    pub is_case_sensitive: bool,
+    pub is_fast_disabled: bool,
     output_file_name: String,
     pub vanity_mode: VanityMode,
+    pub chain: Chain,
 }
 
 impl StringsFlags {
@@ -106,12 +104,14 @@ impl StringsFlags {
         is_fast_disabled: bool,
         output_file_name: String,
         vanity_mode: VanityMode,
+        chain: Chain,
     ) -> Self {
         StringsFlags {
             is_case_sensitive,
             is_fast_disabled,
             output_file_name,
             vanity_mode,
+            chain,
         }
     }
 
@@ -123,6 +123,7 @@ impl StringsFlags {
             is_fast_disabled: cli_args.is_fast_disabled,
             output_file_name: cli_args.output_file_name.to_string(),
             vanity_mode: cli_args.vanity_mode,
+            chain: cli_args.chain,
         }
     }
 
@@ -173,12 +174,18 @@ pub fn get_strings_flags(cli_args: &CliFlags, index: usize) -> StringsFlags {
                 cli_args.is_fast_disabled || flags.disable_fast_mode
             };
 
+            let string_chain = match flags.chain {
+                Some(chain) => chain,   // Use specified vanity mode if available
+                None => cli_args.chain, // Otherwise, use CLI argument vanity mode
+            };
+
             // Construct and return the StringsArgs struct
             StringsFlags::from(
                 string_is_case_sensitive,
                 string_is_fast_disabled,
                 string_output_file_name.to_string(),
                 string_vanity_mode,
+                string_chain,
             )
         }
     }
@@ -215,12 +222,5 @@ impl std::fmt::Display for Chain {
                 Chain::Solana => "solana",
             }
         )
-    }
-}
-
-fn validate_args(chain: Chain, is_case_sensitive: bool) {
-    if chain == Chain::Ethereum && is_case_sensitive {
-        eprintln!("Error: --case-sensitive is not supported for Ethereum.");
-        std::process::exit(1);
     }
 }

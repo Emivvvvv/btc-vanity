@@ -1,4 +1,4 @@
-# <img src='Bitcoin.svg.png' width='22'> btc-vanity
+# <img src='images/bitcoin.svg' height='22'> <img src='images/ethereum.png' height='22'> <img src='images/solana.png' height='22'> btc-vanity
 
 A bitcoin vanity address generator written with the Rust programming language.
 
@@ -10,8 +10,8 @@ You can easily run btc-vanity terminal application locally or use it as a librar
 
 DO NOT USE THE PRIVATE KEYS ON THE SCREENSHOTS! NEVER EVER SHARE YOUR PRIVATE KEY! THESE ACCOUNTS ARE NOT IN USE! USING THESE ACCOUNTS MEAN YOU PROBABLY LOSE YOUR MONEY!
 
-![My Image](example.png)
-![My Image](examples-input-file.png)
+![My Image](images/example.png)
+![My Image](images/examples-input-file.png)
 
 ## Features
 

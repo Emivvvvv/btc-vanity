@@ -44,7 +44,16 @@ impl SolanaKeyPair {
     pub fn get_public_key_as_base58(&self) -> String {
         self.keypair.pubkey().to_string()
     }
-}
+
+        pub fn keypair(&self) -> &Keypair {
+            &self.keypair
+        }
+
+        pub fn address(&self) -> &String {
+            &self.address
+        }
+    }
+
 
 #[cfg(test)]
 mod tests {

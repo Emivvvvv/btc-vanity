@@ -62,7 +62,20 @@ impl EthereumKeyPair {
     pub fn get_address_with_prefix(&self) -> String {
         format!("0x{}", self.address)
     }
-}
+
+        pub fn private_key(&self) -> &SecretKey {
+            &self.private_key
+        }
+
+        pub fn public_key(&self) -> &PublicKey {
+            &self.public_key
+        }
+
+        pub fn address(&self) -> &String {
+            &self.address
+        }
+    }
+
 
 #[cfg(test)]
 mod tests {

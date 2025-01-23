@@ -2,7 +2,7 @@ use btc_vanity::cli::cli;
 use btc_vanity::decoration::get_decoration_strings;
 use btc_vanity::error::VanityError;
 use btc_vanity::file::write_output_file;
-use btc_vanity::flags::{get_cli_flags, get_strings_flags, Chain, CliFlags};
+use btc_vanity::flags::{get_cli_flags, get_strings_flags, Chain, CliFlags, StringsFlags};
 use btc_vanity::keys_and_address::{BitcoinKeyPair, EthereumKeyPair, SolanaKeyPair};
 use btc_vanity::vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};
 
@@ -49,22 +49,24 @@ fn print_initial_message(
 fn generate_vanity_address(
     pattern: &str,
     threads: u64,
-    cli_flags: &CliFlags,
+    string_flags: &StringsFlags,
 ) -> Result<String, String> {
     let start = Instant::now();
 
+    println!("LOL: {:?}", string_flags.vanity_mode);
+
     // "Inline" everything in each arm so we get a single `Result<String, String>`
-    let out = match cli_flags.chain {
+    let out = match string_flags.chain {
         Chain::Bitcoin => {
             // 1) Generate the Bitcoin vanity
-            let result: Result<BitcoinKeyPair, VanityError> = match cli_flags.vanity_mode {
+            let result: Result<BitcoinKeyPair, VanityError> = match string_flags.vanity_mode {
                 VanityMode::Regex => VanityAddr::generate_regex::<BitcoinKeyPair>(pattern, threads),
                 _ => VanityAddr::generate::<BitcoinKeyPair>(
                     pattern,
                     threads,
-                    cli_flags.is_case_sensitive,
-                    !cli_flags.is_fast_disabled,
-                    cli_flags.vanity_mode,
+                    string_flags.is_case_sensitive,
+                    !string_flags.is_fast_disabled,
+                    string_flags.vanity_mode,
                 ),
             };
 
@@ -99,16 +101,16 @@ fn generate_vanity_address(
 
         Chain::Ethereum => {
             // 1) Generate the Ethereum vanity
-            let result: Result<EthereumKeyPair, VanityError> = match cli_flags.vanity_mode {
+            let result: Result<EthereumKeyPair, VanityError> = match string_flags.vanity_mode {
                 VanityMode::Regex => {
                     VanityAddr::generate_regex::<EthereumKeyPair>(pattern, threads)
                 }
                 _ => VanityAddr::generate::<EthereumKeyPair>(
                     pattern,
                     threads,
-                    cli_flags.is_case_sensitive,
-                    !cli_flags.is_fast_disabled,
-                    cli_flags.vanity_mode,
+                    string_flags.is_case_sensitive,
+                    !string_flags.is_fast_disabled,
+                    string_flags.vanity_mode,
                 ),
             };
 
@@ -116,16 +118,10 @@ fn generate_vanity_address(
             match result {
                 Ok(res) => {
                     // Convert private key to hex
-                    let private_key_hex = res.private_key.as_ref().iter().fold(
-                        String::new(),
-                        |mut acc: String, &byte: &u8| {
-                            write!(&mut acc, "{:02X}", byte).unwrap();
-                            acc
-                        },
-                    );
+                    let private_key_hex = res.get_address_with_prefix();
 
                     // Convert uncompressed pubkey to hex
-                    let pub_uncompressed = res.public_key.serialize_uncompressed();
+                    let pub_uncompressed = res.public_key().serialize_uncompressed();
                     let pub_hex_str = pub_uncompressed[1..].iter().fold(
                         String::new(),
                         |mut acc: String, &byte: &u8| {
@@ -150,14 +146,14 @@ fn generate_vanity_address(
 
         Chain::Solana => {
             // 1) Generate the Solana vanity
-            let result: Result<SolanaKeyPair, VanityError> = match cli_flags.vanity_mode {
+            let result: Result<SolanaKeyPair, VanityError> = match string_flags.vanity_mode {
                 VanityMode::Regex => VanityAddr::generate_regex::<SolanaKeyPair>(pattern, threads),
                 _ => VanityAddr::generate::<SolanaKeyPair>(
                     pattern,
                     threads,
-                    cli_flags.is_case_sensitive,
-                    !cli_flags.is_fast_disabled,
-                    cli_flags.vanity_mode,
+                    string_flags.is_case_sensitive,
+                    !string_flags.is_fast_disabled,
+                    string_flags.vanity_mode,
                 ),
             };
 
@@ -165,7 +161,7 @@ fn generate_vanity_address(
             match result {
                 Ok(res) => {
                     // Keypair -> hex
-                    let keypair_bytes = res.keypair.to_bytes();
+                    let keypair_bytes = res.keypair().to_bytes();
                     let private_key_hex =
                         keypair_bytes
                             .iter()
@@ -234,7 +230,7 @@ fn main() {
             vanity_mode_str, string, case_sensitive_str
         );
 
-        let result = generate_vanity_address(string, cli_flags.threads, &cli_flags);
+        let result = generate_vanity_address(string, cli_flags.threads, &string_flags);
 
         match result {
             Ok(buffer2) => handle_output(&cli_flags, &buffer1, &buffer2),

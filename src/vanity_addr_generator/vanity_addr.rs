@@ -1,11 +1,14 @@
-use std::mem::MaybeUninit;
-use crate::error::VanityError;
-use crate::vanity_addr_generator::chain::Chain;
-
-use regex::Regex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread;
+use std::mem::MaybeUninit;
+
+use crate::error::VanityError;
+use crate::vanity_addr_generator::chain::Chain;
+use crate::vanity_addr_generator::compx::{contains_memx, eq_prefix_memx, eq_suffix_memx,
+};
+
+use regex::Regex;
 
 const BATCH_SIZE: usize = 100;
 
@@ -74,8 +77,8 @@ fn generate_batch_of_pairs<T: Chain>() -> [T; BATCH_SIZE] {
     let mut batch: [MaybeUninit<T>; BATCH_SIZE] = unsafe { MaybeUninit::uninit().assume_init() };
 
     // Initialize each element in the array
-    for i in 0..BATCH_SIZE {
-        batch[i] = MaybeUninit::new(T::generate_random());
+    for item in batch.iter_mut() {
+        *item = MaybeUninit::new(T::generate_random());
     }
 
     // SAFELY convert the initialized `MaybeUninit` array into a properly initialized array
@@ -95,6 +98,7 @@ impl SearchEngines {
     ) -> T {
         let string_bytes = string.as_bytes();
         let string_len = string_bytes.len();
+        let _string_len = string_bytes.len();
         let lower_string_bytes = if !case_sensitive {
             string_bytes
                 .iter()
@@ -125,10 +129,8 @@ impl SearchEngines {
 
                         let matches = match vanity_mode {
                             VanityMode::Prefix => {
-                                if address_bytes.len() < string_len {
-                                    false
-                                } else if case_sensitive {
-                                    address_bytes[..string_len] == thread_string_bytes
+                                if case_sensitive {
+                                    eq_prefix_memx(address_bytes, &thread_string_bytes)
                                 } else {
                                     address_bytes[..string_len]
                                         .iter()
@@ -138,11 +140,8 @@ impl SearchEngines {
                                 }
                             }
                             VanityMode::Suffix => {
-                                if address_bytes.len() < string_len {
-                                    false
-                                } else if case_sensitive {
-                                    address_bytes[address_bytes.len() - string_len..]
-                                        == thread_string_bytes
+                                if case_sensitive {
+                                    eq_suffix_memx(address_bytes, &thread_string_bytes)
                                 } else {
                                     address_bytes[address_bytes.len() - string_len..]
                                         .iter()
@@ -153,9 +152,7 @@ impl SearchEngines {
                             }
                             VanityMode::Anywhere => {
                                 if case_sensitive {
-                                    address_bytes
-                                        .windows(string_len)
-                                        .any(|window| window == thread_string_bytes)
+                                    contains_memx(address_bytes, &thread_string_bytes)
                                 } else {
                                     address_bytes.windows(string_len).any(|window| {
                                         window
@@ -467,7 +464,7 @@ mod tests {
             assert!(keys_and_address
                 .get_address()
                 .to_lowercase()
-                .starts_with(&expected_prefix));
+                .starts_with(expected_prefix));
         }
 
         #[test]

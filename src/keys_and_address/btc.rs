@@ -85,7 +85,7 @@ mod tests {
         assert_eq!(keys_and_address.public_key, derived_public_key);
 
         // Check if the derived public key generates the same address
-        let derived_address = Address::p2pkh(&derived_public_key, Bitcoin).to_string();
+        let derived_address = Address::p2pkh(derived_public_key, Bitcoin).to_string();
         assert_eq!(keys_and_address.comp_address, derived_address);
     }
 }
