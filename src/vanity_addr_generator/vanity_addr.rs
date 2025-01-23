@@ -4,7 +4,7 @@ use std::thread;
 use std::mem::MaybeUninit;
 
 use crate::error::VanityError;
-use crate::vanity_addr_generator::chain::Chain;
+use crate::vanity_addr_generator::chain::VanityChain;
 use crate::vanity_addr_generator::compx::{contains_memx, eq_prefix_memx, eq_suffix_memx,
 };
 
@@ -17,8 +17,9 @@ const BATCH_SIZE: usize = 100;
 pub struct VanityAddr;
 
 /// Vanity mode enum
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Default)]
 pub enum VanityMode {
+    #[default]
     Prefix,
     Suffix,
     Anywhere,
@@ -29,7 +30,7 @@ impl VanityAddr {
     /// Checks all given information's before passing to the vanity address finder function.
     /// See `[validate_input]` for passing conditions.
     /// Returns Result<[keys_and_address::KeysAndAddress], VanityGeneratorError>
-    pub fn generate<T: Chain + 'static>(
+    pub fn generate<T: VanityChain + 'static>(
         string: &str,
         threads: u64,
         case_sensitive: bool,
@@ -54,7 +55,7 @@ impl VanityAddr {
     /// Checks regex before passing to the vanity address finder function.
     /// See [validate_regex_input] for passing conditions.
     /// Returns Result<[keys_and_address::KeysAndAddress], VanityGeneratorError>
-    pub fn generate_regex<T: Chain + 'static>(
+    pub fn generate_regex<T: VanityChain + 'static>(
         regex_str: &str,
         threads: u64,
     ) -> Result<T, VanityError> {
@@ -72,7 +73,7 @@ impl VanityAddr {
 /// impl's `find_vanity_address_fast_engine` and `find_vanity_address_fast_engine_with_range`
 pub struct SearchEngines;
 
-fn generate_batch_of_pairs<T: Chain>() -> [T; BATCH_SIZE] {
+fn generate_batch_of_pairs<T: VanityChain>() -> [T; BATCH_SIZE] {
     // Create an uninitialized array
     let mut batch: [MaybeUninit<T>; BATCH_SIZE] = unsafe { MaybeUninit::uninit().assume_init() };
 
@@ -90,7 +91,7 @@ impl SearchEngines {
     /// First come served! If a thread finds a vanity address that satisfy all the requirements,
     /// it sends the `KeysAndAddress` via an `mpsc` channel. The main thread then signals
     /// all other threads to stop via an `AtomicBool`.
-    fn find_vanity_address<T: Chain + 'static>(
+    fn find_vanity_address<T: VanityChain + 'static>(
         string: String,
         threads: u64,
         case_sensitive: bool,
@@ -193,7 +194,7 @@ impl SearchEngines {
     /// First come served! If a thread finds a vanity address that satisfy all the requirements,
     /// it sends the `KeysAndAddress` via an `mpsc` channel. The main thread then signals
     /// all other threads to stop via an `AtomicBool`.
-    pub fn find_vanity_address_regex<T: Chain + 'static>(
+    pub fn find_vanity_address_regex<T: VanityChain + 'static>(
         regex_str: String,
         threads: u64,
     ) -> Result<T, VanityError> {

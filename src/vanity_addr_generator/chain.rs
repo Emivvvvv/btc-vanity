@@ -9,7 +9,7 @@ const ALLOWED_REGEX_META: &[char] = &[
     '^', '$', '.', '*', '+', '?', '(', ')', '[', ']', '{', '}', '|', '-',
 ];
 
-pub trait Chain: KeyPairGenerator + Send {
+pub trait VanityChain: KeyPairGenerator + Send {
     /// Default implementation for Base58 (BTC and SOL) using chains.
     /// Checks all given information before passing to the vanity address finder function.
     /// 1) If length > 4 and `fast_mode` is true, reject (too long).
@@ -64,7 +64,7 @@ pub trait Chain: KeyPairGenerator + Send {
     }
 }
 
-impl Chain for BitcoinKeyPair {
+impl VanityChain for BitcoinKeyPair {
     fn adjust_input(input: &str, vanity_mode: VanityMode) -> String {
         match vanity_mode {
             VanityMode::Prefix => format!("1{input}"),
@@ -81,7 +81,7 @@ impl Chain for BitcoinKeyPair {
     }
 }
 
-impl Chain for EthereumKeyPair {
+impl VanityChain for EthereumKeyPair {
     /// Checks all given information before passing to the Ethereum vanity address finder function.
     /// 1) If length > 12 and `fast_mode` is true, reject (too long).
     /// 2) If any character is not base16, reject.
@@ -134,4 +134,39 @@ impl Chain for EthereumKeyPair {
     }
 }
 
-impl Chain for SolanaKeyPair {}
+impl VanityChain for SolanaKeyPair {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Chain {
+    #[default]
+    Bitcoin,
+    Ethereum,
+    Solana,
+}
+
+impl std::str::FromStr for Chain {
+    type Err = String;
+
+    fn from_str(chain: &str) -> Result<Self, Self::Err> {
+        match chain.to_lowercase().as_str() {
+            "bitcoin" => Ok(Chain::Bitcoin),
+            "ethereum" => Ok(Chain::Ethereum),
+            "solana" => Ok(Chain::Solana),
+            _ => Err(format!("Unsupported chain: {}", chain)),
+        }
+    }
+}
+
+impl std::fmt::Display for Chain {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Chain::Bitcoin => "bitcoin",
+                Chain::Ethereum => "ethereum",
+                Chain::Solana => "solana",
+            }
+        )
+    }
+}

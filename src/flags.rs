@@ -5,6 +5,7 @@
 
 use crate::file::{get_strings_and_flags_from_file, FileFlags};
 use crate::vanity_addr_generator::vanity_addr::VanityMode;
+use crate::vanity_addr_generator::chain::Chain;
 use clap::ArgMatches;
 
 /// This struct is used to save the cli flags
@@ -188,39 +189,5 @@ pub fn get_strings_flags(cli_args: &CliFlags, index: usize) -> StringsFlags {
                 string_chain,
             )
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Chain {
-    Bitcoin,
-    Ethereum,
-    Solana,
-}
-
-impl std::str::FromStr for Chain {
-    type Err = String;
-
-    fn from_str(chain: &str) -> Result<Self, Self::Err> {
-        match chain.to_lowercase().as_str() {
-            "bitcoin" => Ok(Chain::Bitcoin),
-            "ethereum" => Ok(Chain::Ethereum),
-            "solana" => Ok(Chain::Solana),
-            _ => Err(format!("Unsupported chain: {}", chain)),
-        }
-    }
-}
-
-impl std::fmt::Display for Chain {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Chain::Bitcoin => "bitcoin",
-                Chain::Ethereum => "ethereum",
-                Chain::Solana => "solana",
-            }
-        )
     }
 }

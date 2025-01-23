@@ -3,7 +3,7 @@
 //! This module is used for reading multiple strings and flags from files and writing found vanity wallets to desired destination.
 
 use crate::error::VanityError;
-use crate::flags::Chain;
+use crate::vanity_addr_generator::chain::Chain;
 use crate::vanity_addr_generator::vanity_addr::VanityMode;
 use std::fs::OpenOptions;
 use std::io::Write;
