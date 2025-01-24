@@ -30,7 +30,6 @@ impl KeyPairGenerator for SolanaKeyPair {
         })
     }
 
-
     /// Retrieves the Solana address as a `String` reference.
     #[inline(always)]
     fn get_address(&self) -> &String {

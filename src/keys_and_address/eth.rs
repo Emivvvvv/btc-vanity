@@ -44,13 +44,11 @@ impl KeyPairGenerator for EthereumKeyPair {
         })
     }
 
-
     /// Retrieves the Ethereum address as `String` reference.
     #[inline(always)]
     fn get_address(&self) -> &String {
         &self.address
     }
-
 
     /// Retrieves the Ethereum address in byte slice format.
     #[inline(always)]

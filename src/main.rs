@@ -11,13 +11,13 @@ use btc_vanity::keys_and_address::{BitcoinKeyPair, EthereumKeyPair, SolanaKeyPai
 use btc_vanity::vanity_addr_generator::chain::Chain;
 use btc_vanity::vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};
 
+use bitcoin::hex::DisplayHex;
 use btc_vanity::KeyPairGenerator;
 use clap::error::ErrorKind;
 use std::fmt::Write as FmtWrite;
 use std::path::Path;
 use std::process;
 use std::time::Instant;
-use bitcoin::hex::DisplayHex;
 
 /// Generates and formats a vanity address depending on the chain.
 /// Returns a `Result<String, String>` where the `Ok(String)` is the final formatted output.
@@ -211,7 +211,9 @@ fn handle_item(pattern: &str, flags: &VanityFlags) {
             // Otherwise, print to stdout.
             if let Some(ref file_path) = flags.output_file_name {
                 // example from your existing code:
-                if let Err(e) = write_output_file(Path::new(file_path), &format!("{}\n{}", buffer1, buffer2)) {
+                if let Err(e) =
+                    write_output_file(Path::new(file_path), &format!("{}\n{}", buffer1, buffer2))
+                {
                     eprintln!("Failed to write output: {}", e);
                 }
             } else {

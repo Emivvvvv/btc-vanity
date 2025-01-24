@@ -243,7 +243,7 @@ impl VanityChain for EthereumKeyPair {
     ///
     /// # Behavior:
     /// - For regex patterns, if the pattern starts with `^0x`, the `0x` is removed for vanity
-    /// address generation.
+    ///   address generation.
     fn adjust_regex_pattern(regex_str: &str) -> String {
         let mut pattern_str = regex_str.to_string();
         if pattern_str.starts_with("^0x") {

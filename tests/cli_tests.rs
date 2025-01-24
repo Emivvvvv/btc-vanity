@@ -1,6 +1,6 @@
-use std::process::Command;
 use std::fs;
 use std::io::Write;
+use std::process::Command;
 
 use tempfile::NamedTempFile;
 
@@ -22,7 +22,9 @@ fn test_cli_with_prefix() {
     // Verify that the output contains the expected prefix
     let stdout = String::from_utf8_lossy(&result.stdout);
     assert!(
-        stdout.to_ascii_lowercase().contains("address (compressed): 1tst"),
+        stdout
+            .to_ascii_lowercase()
+            .contains("address (compressed): 1tst"),
         "CLI output does not contain expected prefix: {}",
         stdout
     );
@@ -45,9 +47,7 @@ fn test_cli_with_regex() {
 
     // Verify that the output matches the regex
     let stdout = String::from_utf8_lossy(&result.stdout);
-    assert!(
-        stdout.contains("address (compressed): 1E") && stdout.contains("regex: '^1E.*T$'"),
-    );
+    assert!(stdout.contains("address (compressed): 1E") && stdout.contains("regex: '^1E.*T$'"),);
 }
 
 #[test]
@@ -70,7 +70,9 @@ fn test_cli_with_output_file() {
     // Check that the output file exists
     let output = fs::read_to_string(output_file).expect("Failed to read output file");
     assert!(
-        output.to_ascii_lowercase().contains("address (compressed): 1tst"),
+        output
+            .to_ascii_lowercase()
+            .contains("address (compressed): 1tst"),
         "Output file does not contain expected data: {}",
         output
     );
@@ -111,10 +113,7 @@ fn test_cli_missing_required_arguments() {
         .expect("Failed to execute CLI command");
 
     // Check that the CLI exits with an error
-    assert!(
-        !result.status.success(),
-        "CLI succeeded unexpectedly"
-    );
+    assert!(!result.status.success(), "CLI succeeded unexpectedly");
 
     // Verify that the error message is printed
     let stderr = String::from_utf8_lossy(&result.stderr);
@@ -150,9 +149,9 @@ fn test_cli_with_input_file_tempfile() {
     // Verify that the output contains the expected results
     let stdout = String::from_utf8_lossy(&result.stdout);
     assert!(
-        stdout.to_lowercase().contains("address (compressed): 1t1") && stdout.contains("address (compressed): 1T2"),
+        stdout.to_lowercase().contains("address (compressed): 1t1")
+            && stdout.contains("address (compressed): 1T2"),
         "CLI output does not contain expected results: {}",
         stdout
     );
 }
-

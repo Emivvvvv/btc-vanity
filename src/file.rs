@@ -5,7 +5,7 @@
 //! - Writing generated vanity wallet details to output files.
 
 use crate::flags::VanityFlags;
-use crate::{VanityMode, Chain, VanityError};
+use crate::{Chain, VanityError, VanityMode};
 
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
@@ -151,7 +151,10 @@ pub fn parse_input_file(path: &str) -> Result<Vec<FileLineItem>, VanityError> {
 ///   such as due to invalid input or a write failure.
 pub fn write_output_file(output_path: &Path, buffer: &str) -> Result<(), VanityError> {
     // Attempt to open the file in append mode
-    let file_result = OpenOptions::new().append(true).create(true).open(output_path);
+    let file_result = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(output_path);
     let mut file = match file_result {
         Ok(file) => file,
         Err(e) => {
@@ -175,8 +178,8 @@ pub fn write_output_file(output_path: &Path, buffer: &str) -> Result<(), VanityE
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_line, parse_input_file};
-    use crate::{VanityMode};
+    use super::{parse_input_file, parse_line};
+    use crate::VanityMode;
 
     #[test]
     fn test_parse_line_with_valid_flags() {
@@ -297,7 +300,10 @@ mod tests {
         assert!(result.is_ok(), "Failed to parse file with empty lines");
 
         let items = result.unwrap();
-        assert!(items.is_empty(), "Parsed items should be empty for a file with only empty lines");
+        assert!(
+            items.is_empty(),
+            "Parsed items should be empty for a file with only empty lines"
+        );
 
         // Clean up
         std::fs::remove_file(file_path).expect("Failed to delete mock input file");
