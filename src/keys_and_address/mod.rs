@@ -1,7 +1,7 @@
 //! # Key Pair and Address Generation Module
 //!
 //! This module provides functionality for generating random key pairs and their associated addresses.
-//! Supported cryptocurrencies are `Bitcoin`, and `Ethereum`.
+//! Supported cryptocurrencies are `Bitcoin` and `Ethereum`.
 
 pub mod btc;
 pub mod eth;
@@ -16,7 +16,7 @@ use secp256k1::{PublicKey as SecpPublicKey, SecretKey};
 /// A trait to handle generic key pair and address creation.
 /// Used in vanity address generation.
 ///
-/// Implemented by `BitcoinKeyPair`, and `EthereumKeyPair`.
+/// Implemented by `BitcoinKeyPair` and `EthereumKeyPair`.
 pub trait KeyPairGenerator {
     /// Generates a random key pair.
     ///
