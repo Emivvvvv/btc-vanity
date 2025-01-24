@@ -61,3 +61,34 @@ pub unsafe fn eq_suffix_case_insensitive(data: &[u8], pattern: &[u8]) -> bool {
 
     true
 }
+
+pub unsafe fn contains_case_insensitive(data: &[u8], pattern: &[u8], pattern_len: usize) -> bool {
+    let data_len = data.len();
+
+    for start in 0..=(data_len - pattern_len) {
+        let mut found = true;
+
+        for i in 0..pattern_len {
+            let a = *data.get_unchecked(start + i);
+            let b = *pattern.get_unchecked(i);
+
+            // Convert `a` to lowercase if it is an uppercase ASCII letter
+            let a = if a.is_ascii_uppercase() {
+                a | 0b00100000
+            } else {
+                a
+            };
+
+            if a != b {
+                found = false;
+                break; // Early exit on mismatch
+            }
+        }
+
+        if found {
+            return true; // Return early if a match is found
+        }
+    }
+
+    false
+}

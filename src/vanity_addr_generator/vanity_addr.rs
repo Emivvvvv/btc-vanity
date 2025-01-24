@@ -13,8 +13,8 @@ use std::thread;
 use crate::error::VanityError;
 use crate::vanity_addr_generator::chain::VanityChain;
 use crate::vanity_addr_generator::compx::{
-    contains_memx, eq_prefix_case_insensitive, eq_prefix_memx, eq_suffix_case_insensitive,
-    eq_suffix_memx,
+    contains_case_insensitive, contains_memx, eq_prefix_case_insensitive, eq_prefix_memx,
+    eq_suffix_case_insensitive, eq_suffix_memx,
 };
 use crate::BATCH_SIZE;
 
@@ -200,13 +200,13 @@ impl SearchEngines {
                                 if case_sensitive {
                                     contains_memx(address_bytes, &thread_string_bytes)
                                 } else {
-                                    address_bytes.windows(string_len).any(|window| {
-                                        window
-                                            .iter()
-                                            .map(|b| b.to_ascii_lowercase())
-                                            .collect::<Vec<u8>>()
-                                            == thread_lower_string_bytes
-                                    })
+                                    unsafe {
+                                        contains_case_insensitive(
+                                            address_bytes,
+                                            &thread_string_bytes,
+                                            string_len,
+                                        )
+                                    }
                                 }
                             }
                             VanityMode::Regex => unreachable!(),
