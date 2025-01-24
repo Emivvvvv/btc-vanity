@@ -1,63 +1,126 @@
 name: Release
 permissions:
-  contents: write
+  "contents": "write"
 
 on:
   push:
+    branches:
+      - release  # Only trigger on the `release` branch
     tags:
-      - '**[0-9]+.[0-9]+.[0-9]+*'
+      - '**[0-9]+.[0-9]+.[0-9]+*'  # Tags must still match this pattern
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-20.04, macos-latest, windows-latest]
+  # Run 'cargo dist plan' (or host) to determine what tasks we need to do
+  plan:
+    if: ${{ github.ref_name == 'release' }}  # Ensure this only runs for the `release` branch
+    runs-on: "ubuntu-20.04"
+    outputs:
+      val: ${{ steps.plan.outputs.manifest }}
+      tag: ${{ !github.event.pull_request && github.ref_name || '' }}
+      tag-flag: ${{ !github.event.pull_request && format('--tag={0}', github.ref_name) || '' }}
+      publishing: ${{ !github.event.pull_request }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install dependencies
-        if: matrix.os == 'ubuntu-20.04'
-        run: sudo apt-get update && sudo apt-get install -y build-essential perl make
-
-      - name: Install dependencies (Windows)
-        if: matrix.os == 'windows-latest'
-        run: choco install strawberryperl make
-
-      - name: Install dependencies (macOS)
-        if: matrix.os == 'macos-latest'
-        run: brew install perl make
-
-      - name: Add Rust target
-        run: rustup target add x86_64-unknown-linux-gnu
-
-      - name: Build with vendored OpenSSL
-        run: |
-          cargo build --release --features "vendored"
-          cargo dist build --output-format=json
-
-      - name: Upload artifacts
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install cargo-dist
+        shell: bash
+        run: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.22.1/cargo-dist-installer.sh | sh"
+      - name: Cache cargo-dist
         uses: actions/upload-artifact@v4
         with:
-          name: build-${{ matrix.os }}
-          path: target/release
+          name: cargo-dist-cache
+          path: ~/.cargo/bin/cargo-dist
+      - id: plan
+        run: |
+          cargo dist ${{ (!github.event.pull_request && format('host --steps=create --tag={0}', github.ref_name)) || 'plan' }} --output-format=json > plan-dist-manifest.json
+          echo "cargo dist ran successfully"
+          cat plan-dist-manifest.json
+          echo "manifest=$(jq -c "." plan-dist-manifest.json)" >> "$GITHUB_OUTPUT"
+      - name: "Upload dist-manifest.json"
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-plan-dist-manifest
+          path: plan-dist-manifest.json
 
-  release:
-    needs: build
-    runs-on: ubuntu-20.04
+  build-local-artifacts:
+    if: ${{ github.ref_name == 'release' }}  # Ensure this only runs for the `release` branch
+    needs:
+      - plan
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.val).ci.github.artifacts_matrix }}
     steps:
-      - name: Download Artifacts
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install cargo-dist
+        run: ${{ matrix.install_dist }}
+      - name: Build artifacts
+        run: |
+          cargo dist build ${{ needs.plan.outputs.tag-flag }} --print=linkage --output-format=json ${{ matrix.dist_args }} > dist-manifest.json
+      - name: "Upload artifacts"
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-build-local-${{ join(matrix.targets, '_') }}
+          path: dist-manifest.json
+
+  build-global-artifacts:
+    if: ${{ github.ref_name == 'release' }}  # Ensure this only runs for the `release` branch
+    needs:
+      - plan
+      - build-local-artifacts
+    runs-on: "ubuntu-20.04"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install cached cargo-dist
         uses: actions/download-artifact@v4
         with:
-          name: build-${{ matrix.os }}
-          path: artifacts
+          name: cargo-dist-cache
+          path: ~/.cargo/bin/
+      - name: Fetch local artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: artifacts-*
+          path: target/distrib/
+          merge-multiple: true
+      - name: Build global artifacts
+        run: |
+          cargo dist build ${{ needs.plan.outputs.tag-flag }} --output-format=json "--artifacts=global" > dist-manifest.json
+      - name: "Upload artifacts"
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-build-global
+          path: dist-manifest.json
 
+  host:
+    if: ${{ github.ref_name == 'release' }}  # Ensure this only runs for the `release` branch
+    needs:
+      - plan
+      - build-local-artifacts
+      - build-global-artifacts
+    runs-on: "ubuntu-20.04"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Fetch artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: artifacts-*
+          path: target/distrib/
+          merge-multiple: true
       - name: Create GitHub Release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRERELEASE_FLAG: "${{ fromJson(steps.host.outputs.manifest).announcement_is_prerelease && '--prerelease' || '' }}"
+          ANNOUNCEMENT_TITLE: "${{ fromJson(steps.host.outputs.manifest).announcement_title }}"
+          ANNOUNCEMENT_BODY: "${{ fromJson(steps.host.outputs.manifest).announcement_github_body }}"
+          RELEASE_COMMIT: "${{ github.sha }}"
         run: |
-          gh release create ${{ github.ref_name }} \
-            --title "Release ${{ github.ref_name }}" \
-            --notes "Automated release of ${{ github.ref_name }}" \
-            artifacts/*
+          echo "$ANNOUNCEMENT_BODY" > $RUNNER_TEMP/notes.txt
+          gh release create "${{ needs.plan.outputs.tag }}" --target "$RELEASE_COMMIT" $PRERELEASE_FLAG --title "$ANNOUNCEMENT_TITLE" --notes-file "$RUNNER_TEMP/notes.txt"
