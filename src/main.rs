@@ -45,22 +45,10 @@ fn generate_vanity_address(pattern: &str, vanity_flags: &VanityFlags) -> Result<
             // 2) Format the result on success
             match result {
                 Ok(res) => {
-                    // Convert to hex
-                    let private_key_hex = res.get_private_key().to_bytes().iter().fold(
-                        String::new(),
-                        |mut acc: String, &byte: &u8| {
-                            write!(&mut acc, "{:02X}", byte).unwrap();
-                            acc
-                        },
-                    );
-
-                    // Build the final output string
                     let s = format!(
-                        "private_key (hex): {}\n\
-                         private_key (wif): {}\n\
+                         "private_key (wif): {}\n\
                          public_key (compressed): {}\n\
                          address (compressed): {}\n\n",
-                        private_key_hex,
                         res.get_wif_private_key(),
                         res.get_comp_public_key(),
                         res.get_comp_address()
@@ -90,26 +78,15 @@ fn generate_vanity_address(pattern: &str, vanity_flags: &VanityFlags) -> Result<
             // 2) Format on success
             match result {
                 Ok(res) => {
-                    // Convert private key to hex
-                    let private_key_hex = res.get_address_with_prefix();
-
-                    // Convert uncompressed pubkey to hex
-                    let pub_uncompressed = res.public_key().serialize_uncompressed();
-                    let pub_hex_str = pub_uncompressed[1..].iter().fold(
-                        String::new(),
-                        |mut acc: String, &byte: &u8| {
-                            write!(&mut acc, "{:02X}", byte).unwrap();
-                            acc
-                        },
-                    );
-
+                    let private_key_hex = res.get_private_key_as_hex();
+                    let pub_key_hex = res.get_public_key_as_hex();
                     let address = res.get_address();
 
                     let s = format!(
                         "private_key (hex): 0x{}\n\
-                         public_key (uncompressed): 0x{}\n\
+                         public_key (hex): 0x{}\n\
                          address: 0x{}\n\n",
-                        private_key_hex, pub_hex_str, address
+                        private_key_hex, pub_key_hex, address
                     );
                     Ok(s)
                 }
@@ -239,7 +216,7 @@ fn main() {
             } else {
                 eprintln!("{}", err);
             }
-            std::process::exit(1);
+            process::exit(1);
         }
     };
 

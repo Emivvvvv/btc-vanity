@@ -35,7 +35,7 @@ pub enum VanityError {
     #[error("Request too long!")]
     RequestTooLong,
 
-    #[error!("Case sensitive wallet generation is not supported for Ethereum!")]
+    #[error("Case sensitive wallet generation is not supported for Ethereum!")]
     EthereumCaseSensitiveIsNotSupported,
 }
 
