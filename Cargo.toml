@@ -1,6 +1,6 @@
 [package]
 name = "btc-vanity"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 authors = ["Emirhan TALA <tala.emirhan@gmail.com>"]
 description = "Bitcoin, Ethereum and Solana vanity address generator."
 edition = "2021"
