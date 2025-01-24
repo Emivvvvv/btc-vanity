@@ -1,54 +1,215 @@
 # <img src='images/bitcoin.svg' height='22'> <img src='images/ethereum.png' height='22'> <img src='images/solana.png' height='22'> btc-vanity
 
-A bitcoin vanity address generator written with the Rust programming language.
+A blazingly fast vanity address generator written with the Rust programming language. Supporting Bitcoin, Ethereum, and Solana.
 
-With btc-vanity, you can create a private key that generates a compressed Bitcoin pay address featuring a custom prefix, suffix, a specific string, or even a pattern matching your custom regex!
+With btc-vanity, you can generate wallets that has custom addresses with prefixes, suffixes, substrings, or even regex patterns. It's designed for **speed**, **flexibility**, and **security**.
 
 You can easily run btc-vanity terminal application locally or use it as a library to create your vanity keypair securely.
 
-## Screenshots
+## Key Features
 
-DO NOT USE THE PRIVATE KEYS ON THE SCREENSHOTS! NEVER EVER SHARE YOUR PRIVATE KEY! THESE ACCOUNTS ARE NOT IN USE! USING THESE ACCOUNTS MEAN YOU PROBABLY LOSE YOUR MONEY!
-
-![My Image](images/example.png)
-![My Image](images/examples-input-file.png)
-
-## Features
-
-- **Flexible Address Customization**: Generate Bitcoin addresses with custom prefixes, suffixes, patterns matching your desired regex, or specific strings located anywhere in the address, with optional case insensitivity for enhanced flexibility.
-- **Batch Wallet Generation with Custom Flags**: Generate multiple wallets in bulk using an input file with desired addresses and configurable flags for each.
-- **Output Wallets to File**: Automatically save generated wallet addresses to an output file for easy access.
+**Multi-Chain Support**: Generate vanity addresses for: `Bitcoin`, `Ethereum`, and `Solana`.
+**Advanced Customization**: Match prefixes, suffixes, substrings, or regex-based patterns with optional case insensitivity.
+**Blazingly Fast Performance**: Fully utilize your hardware with customizable thread counts.
+**Batch File Support**: Bulk generate addresses using input files with desired patterns.
 
 ## Installation
 
-```
+### CLI
+
+Install the binary using `cargo`:
+p
+```bash
 $ cargo install btc-vanity
 ```
-[btc-vanity crates.io](https://crates.io/crates/btc-vanity)
 
+### Library
 
-## Example Usages
+Or include it as a library in your Rust project:
 
+```toml
+[dependencies]
+btc-vanity = "2.0.0"
 ```
-$ btc-vanity -c -a Emiv
+Crate on [crates.io](https://crates.io/crates/btc-vanity)
+Documentation on [docs.rs](https://docs.rs/btc-vanity/latest/btc_vanity/index.html)
+
+## CLI Usage
+
+### Basic CLI Syntax
+
+The CLI tool provides several options to customize your address generation:
+
+```shell
+$ btc-vanity [OPTIONS] <PATTERN>
 ```
 
-```
-$ btc-vanity -s -o wallet.txt fart
+#### Blockchain Selection
+`--btc`: Generates Bitcoin keypairs and addresses. [default] <br>
+`--eth`: Generates Ethereum keypairs and addresses. <br>
+`--sol`: Generates Solana keypairs and addresses. <br>
+
+#### General Options
+`-i, --input-file <FILE>`: Reads patterns and it's flags from the specified file for vanity address generation, with one pattern per line. <br>
+`-o, --output-file <FILE>`: Saves generated wallet details to the specified file, creating it if it doesn’t exist or appending if it does. <br>
+`-t, --threads <N>`: Sets the number of threads for address generation. <br>
+`-f, --force-flags`: Forces CLI flags to override any flags specified in the input file, ensuring consistent behavior across all patterns. <br>
+`-d, --disable-fast`: Disables fast mode to allow longer patterns (5 for BTC and SOL, 16 for ETH), though it may increase search time. <br>
+
+#### Matching Options
+`-p, --prefix`: Matches the pattern as a prefix of the address. [default] <br>
+`-s, --suffix`: Matches the pattern as a suffix of the address. <br>
+`-a, --anywhere`: Matches the pattern anywhere in the address. <br>
+`-r, --regex <REGEX>`: Matches addresses using a regex pattern, supporting advanced customization like anchors and wildcards. <br>
+`-c, --case-sensitive`: Enables case-sensitive matching, making patterns distinguish between uppercase and lowercase characters. <br>
+
+### Bitcoin CLI Examples
+
+Generate a Bitcoin address with prefix `1Emiv` (case-insensitive):
+
+```shell
+$ btc-vanity Emiv
 ```
 
-```
-$ btc-vanity -r ^E.*99.*T$
-```
+Generate a Bitcoin address containing the substring `test` (case-sensitive):
 
-```
-$ btc-vanity -f -p -c -i inputs.txt -o wallets.txt
+```shell
+$ btc-vanity -a -c test
 ```
 
-## Documentation
+Generate a Bitcoin address using a regex pattern `^1E.*T$`:
 
-[btc-vanity documentation](https://docs.rs/btc-vanity/latest/btc_vanity/index.html)
+```shell
+$ btc-vanity -r "^1E.*T$"
+```
 
+Generate multiple Bitcoin addresses and save to wallets.txt:
+
+> [!NOTE]  
+> -f flag will override any pattern flags inside the `input-file.txt`.
+> For example if there line `emiv -s --eth` will become `emiv -p --btc -c`. 
+> The resulting wallet will be printed in `wallets.txt`.
+
+```shell
+$ btc-vanity -f --btc -p -c -i input-file.txt -o wallets.txt
+```
+
+Generate an Ethereum address starting with 0xdead with 8 threads:
+
+```shell
+$ btc-vanity --eth -t 8 dead
+```
+
+Generate a Solana address ending with 123:
+
+```shell
+$ btc-vanity --sol -s 123
+```
+
+## Library Usage
+
+Here are some usage examples of `btc-vanity` as a library.
+
+### Generate a Bitcoin Vanity Address
+
+Find a Bitcoin address that contains the substring `emiv` (case-insensitive) using 16 threads:
+
+```rust
+use btc_vanity::{BitcoinKeyPair, VanityAddr, VanityMode};
+
+let vanity_address: BitcoinKeyPair = VanityAddr::generate(
+            "emiv", // Desired substring
+            16,     // Number of threads
+            false,  // Case-insensitive
+            true,   // Enable fast mode
+            VanityMode::Anywhere // Match substring anywhere in the address
+            ).unwrap();
+
+println!("Vanity address:\n\
+          private_key (WIF): {}\n\
+          public_key (compressed): {}\n\
+          address (compressed): {}\n",
+          vanity_address.get_wif_private_key(),
+          vanity_address.get_comp_public_key(),
+          vanity_address.get_comp_address());
+```
+
+#### Generate an Ethereum Vanity Address
+
+Match an Ethereum address with the prefix `0xdead` using 8 threads:
+
+```rust
+use btc_vanity::{EthereumKeyPair, KeyPairGenerator, VanityAddr, VanityMode};
+
+let vanity_address: EthereumKeyPair = VanityAddr::generate(
+            "dead", // Desired prefix (without 0x)
+            8,      // Number of threads
+            false,  // Case-insensitive (Case sensitivity not supported on ETH generation)
+            true,   // Enable fast mode
+            VanityMode::Prefix // Match substring at the start
+            ).unwrap();
+
+println!("Ethereum vanity address:\n\
+          private_key: {}\n\
+          public_key: {}\n\
+          address: {}\n",
+          vanity_address.get_private_key_as_hex(),
+          vanity_address.get_private_key_as_hex(),
+          vanity_address.get_address());
+```
+
+#### Generate a Solana Vanity Address
+
+Create a Solana address with `meow` anywhere in the address (case-sensitive) using 4 threads:
+
+```rust
+use btc_vanity::{SolanaKeyPair, KeyPairGenerator, VanityAddr, VanityMode};
+
+let vanity_address: SolanaKeyPair = VanityAddr::generate(
+            "meow",  // Desired substring
+            4,      // Number of threads
+            true,  // Case-sensitive
+            true,   // Enable fast mode
+            VanityMode::Anywhere // Match substring anywhere in the address
+            ).unwrap();
+
+println!("Solana vanity address:\n\
+          private_key: {}\n\
+          public_key: {}\n\
+          address: {}\n",
+          vanity_address.get_private_key_as_base58(),
+          vanity_address.get_public_key_as_base58(),
+          vanity_address.get_address());
+```
+
+#### Regex Matching for Bitcoin Addresses
+
+Find a Bitcoin address that matches a regex pattern `^1E.ET.*T$` with using 12 threads:
+
+```rust
+use btc_vanity::{BitcoinKeyPair, VanityAddr};
+
+let vanity_address = VanityAddr::generate_regex::<BitcoinKeyPair>(
+            "^1E.ET.*T$", // The regex pattern
+            12            // Number of threads
+            ).unwrap();
+
+println!("Bitcoin regex-matched vanity address:\n\
+          private_key (WIF): {}\n\
+          public_key (compressed): {}\n\
+          address (compressed): {}\n",
+          vanity_address.get_wif_private_key(),
+          vanity_address.get_comp_public_key(),
+          vanity_address.get_comp_address());
+```
+
+## Screenshots
+
+DO NOT USE THE PRIVATE KEYS IN THESE SCREENSHOTS. They are for demonstration purposes only.
+
+## Contributing
+
+Contributions are welcome! If you’d like to improve btc-vanity or add support for additional chains, feel free to open an issue or submit a pull request on GitHub.
 
 ## Disclaimer
 

@@ -45,18 +45,19 @@ pub fn cli() -> Command {
                 .long("btc")
                 .action(ArgAction::SetTrue)
                 .conflicts_with_all(["ethereum", "solana"])
+                .help("Generates Bitcoin keypairs and addresses. [default]")
         )
         .arg(
             Arg::new("ethereum")
                 .long("eth")
                 .action(ArgAction::SetTrue)
-                .conflicts_with_all(["bitcoin", "solana"])
+                .conflicts_with_all(["bitcoin", "solana"]).help("Generates Ethereum keypairs and addresses.")
         )
         .arg(
             Arg::new("solana")
                 .long("sol")
                 .action(ArgAction::SetTrue)
-                .conflicts_with_all(["bitcoin", "ethereum"])
+                .conflicts_with_all(["bitcoin", "ethereum"]).help("Generates Solana keypairs and addresses.")
         )
         .arg(
             Arg::new("string")
@@ -70,24 +71,21 @@ pub fn cli() -> Command {
                 .long("input-file")
                 .required_unless_present_any(["string"])
                 .value_name("FILE")
-                .help("Path to a file containing strings to match addresses. \
-                      \nImportant: Each string should be written on a separate line."),
+                .help("Reads patterns and it's flags from the specified file for vanity address generation, with one pattern and it's flags per line."),
         )
         .arg(
             Arg::new("output-file")
                 .short('o')
                 .long("output-file")
                 .value_name("FILE")
-                .help("Creates or appends found wallet(s) to the specified file."),
+                .help("Saves generated wallet details to the specified file, creating it if it doesn’t exist or appending if it does."),
         )
         .arg(
             Arg::new("force-flags")
                 .short('f')
                 .long("force-flags")
                 .action(ArgAction::SetTrue)
-                .help("Overrides the flags in the input file. \
-                      \nIf set, this will enforce CLI-provided flags. \
-                      \nNote: CLI -f is stronger than input-file -f."),
+                .help("Forces CLI flags to override any flags specified in the input file, ensuring consistent behavior across all patterns."),
         )
         .group(
             ArgGroup::new("pattern")
@@ -101,7 +99,7 @@ pub fn cli() -> Command {
                 .long("prefix")
                 .action(ArgAction::SetTrue)
                 .conflicts_with_all(["suffix", "anywhere", "regex"])
-                .help("Finds a vanity address with the specified string as a prefix. [default]"),
+                .help("Matches the pattern as a prefix of the address. [default]"),
         )
         .arg(
             Arg::new("suffix")
@@ -109,7 +107,7 @@ pub fn cli() -> Command {
                 .long("suffix")
                 .action(ArgAction::SetTrue)
                 .conflicts_with_all(["prefix", "anywhere", "regex"])
-                .help("Finds a vanity address with the specified string as a suffix."),
+                .help("Matches the pattern as a suffix of the address."),
         )
         .arg(
             Arg::new("anywhere")
@@ -117,7 +115,7 @@ pub fn cli() -> Command {
                 .long("anywhere")
                 .action(ArgAction::SetTrue)
                 .conflicts_with_all(["prefix", "suffix", "regex"])
-                .help("Finds a vanity address containing the specified string anywhere in the address."),
+                .help("Matches the pattern anywhere in the address."),
         )
         .arg(
             Arg::new("regex")
@@ -125,16 +123,7 @@ pub fn cli() -> Command {
                 .long("regex")
                 .action(ArgAction::SetTrue)
                 .conflicts_with_all(["prefix", "suffix", "anywhere"])
-                .long_help(
-                    "Specifies a regex pattern for your desired vanity address. \
-                    \nSupports common regex syntax, such as anchors (^, $), character classes, and wildcards. \
-                    \nExample: '^1abc.*xyz$' matches addresses starting with '1abc' and ending with 'xyz'. \
-                    \nNote: If your pattern starts with '^' but not '^1', '1' will automatically be prepended \
-                    \n(e.g., '^E' becomes '^1E'). \
-                    \nOnly Base58 characters (excluding '0', 'I', 'O', 'l') are valid in matches. \
-                    \nRegex mode has no length restriction. However, long or restrictive patterns may \
-                    \nsignificantly increase search time and could make finding a match impossible.",
-                ),
+                .help("Matches addresses using a regex pattern, supporting advanced customization like anchors and wildcards."),
         )
         .arg(
             Arg::new("threads")
@@ -142,20 +131,20 @@ pub fn cli() -> Command {
                 .long("threads")
                 .value_name("N")
                 .default_value("8")
-                .help("Sets the number of threads to use."),
+                .help("Sets the number of threads for address generation."),
         )
         .arg(
             Arg::new("case-sensitive")
                 .short('c')
                 .long("case-sensitive")
                 .action(ArgAction::SetTrue)
-                .help("Enables case-sensitive matching for addresses."),
+                .help("Enables case-sensitive matching, making patterns distinguish between uppercase and lowercase characters."),
         )
         .arg(
             Arg::new("disable-fast-mode")
                 .short('d')
                 .long("disable-fast")
                 .action(ArgAction::SetTrue)
-                .help("Disables fast mode, allowing for prefixes longer than 4 characters."),
+                .help("Disables fast mode to allow longer patterns (5 for BTC and SOL, 16 for ETH), though it may increase search time."),
         )
 }
