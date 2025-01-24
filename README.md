@@ -8,12 +8,15 @@ You can easily run btc-vanity terminal application locally or use it as a librar
 
 ## Key Features
 
-**Multi-Chain Support**: Generate vanity addresses for: `Bitcoin`, `Ethereum`, and `Solana`.
-**Advanced Customization**: Match prefixes, suffixes, substrings, or regex-based patterns with optional case insensitivity.
-**Blazingly Fast Performance**: Fully utilize your hardware with customizable thread counts.
-**Batch File Support**: Bulk generate addresses using input files with desired patterns.
+**Multi-Chain Support**: Generate vanity addresses for: `Bitcoin`, `Ethereum`, and `Solana`. <br>
+**Advanced Customization**: Match prefixes, suffixes, substrings, or regex-based patterns with optional case insensitivity. <br>
+**Blazingly Fast Performance**: Fully utilize your hardware with customizable thread counts. <br>
+**Batch File Support**: Bulk generate addresses using input files with desired patterns. <br>
 
 ## Installation
+
+> [!CAUTION]
+> btc-vanity has recently migrated to version 2. Please use it cautiously.
 
 ### CLI
 
@@ -29,9 +32,9 @@ Or include it as a library in your Rust project:
 
 ```toml
 [dependencies]
-btc-vanity = "2.0.0"
+btc-vanity = "2.0.1"
 ```
-Crate on [crates.io](https://crates.io/crates/btc-vanity)
+Crate on [crates.io](https://crates.io/crates/btc-vanity) <br>
 Documentation on [docs.rs](https://docs.rs/btc-vanity/latest/btc_vanity/index.html)
 
 ## CLI Usage

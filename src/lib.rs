@@ -123,7 +123,10 @@
 
 pub const BATCH_SIZE: usize = 100;
 
+pub mod cli;
 pub mod error;
+pub mod file;
+pub mod flags;
 pub mod keys_and_address;
 pub mod vanity_addr_generator;
 

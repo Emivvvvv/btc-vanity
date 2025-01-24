@@ -4,12 +4,14 @@
 //! - Parsing input files containing vanity patterns and flags.
 //! - Writing generated vanity wallet details to output files.
 
-use crate::flags::VanityFlags;
-use crate::{Chain, VanityError, VanityMode};
-
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::Path;
+
+use crate::error::VanityError;
+use crate::flags::VanityFlags;
+use crate::vanity_addr_generator::chain::Chain;
+use crate::VanityMode;
 
 /// Represents a single line item from an input file,
 /// containing a vanity pattern and associated flags.
