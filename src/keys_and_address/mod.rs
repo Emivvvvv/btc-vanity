@@ -7,6 +7,10 @@ pub mod btc;
 pub mod eth;
 pub mod sol;
 
+use std::array::from_fn;
+
+use crate::BATCH_SIZE;
+
 use bitcoin::{PrivateKey, PublicKey};
 use secp256k1::{PublicKey as SecpPublicKey, SecretKey};
 use solana_sdk::signature::Keypair;
@@ -29,6 +33,26 @@ pub trait KeyPairGenerator {
 
     /// Retrieves the address bytes associated with the key pair.
     fn get_address_bytes(&self) -> &[u8];
+
+    fn generate_batch() -> [Self; BATCH_SIZE]
+    where
+        Self: Sized,
+    {
+        from_fn(|_| Self::generate_random())
+    }
+
+    /// Fills an existing array with newly generated key pairs.
+    ///
+    /// We simply iterate and overwrite each slot with a call
+    /// to `Self::generate_random()`.
+    fn fill_batch(batch_array: &mut [Self; BATCH_SIZE])
+    where
+        Self: Sized,
+    {
+        for slot in batch_array.iter_mut() {
+            *slot = Self::generate_random();
+        }
+    }
 }
 
 /// A struct representing a Bitcoin key pair and its associated address.

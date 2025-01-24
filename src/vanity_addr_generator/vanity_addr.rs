@@ -6,7 +6,6 @@
 //! - Multi-threaded generation of vanity addresses.
 //! - Pattern matching using prefix, suffix, anywhere, and regex modes.
 
-use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread;
@@ -14,10 +13,9 @@ use std::thread;
 use crate::error::VanityError;
 use crate::vanity_addr_generator::chain::VanityChain;
 use crate::vanity_addr_generator::compx::{contains_memx, eq_prefix_memx, eq_suffix_memx};
+use crate::BATCH_SIZE;
 
 use regex::Regex;
-
-const BATCH_SIZE: usize = 100;
 
 /// An empty struct that provides functionality for generating vanity addresses.
 ///
@@ -159,12 +157,15 @@ impl SearchEngines {
             let thread_lower_string_bytes = lower_string_bytes.clone();
 
             thread::spawn(move || {
+                let mut batch: [T; BATCH_SIZE] = T::generate_batch();
+                let mut dummy = T::generate_random();
+
                 while !found_any.load(Ordering::Relaxed) {
                     // Generate a batch of addresses
-                    let batch = generate_batch_of_pairs::<T>();
+                    T::fill_batch(&mut batch);
 
                     // Check each address in the batch
-                    for keys_and_address in batch {
+                    for (i, keys_and_address) in batch.iter().enumerate() {
                         let address_bytes = keys_and_address.get_address_bytes();
 
                         let matches = match vanity_mode {
@@ -212,7 +213,8 @@ impl SearchEngines {
                             if !found_any.swap(true, Ordering::Relaxed) {
                                 // We're the first thread to set found_any = true
                                 // Attempt to send the result
-                                let _ = sender.send(keys_and_address);
+                                std::mem::swap(&mut batch[i], &mut dummy);
+                                let _ = sender.send(dummy);
                             }
                             // Return immediately: no need to generate more
                             return;
@@ -265,6 +267,9 @@ impl SearchEngines {
             thread::spawn(move || {
                 // Initialize the regex in thread-local storage.
                 THREAD_REGEX.with(|local_regex| {
+                    let mut batch: [T; BATCH_SIZE] = T::generate_batch();
+                    let mut dummy = T::generate_random();
+
                     let mut local_regex_ref = local_regex.borrow_mut();
                     if local_regex_ref.is_none() {
                         *local_regex_ref = Some(Regex::new(&regex_clone).unwrap());
@@ -274,15 +279,16 @@ impl SearchEngines {
 
                     while !found_any.load(Ordering::Relaxed) {
                         // Generate a batch of addresses
-                        let batch = generate_batch_of_pairs::<T>();
+                        T::fill_batch(&mut batch);
 
                         // Check each address in the batch
-                        for keys_and_address in batch {
+                        for (i, keys_and_address) in batch.iter().enumerate() {
                             let address = keys_and_address.get_address();
                             if regex.is_match(address) && !found_any.load(Ordering::Relaxed) {
                                 // If a match is found, send it to the main thread
                                 if !found_any.swap(true, Ordering::Relaxed) {
-                                    sender.send(keys_and_address).unwrap();
+                                    std::mem::swap(&mut batch[i], &mut dummy);
+                                    let _ = sender.send(dummy);
                                     return;
                                 }
                             }
@@ -298,27 +304,6 @@ impl SearchEngines {
             .recv()
             .expect("Receiver closed before a matching address was found"))
     }
-}
-
-/// Generates a batch of random key pairs for a specific chain.
-///
-/// # Returns
-/// - An array of key pairs of size `BATCH_SIZE`.
-///
-/// # Behavior
-/// - Uses `MaybeUninit` to efficiently initialize an array of key pairs.
-/// - Ensures that all elements are properly initialized before use.
-fn generate_batch_of_pairs<T: VanityChain>() -> [T; BATCH_SIZE] {
-    // Create an uninitialized array
-    let mut batch: [MaybeUninit<T>; BATCH_SIZE] = unsafe { MaybeUninit::uninit().assume_init() };
-
-    // Initialize each element in the array
-    for item in batch.iter_mut() {
-        *item = MaybeUninit::new(T::generate_random());
-    }
-
-    // SAFELY convert the initialized `MaybeUninit` array into a properly initialized array
-    unsafe { std::mem::transmute_copy(&batch) }
 }
 
 #[cfg(test)]

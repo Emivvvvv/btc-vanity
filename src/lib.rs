@@ -96,9 +96,10 @@
 //! $ btc-vanity -f -s -i inputs.txt
 //! ```
 
-pub mod keys_and_address;
+pub const BATCH_SIZE: usize = 100;
 
 pub mod error;
+pub mod keys_and_address;
 pub mod utils;
 pub mod vanity_addr_generator;
 
