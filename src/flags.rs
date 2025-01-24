@@ -5,11 +5,9 @@
 //! - Parse flags and input patterns from the CLI.
 //! - Combine and prioritize CLI-level and file-based flags.
 
-
-
-use clap::ArgMatches;
 use crate::vanity_addr_generator::chain::Chain;
 use crate::VanityMode;
+use clap::ArgMatches;
 
 /// Represents the configuration flags for vanity address generation.
 #[derive(Debug, Clone, Default)]

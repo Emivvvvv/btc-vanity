@@ -1,8 +1,10 @@
 use btc_vanity::cli::cli;
-use btc_vanity::flags::{parse_cli, PatternsSource, VanityFlags};
-use btc_vanity::file::{parse_input_file, write_output_file};
 use btc_vanity::error::VanityError;
-use btc_vanity::keys_and_address::{BitcoinKeyPair, EthereumKeyPair, SolanaKeyPair, KeyPairGenerator};
+use btc_vanity::file::{parse_input_file, write_output_file};
+use btc_vanity::flags::{parse_cli, PatternsSource, VanityFlags};
+use btc_vanity::keys_and_address::{
+    BitcoinKeyPair, EthereumKeyPair, KeyPairGenerator, SolanaKeyPair,
+};
 use btc_vanity::vanity_addr_generator::chain::Chain;
 use btc_vanity::vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};
 
