@@ -427,7 +427,7 @@ dependencies = [
 
 [[package]]
 name = "btc-vanity"
-version = "1.4.1"
+version = "2.0.0-alpha.1"
 dependencies = [
  "bitcoin",
  "clap",
@@ -442,6 +442,7 @@ dependencies = [
  "secp256k1 0.30.0",
  "sha3 0.11.0-pre.4",
  "solana-sdk",
+ "tempfile",
  "thiserror 2.0.11",
 ]
 
@@ -819,6 +820,12 @@ dependencies = [
  "libc",
  "windows-sys",
 ]
+
+[[package]]
+name = "fastrand"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
 name = "feature-probe"
@@ -2469,6 +2476,20 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "tempfile"
+version = "3.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a8a559c81686f576e8cd0290cd2a24a2a9ad80c98b3478856500fcbd7acd704"
+dependencies = [
+ "cfg-if",
+ "fastrand",
+ "getrandom 0.2.15",
+ "once_cell",
+ "rustix",
+ "windows-sys",
 ]
 
 [[package]]

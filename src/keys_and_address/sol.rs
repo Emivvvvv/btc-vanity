@@ -1,4 +1,6 @@
 //! # Solana Key Pair and Address Generation
+//!
+//! This module provides functionality to generate Solana key pairs and their associated addresses.
 
 use rand::{rngs::ThreadRng, RngCore};
 use solana_sdk::bs58;
@@ -12,8 +14,10 @@ thread_local! {
 }
 
 impl KeyPairGenerator for SolanaKeyPair {
-    /// Generates a randomly generated Solana key pair and their address.
-    /// Returns `SolanaKeyPair` struct.
+    /// Generates a random Solana key pair and its address.
+    ///
+    /// # Returns
+    /// - A [SolanaKeyPair] struct containing the key pair and address.
     #[inline(always)]
     fn generate_random() -> Self {
         THREAD_LOCAL_RNG.with(|rng| {
@@ -26,10 +30,14 @@ impl KeyPairGenerator for SolanaKeyPair {
         })
     }
 
+
+    /// Retrieves the Solana address as a `String` reference.
+    #[inline(always)]
     fn get_address(&self) -> &String {
         &self.address
     }
 
+    /// Retrieves the Solana address in byte slice format.
     #[inline(always)]
     fn get_address_bytes(&self) -> &[u8] {
         self.address.as_bytes()
@@ -37,27 +45,26 @@ impl KeyPairGenerator for SolanaKeyPair {
 }
 
 impl SolanaKeyPair {
+    /// Retrieves the key pair as a `solana_sdk::signature::Keypair` reference.
+    pub fn keypair(&self) -> &Keypair {
+        &self.keypair
+    }
+
+    /// Retrieves the private key in Base58 encoding as a `String`.
     pub fn get_private_key_as_base58(&self) -> String {
         bs58::encode(self.keypair.secret().to_bytes()).into_string()
     }
 
-    pub fn get_public_key_as_base58(&self) -> String {
-        self.keypair.pubkey().to_string()
+    /// Retrieves the public key in Base58 encoding as `String` reference.
+    pub fn get_public_key_as_base58(&self) -> &String {
+        &self.address
     }
-
-        pub fn keypair(&self) -> &Keypair {
-            &self.keypair
-        }
-
-        pub fn address(&self) -> &String {
-            &self.address
-        }
-    }
-
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use bs58;
     use solana_sdk::signature::Signer;
 
@@ -88,7 +95,7 @@ mod tests {
         let key_pair = SolanaKeyPair::generate_random();
         let public_key_base58 = key_pair.keypair.pubkey().to_string();
 
-        assert_eq!(key_pair.get_public_key_as_base58(), public_key_base58);
+        assert_eq!(*key_pair.get_public_key_as_base58(), public_key_base58);
     }
 
     #[test]

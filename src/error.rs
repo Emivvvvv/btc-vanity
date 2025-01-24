@@ -30,6 +30,9 @@ pub enum VanityError {
 
     #[error("Regex is not Base16 encoded!")]
     RegexNotBase16,
+
+    #[error("Request too long!")]
+    RequestTooLong,
 }
 
 impl From<KeysAndAddressError> for VanityError {

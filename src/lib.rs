@@ -96,14 +96,12 @@
 //! $ btc-vanity -f -s -i inputs.txt
 //! ```
 
-pub mod cli;
-pub mod decoration;
-pub mod error;
-pub mod file;
-pub mod flags;
-pub mod keys_and_address;
-pub mod utils;
-pub mod vanity_addr_generator;
 
-pub use keys_and_address::{BitcoinKeyPair, EthereumKeyPair, KeyPairGenerator};
+pub mod keys_and_address;
+
+pub mod vanity_addr_generator;
+pub mod utils;
+pub mod error;
+
+pub use keys_and_address::{BitcoinKeyPair, EthereumKeyPair, SolanaKeyPair, KeyPairGenerator};
 pub use vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};

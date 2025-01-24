@@ -1,38 +1,65 @@
+//! # Vanity Address Generator Module
+//!
+//! This module defines the [VanityAddr] and [SearchEngines] structs, which handle the generation
+//! of vanity cryptocurrency addresses using custom patterns and regular expressions. It supports:
+//! - Validation and adjustment of inputs for specific chains.
+//! - Multi-threaded generation of vanity addresses.
+//! - Pattern matching using prefix, suffix, anywhere, and regex modes.
+
+use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread;
-use std::mem::MaybeUninit;
 
 use crate::error::VanityError;
 use crate::vanity_addr_generator::chain::VanityChain;
-use crate::vanity_addr_generator::compx::{contains_memx, eq_prefix_memx, eq_suffix_memx,
-};
+use crate::vanity_addr_generator::compx::{contains_memx, eq_prefix_memx, eq_suffix_memx};
 
 use regex::Regex;
 
 const BATCH_SIZE: usize = 100;
 
-/// An Empty Struct for a more structured code
-/// implements the only public function generate
+/// An empty struct that provides functionality for generating vanity addresses.
+///
+/// This struct contains only static methods and acts as a logical container for
+/// vanity address generation functionality.
 pub struct VanityAddr;
 
-/// Vanity mode enum
+/// Enum to define the matching mode for vanity address generation.
 #[derive(Copy, Clone, Debug, PartialEq, Default)]
 pub enum VanityMode {
+    /// Matches addresses that start with the pattern.
     #[default]
     Prefix,
+    /// Matches addresses that end with the pattern.
     Suffix,
+    /// Matches addresses that contain the pattern anywhere.
     Anywhere,
+    /// Matches addresses based on a regular expression.
     Regex,
 }
 
 impl VanityAddr {
-    /// Checks all given information's before passing to the vanity address finder function.
-    /// See `[validate_input]` for passing conditions.
-    /// Returns Result<[keys_and_address::KeysAndAddress], VanityGeneratorError>
+    /// Generates a vanity address for a given pattern.
+    ///
+    /// # Arguments
+    /// - `string`: The pattern string to match against addresses.
+    /// - `threads`: The number of threads to use for address generation.
+    /// - `case_sensitive`: Whether the matching should be case-sensitive.
+    /// - `fast_mode`: Whether to enable fast mode (with stricter limits on pattern length).
+    /// - `vanity_mode`: The mode of matching (e.g., prefix, suffix).
+    ///
+    /// # Returns
+    /// - `Ok(T)` where `T` is a type implementing [VanityChain], containing the generated address.
+    /// - `Err(VanityError)` if the input is invalid or generation fails.
+    ///
+    /// # Behavior
+    /// - Validates the input string for chain-specific rules.
+    /// - Adjusts the input string based on the chain and vanity mode.
+    /// - Uses multiple threads to search for a matching address.
     pub fn generate<T: VanityChain + 'static>(
         string: &str,
-        threads: u64,
+        threads: usize,
         case_sensitive: bool,
         fast_mode: bool,
         vanity_mode: VanityMode,
@@ -52,12 +79,23 @@ impl VanityAddr {
         ))
     }
 
-    /// Checks regex before passing to the vanity address finder function.
-    /// See [validate_regex_input] for passing conditions.
-    /// Returns Result<[keys_and_address::KeysAndAddress], VanityGeneratorError>
+    /// Generates a vanity address based on a regular expression.
+    ///
+    /// # Arguments
+    /// - `regex_str`: The regular expression to match against addresses.
+    /// - `threads`: The number of threads to use for address generation.
+    ///
+    /// # Returns
+    /// - `Ok(T)` where `T` is a type implementing [VanityChain], containing the generated address.
+    /// - `Err(VanityError)` if the regex is invalid or generation fails.
+    ///
+    /// # Behavior
+    /// - Validates the regular expression for chain-specific rules.
+    /// - Adjusts the regex pattern based on the chain.
+    /// - Uses multiple threads to search for a matching address.
     pub fn generate_regex<T: VanityChain + 'static>(
         regex_str: &str,
-        threads: u64,
+        threads: usize,
     ) -> Result<T, VanityError> {
         T::validate_regex_pattern(regex_str)?;
         let adjusted_regex = T::adjust_regex_pattern(regex_str);
@@ -70,30 +108,31 @@ impl VanityAddr {
     }
 }
 
-/// impl's `find_vanity_address_fast_engine` and `find_vanity_address_fast_engine_with_range`
+/// A helper struct that implements the core logic for searching for vanity addresses.
+///
+/// This struct contains static methods for address search using both plain patterns
+/// and regular expressions.
 pub struct SearchEngines;
 
-fn generate_batch_of_pairs<T: VanityChain>() -> [T; BATCH_SIZE] {
-    // Create an uninitialized array
-    let mut batch: [MaybeUninit<T>; BATCH_SIZE] = unsafe { MaybeUninit::uninit().assume_init() };
-
-    // Initialize each element in the array
-    for item in batch.iter_mut() {
-        *item = MaybeUninit::new(T::generate_random());
-    }
-
-    // SAFELY convert the initialized `MaybeUninit` array into a properly initialized array
-    unsafe { std::mem::transmute_copy(&batch) }
-}
-
 impl SearchEngines {
-    /// Search for the vanity address with given threads.
-    /// First come served! If a thread finds a vanity address that satisfy all the requirements,
-    /// it sends the `KeysAndAddress` via an `mpsc` channel. The main thread then signals
-    /// all other threads to stop via an `AtomicBool`.
+    /// Searches for a vanity address matching the given string pattern.
+    ///
+    /// # Arguments
+    /// - `string`: The string pattern to match against addresses.
+    /// - `threads`: The number of threads to use for address generation.
+    /// - `case_sensitive`: Whether the matching should be case-sensitive.
+    /// - `vanity_mode`: The mode of matching (e.g., prefix, suffix).
+    ///
+    /// # Returns
+    /// - A type implementing [VanityChain] that contains the generated address.
+    ///
+    /// # Behavior
+    /// - Spawns multiple threads to search for a matching address.
+    /// - Uses an atomic flag to stop all threads once a match is found.
+    /// - Uses an `mpsc` channel to send the matching address back to the main thread.
     fn find_vanity_address<T: VanityChain + 'static>(
         string: String,
-        threads: u64,
+        threads: usize,
         case_sensitive: bool,
         vanity_mode: VanityMode,
     ) -> T {
@@ -190,13 +229,23 @@ impl SearchEngines {
             .expect("Receiver closed before a vanity address was found")
     }
 
-    /// Search for the vanity address satisfies the given Regex.
-    /// First come served! If a thread finds a vanity address that satisfy all the requirements,
-    /// it sends the `KeysAndAddress` via an `mpsc` channel. The main thread then signals
-    /// all other threads to stop via an `AtomicBool`.
+    /// Searches for a vanity address matching the given regex pattern.
+    ///
+    /// # Arguments
+    /// - `regex_str`: The regex pattern to match against addresses.
+    /// - `threads`: The number of threads to use for address generation.
+    ///
+    /// # Returns
+    /// - `Ok(T)` where `T` is a type implementing [VanityChain], containing the generated address.
+    /// - `Err(VanityError)` if the regex is invalid or generation fails.
+    ///
+    /// # Behavior
+    /// - Spawns multiple threads to search for a matching address.
+    /// - Uses an atomic flag to stop all threads once a match is found.
+    /// - Uses an `mpsc` channel to send the matching address back to the main thread.
     pub fn find_vanity_address_regex<T: VanityChain + 'static>(
         regex_str: String,
-        threads: u64,
+        threads: usize,
     ) -> Result<T, VanityError> {
         // Validate the regex syntax
         Arc::new(Regex::new(&regex_str).map_err(|_e| VanityError::InvalidRegex)?);
@@ -249,6 +298,27 @@ impl SearchEngines {
             .recv()
             .expect("Receiver closed before a matching address was found"))
     }
+}
+
+/// Generates a batch of random key pairs for a specific chain.
+///
+/// # Returns
+/// - An array of key pairs of size `BATCH_SIZE`.
+///
+/// # Behavior
+/// - Uses `MaybeUninit` to efficiently initialize an array of key pairs.
+/// - Ensures that all elements are properly initialized before use.
+fn generate_batch_of_pairs<T: VanityChain>() -> [T; BATCH_SIZE] {
+    // Create an uninitialized array
+    let mut batch: [MaybeUninit<T>; BATCH_SIZE] = unsafe { MaybeUninit::uninit().assume_init() };
+
+    // Initialize each element in the array
+    for item in batch.iter_mut() {
+        *item = MaybeUninit::new(T::generate_random());
+    }
+
+    // SAFELY convert the initialized `MaybeUninit` array into a properly initialized array
+    unsafe { std::mem::transmute_copy(&batch) }
 }
 
 #[cfg(test)]
@@ -310,7 +380,7 @@ mod tests {
         #[test]
         #[should_panic(expected = "FastModeEnabled")]
         fn test_generate_vanity_string_too_long_with_fast_mode() {
-            let vanity_string = "12345"; // String longer than 4 characters
+            let vanity_string = "123456"; // String longer than 5 characters
             let _ = VanityAddr::generate::<BitcoinKeyPair>(
                 vanity_string,
                 4,                  // Use 4 threads
@@ -456,7 +526,7 @@ mod tests {
                 vanity_string,
                 4,                  // Use 4 threads
                 true,               // Case-insensitivity
-                true,               // Fast mode (limits string size to 12 characters)
+                true,               // Fast mode
                 VanityMode::Prefix, // Vanity mode set to Prefix
             )
             .unwrap();
@@ -475,7 +545,7 @@ mod tests {
                 vanity_string,
                 4,                  // Use 4 threads
                 false,              // Case-sensitivity
-                true,               // Fast mode (limits string size to 12 characters)
+                true,               // Fast mode
                 VanityMode::Suffix, // Vanity mode set to Suffix
             )
             .unwrap();
@@ -490,7 +560,7 @@ mod tests {
                 vanity_string,
                 4,                    // Use 4 threads
                 true,                 // Case-insensitivity
-                true,                 // Fast mode (limits string size to 12 characters)
+                true,                 // Fast mode (limits string size to 16 characters)
                 VanityMode::Anywhere, // Vanity mode set to Anywhere
             )
             .unwrap();
@@ -501,12 +571,12 @@ mod tests {
         #[test]
         #[should_panic(expected = "FastModeEnabled")]
         fn test_generate_vanity_string_too_long_with_fast_mode() {
-            let vanity_string = "1234567890123"; // String longer than 12 characters
+            let vanity_string = "12345678901234567890"; // String longer than 16 characters
             let _ = VanityAddr::generate::<EthereumKeyPair>(
                 vanity_string,
                 4,                  // Use 4 threads
                 false,              // Case-sensitivity
-                true,               // Fast mode (limits string size to 12 characters)
+                true,               // Fast mode (limits string size to 16 characters)
                 VanityMode::Prefix, // Vanity mode set to Prefix
             )
             .unwrap();
@@ -520,7 +590,7 @@ mod tests {
                 vanity_string,
                 4,                  // Use 4 threads
                 false,              // Case-sensitivity
-                true,               // Fast mode (limits string size to 12 characters)
+                true,               // Fast mode
                 VanityMode::Prefix, // Vanity mode set to Prefix
             )
             .unwrap();
@@ -534,7 +604,7 @@ mod tests {
                 vanity_string,
                 4,                  // Use 4 threads
                 false,              // Case-sensitivity
-                true,               // Fast mode (limits string size to 12 characters)
+                true,               // Fast mode
                 VanityMode::Prefix, // Vanity mode set to Prefix
             )
             .unwrap();
@@ -678,7 +748,7 @@ mod tests {
         #[test]
         #[should_panic(expected = "FastModeEnabled")]
         fn test_generate_vanity_string_too_long_with_fast_mode() {
-            let vanity_string = "12345"; // String longer than 4 characters
+            let vanity_string = "123456"; // String longer than 5 characters
             let _ = VanityAddr::generate::<SolanaKeyPair>(
                 vanity_string,
                 4,                  // Use 4 threads

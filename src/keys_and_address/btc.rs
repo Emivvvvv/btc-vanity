@@ -1,13 +1,16 @@
 //! # Bitcoin Key Pair and Address Generation
+//!
+//! This module provides functionality to generate Bitcoin key pairs and their associated compressed addresses.
+
+use std::cell::RefCell;
+
+use crate::keys_and_address::{BitcoinKeyPair, KeyPairGenerator};
 
 use bitcoin::key::rand::rngs::ThreadRng;
 use bitcoin::key::{PrivateKey, PublicKey};
 use bitcoin::secp256k1::{rand, All, Secp256k1};
 use bitcoin::Address;
 use bitcoin::Network::Bitcoin;
-use std::cell::RefCell;
-
-use crate::keys_and_address::{BitcoinKeyPair, KeyPairGenerator};
 
 thread_local! {
     static THREAD_LOCAL_SECP256K1: Secp256k1<All> = Secp256k1::new();
@@ -15,8 +18,10 @@ thread_local! {
 }
 
 impl KeyPairGenerator for BitcoinKeyPair {
-    /// Generates a randomly generated Bitcoin key pair and their compressed address.
-    /// Returns `BitcoinKeyPair` struct.
+    /// Generates a random Bitcoin key pair and its compressed address.
+    ///
+    /// # Returns
+    /// - A [BitcoinKeyPair] struct containing the private key, public key, and address.
     #[inline(always)]
     fn generate_random() -> Self {
         THREAD_LOCAL_SECP256K1.with(|secp256k1| {
@@ -36,10 +41,13 @@ impl KeyPairGenerator for BitcoinKeyPair {
         })
     }
 
+    /// Retrieves the compressed Bitcoin address as `String` reference.
+    #[inline(always)]
     fn get_address(&self) -> &String {
         &self.comp_address
     }
 
+    /// Retrieves the compressed Bitcoin address in byte slice format.
     #[inline(always)]
     fn get_address_bytes(&self) -> &[u8] {
         self.comp_address.as_bytes()
@@ -47,22 +55,27 @@ impl KeyPairGenerator for BitcoinKeyPair {
 }
 
 impl BitcoinKeyPair {
+    /// Retrieves the [PrivateKey] reference of the [BitcoinKeyPair].
     pub fn get_private_key(&self) -> &PrivateKey {
         &self.private_key
     }
 
+    /// Retrieves the [PublicKey] reference of the [BitcoinKeyPair].
     pub fn get_public_key(&self) -> &PublicKey {
         &self.public_key
     }
 
+    /// Retrieves the compressed address reference.
     pub fn get_comp_address(&self) -> &String {
         &self.comp_address
     }
 
+    /// Retrieves the private key in Wallet Import Format (WIF) as a `String`.
     pub fn get_wif_private_key(&self) -> String {
         self.private_key.to_wif()
     }
 
+    /// Retrieves the compressed public key as a `String`.
     pub fn get_comp_public_key(&self) -> String {
         self.public_key.to_string()
     }
