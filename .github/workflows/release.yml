@@ -12,74 +12,47 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-20.04, windows-latest, macos-latest]
+        os: [ubuntu-20.04, macos-latest, windows-latest]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Install dependencies for Linux
-      - name: Set up OpenSSL (Linux)
+      - name: Install dependencies
         if: matrix.os == 'ubuntu-20.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev
-          echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=/usr/lib/pkgconfig" >> $GITHUB_ENV
+        run: sudo apt-get update && sudo apt-get install -y build-essential perl make
 
-      # Install dependencies for Windows
-      - name: Set up OpenSSL (Windows)
+      - name: Install dependencies (Windows)
         if: matrix.os == 'windows-latest'
-        run: |
-          choco install openssl
-          if exist "C:\\Program Files\\OpenSSL-Win64" (
-              echo "OPENSSL_DIR=C:\\Program Files\\OpenSSL-Win64" >> $GITHUB_ENV
-              echo "PATH=C:\\Program Files\\OpenSSL-Win64\\bin;%PATH%" >> $GITHUB_ENV
-          )
+        run: choco install strawberryperl make
 
-      # Install dependencies for macOS
-      - name: Set up OpenSSL (macOS)
+      - name: Install dependencies (macOS)
         if: matrix.os == 'macos-latest'
-        run: |
-          brew update
-          brew install openssl
-          echo "OPENSSL_DIR=$(brew --prefix openssl)" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$(brew --prefix openssl)/lib/pkgconfig" >> $GITHUB_ENV
-          echo "PATH=$(brew --prefix openssl)/bin:$PATH" >> $GITHUB_ENV
+        run: brew install perl make
 
-      # Build the project
-      - name: Build artifacts
-        env:
-          RUSTFLAGS: "-C target-feature=+crt-static"
+      - name: Add Rust target
+        run: rustup target add x86_64-unknown-linux-gnu
+
+      - name: Build with vendored OpenSSL
         run: |
-          cargo build --release
+          cargo build --release --features "vendored"
           cargo dist build --output-format=json
 
-      # Upload build artifacts
-      - name: Upload build artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.os }}
-          path: dist
+          path: target/release
 
   release:
     needs: build
     runs-on: ubuntu-20.04
     steps:
-      - name: Download Linux artifacts
+      - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: build-ubuntu-20.04
-          path: artifacts/linux
-      - name: Download Windows artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-windows-latest
-          path: artifacts/windows
-      - name: Download macOS artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-macos-latest
-          path: artifacts/macos
+          name: build-${{ matrix.os }}
+          path: artifacts
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -87,4 +60,4 @@ jobs:
           gh release create ${{ github.ref_name }} \
             --title "Release ${{ github.ref_name }}" \
             --notes "Automated release of ${{ github.ref_name }}" \
-            artifacts/linux/* artifacts/windows/* artifacts/macos/*
+            artifacts/*
