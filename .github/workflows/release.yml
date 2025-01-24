@@ -23,16 +23,18 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libssl-dev
-          echo "OPENSSL_DIR=/usr/lib/ssl" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=/usr/lib/ssl/pkgconfig" >> $GITHUB_ENV
+          echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/usr/lib/pkgconfig" >> $GITHUB_ENV
 
       # Install dependencies for Windows
       - name: Set up OpenSSL (Windows)
         if: matrix.os == 'windows-latest'
         run: |
           choco install openssl
-          echo "OPENSSL_DIR=C:\\Program Files\\OpenSSL-Win64" >> $GITHUB_ENV
-          echo "PATH=C:\\Program Files\\OpenSSL-Win64\\bin;%PATH%" >> $GITHUB_ENV
+          if exist "C:\\Program Files\\OpenSSL-Win64" (
+              echo "OPENSSL_DIR=C:\\Program Files\\OpenSSL-Win64" >> $GITHUB_ENV
+              echo "PATH=C:\\Program Files\\OpenSSL-Win64\\bin;%PATH%" >> $GITHUB_ENV
+          )
 
       # Install dependencies for macOS
       - name: Set up OpenSSL (macOS)
@@ -57,7 +59,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.os }}
-          path: target/release
+          path: dist
 
   release:
     needs: build
