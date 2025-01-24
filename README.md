@@ -203,10 +203,6 @@ println!("Bitcoin regex-matched vanity address:\n\
           vanity_address.get_comp_address());
 ```
 
-## Screenshots
-
-DO NOT USE THE PRIVATE KEYS IN THESE SCREENSHOTS. They are for demonstration purposes only.
-
 ## Contributing
 
 Contributions are welcome! If you’d like to improve btc-vanity or add support for additional chains, feel free to open an issue or submit a pull request on GitHub.
