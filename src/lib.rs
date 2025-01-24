@@ -108,7 +108,7 @@
 //! use btc_vanity::{BitcoinKeyPair, VanityAddr};
 //!
 //! let vanity_address = VanityAddr::generate_regex::<BitcoinKeyPair>(
-//! "^1E.ET.*T$", // The regex pattern
+//! "^1E.*ET.*T$", // The regex pattern
 //! 12            // Number of threads
 //! ).unwrap();
 //!
