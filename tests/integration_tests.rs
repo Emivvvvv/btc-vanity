@@ -30,7 +30,7 @@ fn test_ethereum_vanity_address_prefix() {
     let result = VanityAddr::generate::<EthereumKeyPair>(
         "123", // Prefix
         8,     // Threads
-        true,  // Case-sensitive
+        false, // Case-sensitive
         true,  // Enable fast mode
         VanityMode::Prefix,
     );

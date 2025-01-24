@@ -12,7 +12,10 @@ use std::thread;
 
 use crate::error::VanityError;
 use crate::vanity_addr_generator::chain::VanityChain;
-use crate::vanity_addr_generator::compx::{contains_memx, eq_prefix_memx, eq_suffix_memx};
+use crate::vanity_addr_generator::compx::{
+    contains_memx, eq_prefix_case_insensitive, eq_prefix_memx, eq_suffix_case_insensitive,
+    eq_suffix_memx,
+};
 use crate::BATCH_SIZE;
 
 use regex::Regex;
@@ -173,22 +176,24 @@ impl SearchEngines {
                                 if case_sensitive {
                                     eq_prefix_memx(address_bytes, &thread_string_bytes)
                                 } else {
-                                    address_bytes[..string_len]
-                                        .iter()
-                                        .map(|b| b.to_ascii_lowercase())
-                                        .collect::<Vec<u8>>()
-                                        == thread_lower_string_bytes
+                                    unsafe {
+                                        eq_prefix_case_insensitive(
+                                            address_bytes,
+                                            &thread_lower_string_bytes,
+                                        )
+                                    }
                                 }
                             }
                             VanityMode::Suffix => {
                                 if case_sensitive {
                                     eq_suffix_memx(address_bytes, &thread_string_bytes)
                                 } else {
-                                    address_bytes[address_bytes.len() - string_len..]
-                                        .iter()
-                                        .map(|b| b.to_ascii_lowercase())
-                                        .collect::<Vec<u8>>()
-                                        == thread_lower_string_bytes
+                                    unsafe {
+                                        eq_suffix_case_insensitive(
+                                            address_bytes,
+                                            &thread_lower_string_bytes,
+                                        )
+                                    }
                                 }
                             }
                             VanityMode::Anywhere => {
@@ -510,7 +515,7 @@ mod tests {
             let keys_and_address = VanityAddr::generate::<EthereumKeyPair>(
                 vanity_string,
                 4,                  // Use 4 threads
-                true,               // Case-insensitivity
+                false,              // Case-insensitivity
                 true,               // Fast mode
                 VanityMode::Prefix, // Vanity mode set to Prefix
             )
@@ -544,7 +549,7 @@ mod tests {
             let keys_and_address = VanityAddr::generate::<EthereumKeyPair>(
                 vanity_string,
                 4,                    // Use 4 threads
-                true,                 // Case-insensitivity
+                false,                // Case-insensitivity
                 true,                 // Fast mode (limits string size to 16 characters)
                 VanityMode::Anywhere, // Vanity mode set to Anywhere
             )

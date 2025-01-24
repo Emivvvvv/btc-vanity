@@ -14,7 +14,6 @@ use btc_vanity::vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};
 use bitcoin::hex::DisplayHex;
 use btc_vanity::KeyPairGenerator;
 use clap::error::ErrorKind;
-use std::fmt::Write as FmtWrite;
 use std::path::Path;
 use std::process;
 use std::time::Instant;
@@ -46,7 +45,7 @@ fn generate_vanity_address(pattern: &str, vanity_flags: &VanityFlags) -> Result<
             match result {
                 Ok(res) => {
                     let s = format!(
-                         "private_key (wif): {}\n\
+                        "private_key (wif): {}\n\
                          public_key (compressed): {}\n\
                          address (compressed): {}\n\n",
                         res.get_wif_private_key(),

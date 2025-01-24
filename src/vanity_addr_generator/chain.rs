@@ -40,7 +40,11 @@ pub trait VanityChain: KeyPairGenerator + Send {
     /// - Rejects inputs that exceed the max length limit.
     /// - Ensures all characters are valid for the specific chain.
     /// - Makes additional chain-specific checks if needed.
-    fn validate_input(string: &str, fast_mode: bool, case_sensitive: bool) -> Result<(), VanityError>;
+    fn validate_input(
+        string: &str,
+        fast_mode: bool,
+        case_sensitive: bool,
+    ) -> Result<(), VanityError>;
 
     /// Validates a regex input string for the chain.
     ///
@@ -161,7 +165,11 @@ impl VanityChain for BitcoinKeyPair {
     ///
     /// # Implementation Notes
     /// - The validation relies on the `validate_base58_input` helper function, which encapsulates
-    fn validate_input(string: &str, fast_mode: bool, _case_sensitive: bool) -> Result<(), VanityError> {
+    fn validate_input(
+        string: &str,
+        fast_mode: bool,
+        _case_sensitive: bool,
+    ) -> Result<(), VanityError> {
         validate_base58_input(string, fast_mode)
     }
 
@@ -246,9 +254,13 @@ impl VanityChain for EthereumKeyPair {
     /// - Rejects inputs that exceed the length limit in fast mode.
     /// - Rejects inputs that exceed the max length limit.
     /// - Ensures all characters are valid Base16 (hexadecimal) characters.
-    fn validate_input(string: &str, fast_mode: bool, case_sensitive: bool) -> Result<(), VanityError> {
+    fn validate_input(
+        string: &str,
+        fast_mode: bool,
+        case_sensitive: bool,
+    ) -> Result<(), VanityError> {
         if case_sensitive {
-            return Err(VanityError::EthereumCaseSensitiveIsNotSupported)
+            return Err(VanityError::EthereumCaseSensitiveIsNotSupported);
         }
 
         if string.len() > BASE16_FAST_MODE_MAX && fast_mode {
@@ -346,7 +358,11 @@ impl VanityChain for SolanaKeyPair {
     ///
     /// # Implementation Notes
     /// - The validation relies on the `validate_base58_input` helper function, which encapsulates
-    fn validate_input(string: &str, fast_mode: bool, _case_sensitive: bool) -> Result<(), VanityError> {
+    fn validate_input(
+        string: &str,
+        fast_mode: bool,
+        _case_sensitive: bool,
+    ) -> Result<(), VanityError> {
         validate_base58_input(string, fast_mode)
     }
 

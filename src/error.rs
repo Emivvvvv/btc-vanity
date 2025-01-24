@@ -1,5 +1,5 @@
-use std::io;
 use log::error;
+use std::io;
 use thiserror::Error;
 
 /// A unified error type that encapsulates all possible errors in the btc-vanity application.
