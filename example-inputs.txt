@@ -1,4 +1,0 @@
-Emiv -c -p
-fart -s
-3169 -a
-^E.*99.*T$ -r

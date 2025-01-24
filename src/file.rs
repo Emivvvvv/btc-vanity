@@ -1,152 +1,359 @@
 //! # File Reading and Writing Module
 //!
-//! This module is used for reading multiple strings and flags from files and writing found vanity wallets to desired destination.
+//! This module provides functionality for:
+//! - Parsing input files containing vanity patterns and flags.
+//! - Writing generated vanity wallet details to output files.
 
-use crate::error::BtcVanityError;
-use crate::vanity_addr_generator::VanityMode;
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::{fs, io};
+use crate::flags::VanityFlags;
+use crate::{Chain, VanityError, VanityMode};
 
-/// This struct is used to get set flags for each string input
-/// from the file.
-#[derive(Debug)]
-pub struct FileFlags {
-    pub force_flags: bool,
-    pub is_case_sensitive: bool,
-    pub disable_fast_mode: bool,
-    pub output_file_name: Option<String>,
-    pub vanity_mode: Option<VanityMode>,
+use std::fs::{self, OpenOptions};
+use std::io::{self, Write};
+use std::path::Path;
+
+/// Represents a single line item from an input file,
+/// containing a vanity pattern and associated flags.
+#[derive(Debug, Clone)]
+pub struct FileLineItem {
+    /// The vanity pattern to match (e.g., "emiv").
+    pub pattern: String,
+    /// The associated `VanityFlags` configuration.
+    pub flags: VanityFlags,
 }
 
-impl FileFlags {
-    /// If there is no flags set for a string in input-file or use just
-    /// gave the string from cli this sets the string's flag settings in order
-    /// to use cli set flags.
-    pub fn use_cli_flags() -> Self {
-        FileFlags {
-            force_flags: false,
-            is_case_sensitive: false,
-            disable_fast_mode: false,
-            output_file_name: None,
-            vanity_mode: None,
+/// Parses a single line from an input file into a [FileLineItem].
+///
+/// # Arguments
+/// - `line`: A string slice representing a line from the input file.
+///
+/// # Returns
+/// - `Some(FileLineItem)` if the line is valid and parsable.
+/// - `None` if the line is empty or starts with a comment (`#`).
+fn parse_line(line: &str) -> Option<FileLineItem> {
+    if line.starts_with('#') {
+        return None;
+    }
+
+    let mut tokens = line.split_whitespace();
+
+    // The first token is the pattern
+    let pattern = tokens.next()?.to_string();
+    // The rest are "flags"
+    let flags_vec: Vec<&str> = tokens.collect();
+
+    // If no flags, then everything is default
+    if flags_vec.is_empty() {
+        return Some(FileLineItem {
+            pattern,
+            flags: VanityFlags {
+                force_flags: false,
+                is_case_sensitive: false,
+                disable_fast_mode: false,
+                output_file_name: None,
+                vanity_mode: None,
+                chain: None,
+                threads: 16,
+            },
+        });
+    }
+
+    let is_case_sensitive = flags_vec.contains(&"-c") || flags_vec.contains(&"--case-sensitive");
+    let disable_fast_mode = flags_vec.contains(&"-d") || flags_vec.contains(&"--disable-fast");
+
+    // chain
+    let chain = if flags_vec.contains(&"--eth") {
+        Some(Chain::Ethereum)
+    } else if flags_vec.contains(&"--sol") {
+        Some(Chain::Solana)
+    } else if flags_vec.contains(&"--btc") {
+        Some(Chain::Bitcoin)
+    } else {
+        None
+    };
+
+    // vanity mode
+    let vanity_mode = if flags_vec.contains(&"-r") || flags_vec.contains(&"--regex") {
+        Some(VanityMode::Regex)
+    } else if flags_vec.contains(&"-a") || flags_vec.contains(&"--anywhere") {
+        Some(VanityMode::Anywhere)
+    } else if flags_vec.contains(&"-s") || flags_vec.contains(&"--suffix") {
+        Some(VanityMode::Suffix)
+    } else if flags_vec.contains(&"-p") || flags_vec.contains(&"--prefix") {
+        Some(VanityMode::Prefix)
+    } else {
+        None
+    };
+
+    // output file name: look for `-o` or `--output-file` plus the next token
+    let mut output_file_name: Option<String> = None;
+    for (i, &flag) in flags_vec.iter().enumerate() {
+        if flag == "-o" || flag == "--output-file" {
+            if let Some(next_flag) = flags_vec.get(i + 1) {
+                output_file_name = Some(next_flag.to_string());
+            }
         }
     }
-}
 
-/// Gets all the flags in the line and returns a FileFlags struct.
-/// Each flag must be seperated by space.
-pub fn get_flags(line: &str) -> FileFlags {
-    let args = line.split(' ').collect::<Vec<_>>();
-
-    if args.len() == 1 {
-        return FileFlags::use_cli_flags();
-    }
-
-    let force_flags = args.contains(&"-f") || args.contains(&"--force-flags");
-    let is_case_sensitive = args.contains(&"-c") || args.contains(&"--case-sensitive");
-    let disable_fast_mode = args.contains(&"-d") || args.contains(&"--disable-fast");
-    let vanity_option = args.iter().find(|&&arg| {
-        arg == "-p"
-            || arg == "-s"
-            || arg == "-a"
-            || arg == "-r"
-            || arg == "--prefix"
-            || arg == "--suffix"
-            || arg == "--anywhere"
-            || arg == "--regex"
-    });
-    let vanity_mode = match vanity_option {
-        Some(&vanity) => match vanity {
-            "-p" | "--prefix" => Some(VanityMode::Prefix),
-            "-s" | "--suffix" => Some(VanityMode::Suffix),
-            "-r" | "--regex" => Some(VanityMode::Regex),
-            _ => Some(VanityMode::Anywhere),
+    Some(FileLineItem {
+        pattern,
+        flags: VanityFlags {
+            force_flags: false,
+            is_case_sensitive,
+            disable_fast_mode,
+            output_file_name,
+            vanity_mode,
+            chain,
+            threads: 0,
         },
-        None => None,
-    };
-    let ofn_index = args
-        .iter()
-        .position(|&arg| arg == "-o" || arg == "--output-file");
-    let output_file_name = ofn_index
-        .and_then(|i| args.get(i + 1))
-        .map(ToString::to_string);
-
-    FileFlags {
-        force_flags,
-        is_case_sensitive,
-        disable_fast_mode,
-        output_file_name,
-        vanity_mode,
-    }
+    })
 }
 
-/// Gets all strings and the flags from the input file. Strings and their flags must be in a different lines.
+/// Reads and parses an input file, converting each line into a [FileLineItem].
 ///
-/// Example inputs.txt
-/// ```txt
-/// Emiv -p -c
-/// TALA -a
-/// 3169
-/// test -o test-output.txt
-/// ```
-pub fn get_strings_and_flags_from_file(
-    file_name: &String,
-) -> Result<(Vec<String>, Vec<FileFlags>), BtcVanityError> {
-    let data = fs::read_to_string(file_name)?;
-    let lines: Vec<&str> = data.lines().collect::<Vec<_>>();
-    let strings: Vec<_> = lines
-        .iter()
-        .map(|line| {
-            let line_split = line.split(' ').collect::<Vec<_>>();
-            line_split[0].to_string()
-        })
-        .collect();
-    let flags: Vec<FileFlags> = lines.iter().map(|&string| get_flags(string)).collect();
+/// # Arguments
+/// - `path`: A string slice representing the file path.
+///
+/// # Returns
+/// - `Ok(Vec<FileLineItem>)`: A vector of parsed [FileLineItem] objects.
+/// - `Err(VanityError)`: An error if the file cannot be read or parsed.
+///
+/// # Errors
+/// - Returns `VanityError::FileError` if the file cannot be read.
+pub fn parse_input_file(path: &str) -> Result<Vec<FileLineItem>, VanityError> {
+    let contents = fs::read_to_string(path)?;
+    let mut items = Vec::new();
 
-    Ok((strings, flags))
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        if let Some(item) = parse_line(line) {
+            items.push(item);
+        }
+    }
+    Ok(items)
 }
 
-/// If file already exists appends else creates an output text file and writes all the found wallet details.
+/// Writes a string buffer to an output file. If the file does not exist, it will be created.
 ///
-/// Example output.txt
-/// ```txt
-/// Key pair which their address has the prefix: 'Emiv' (case sensitive)
+/// # Arguments
+/// - `output_path`: The path to the output file.
+/// - `buffer`: The content to write to the file.
 ///
-/// private_key (wif): L4RMjXo3AWzBuJTv98ZPoLtPtPP71aLwG7xV5pXodxGzWNZmK6Db
-/// public_key (compressed): 03a80e3296e19ffd656210aafe1bc2acb5a41c6a9b9361631c68fb7c9dbd416563
-/// address (compressed): 1Emiv6UxeRbAchqLvLEyVXDeL8UkrEUpzd
+/// # Returns
+/// - `Ok(())` on successful write.
+/// - `Err(VanityError)` if the operation fails.
 ///
-/// Key pair which their address has the string: 'TALA' (case sensitivity disabled)
-///
-/// private_key (wif): KzMLndRF3EjgLPnuYsQC31sgcvJKkqX2XoebovRPjdYAp5rYPhHm
-/// public_key (compressed): 02dc0eaebe451bc868ac0a7806f1ccde356c9a0e296217b684ba9095d9a41cb36a
-/// address (compressed): 1G9rGeY13XZoa8CjK3BhaEtqotaLasmbB7
-///
-/// Key pair which their address has the string: '3169' (case sensitivity disabled)
-///
-/// private_key (wif): L44VHVPLhD19TDpVzY3oJU5TXANVNpjVzYSB89giP1mUdPy4WexG
-/// public_key (compressed): 0349604b1459052a9f0bd993c4b03af4faa8e8e08c733dac129c6bcc1cdbae6057
-/// address (compressed): 1PKFWNcazkSKymp3169CSGBsN8gbTGeJDm
-///
-/// Key pair which their address has the string: 'tala' (case sensitivity disabled)
-///
-/// Skipping because of error: Custom Error: Your input is not in base58. Don't include zero: '0', uppercase i: 'I', uppercase o: 'O', lowercase L: 'l', in your input!
-/// ```
-pub fn write_output_file(output_file_name: &String, buffer: &String) -> Result<(), BtcVanityError> {
-    let ofn_len = output_file_name.len();
-    if &output_file_name[ofn_len - 4..ofn_len] != ".txt" {
-        return Err(BtcVanityError::FileError(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "file must be a text file. ex: output.txt",
-        )));
-    }
-    let file_result = OpenOptions::new().append(true).open(output_file_name);
+/// # Errors
+/// - Returns `VanityError::FileError` if the operation fails,
+///   such as due to invalid input or a write failure.
+pub fn write_output_file(output_path: &Path, buffer: &str) -> Result<(), VanityError> {
+    // Attempt to open the file in append mode
+    let file_result = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(output_path);
     let mut file = match file_result {
         Ok(file) => file,
-        Err(_) => fs::File::create(output_file_name)?,
+        Err(e) => {
+            return Err(VanityError::FileError(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Failed to open or create file: {}", e),
+            )))
+        }
     };
 
-    file.write_all(buffer.as_bytes())?;
+    // Write the buffer to the file
+    if let Err(e) = file.write_all(buffer.as_bytes()) {
+        return Err(VanityError::FileError(io::Error::new(
+            io::ErrorKind::WriteZero,
+            format!("Failed to write to file: {}", e),
+        )));
+    }
+
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_input_file, parse_line};
+    use crate::VanityMode;
+
+    #[test]
+    fn test_parse_line_with_valid_flags() {
+        let line = "test -p -c";
+        let item = parse_line(line).expect("Failed to parse valid line");
+
+        assert_eq!(item.pattern, "test");
+        assert_eq!(item.flags.vanity_mode, Some(VanityMode::Prefix));
+        assert!(item.flags.is_case_sensitive);
+    }
+
+    #[test]
+    fn test_parse_line_with_invalid_flags() {
+        let line = "test -z";
+        let item = parse_line(line).expect("Failed to parse line with invalid flags");
+
+        assert_eq!(item.pattern, "test");
+        assert!(item.flags.vanity_mode.is_none());
+    }
+
+    #[test]
+    fn test_parse_line_with_no_flags() {
+        let line = "test";
+        let item = parse_line(line).expect("Failed to parse line without flags");
+
+        assert_eq!(item.pattern, "test");
+        assert!(item.flags.vanity_mode.is_none());
+        assert!(!item.flags.is_case_sensitive);
+        assert!(!item.flags.disable_fast_mode);
+    }
+
+    #[test]
+    fn test_parse_line_with_output_file_flag() {
+        let line = "test -p -o output.txt";
+        let item = parse_line(line).expect("Failed to parse line with output file flag");
+
+        assert_eq!(item.pattern, "test");
+        assert_eq!(item.flags.vanity_mode, Some(VanityMode::Prefix));
+        assert_eq!(item.flags.output_file_name, Some("output.txt".to_string()));
+    }
+
+    #[test]
+    fn test_parse_empty_line() {
+        let line = "";
+        let item = parse_line(line);
+
+        assert!(item.is_none(), "Empty line should not be parsed");
+    }
+
+    #[test]
+    fn test_parse_comment_line() {
+        let line = "# This is a comment";
+        let item = parse_line(line);
+
+        assert!(item.is_none(), "Comment line should not be parsed");
+    }
+
+    #[test]
+    fn test_parse_input_file_with_valid_lines() {
+        // Mock file content
+        let file_content = "test -p\nexample -s\nanywhere -a";
+        let file_path = "test_valid_input.txt";
+        std::fs::write(file_path, file_content).expect("Failed to create mock input file");
+
+        // Parse the file
+        let result = parse_input_file(file_path);
+        assert!(result.is_ok(), "Failed to parse valid input file");
+
+        let items = result.unwrap();
+        assert_eq!(items.len(), 3);
+
+        assert_eq!(items[0].pattern, "test");
+        assert_eq!(items[0].flags.vanity_mode, Some(VanityMode::Prefix));
+
+        assert_eq!(items[1].pattern, "example");
+        assert_eq!(items[1].flags.vanity_mode, Some(VanityMode::Suffix));
+
+        assert_eq!(items[2].pattern, "anywhere");
+        assert_eq!(items[2].flags.vanity_mode, Some(VanityMode::Anywhere));
+
+        // Clean up
+        std::fs::remove_file(file_path).expect("Failed to delete mock input file");
+    }
+
+    #[test]
+    fn test_parse_input_file_with_invalid_lines() {
+        // Mock file content
+        let file_content = "test -z\nexample --invalid";
+        let file_path = "test_invalid_input.txt";
+        std::fs::write(file_path, file_content).expect("Failed to create mock input file");
+
+        // Parse the file
+        let result = parse_input_file(file_path);
+        assert!(result.is_ok(), "Failed to parse file with invalid lines");
+
+        let items = result.unwrap();
+        assert_eq!(items.len(), 2);
+
+        assert_eq!(items[0].pattern, "test");
+        assert!(items[0].flags.vanity_mode.is_none());
+
+        assert_eq!(items[1].pattern, "example");
+        assert!(items[1].flags.vanity_mode.is_none());
+
+        // Clean up
+        std::fs::remove_file(file_path).expect("Failed to delete mock input file");
+    }
+
+    #[test]
+    fn test_parse_input_file_with_empty_lines() {
+        // Mock file content
+        let file_content = "\n\n";
+        let file_path = "test_empty_lines.txt";
+        std::fs::write(file_path, file_content).expect("Failed to create mock input file");
+
+        // Parse the file
+        let result = parse_input_file(file_path);
+        assert!(result.is_ok(), "Failed to parse file with empty lines");
+
+        let items = result.unwrap();
+        assert!(
+            items.is_empty(),
+            "Parsed items should be empty for a file with only empty lines"
+        );
+
+        // Clean up
+        std::fs::remove_file(file_path).expect("Failed to delete mock input file");
+    }
+
+    #[test]
+    fn test_parse_input_file_with_invalid_path() {
+        // Non-existent file path
+        let file_path = "non_existent_file.txt";
+
+        // Parse the file
+        let result = parse_input_file(file_path);
+        assert!(
+            result.is_err(),
+            "Parsing a non-existent file should return an error"
+        );
+
+        if let Err(err) = result {
+            assert!(
+                err.to_string().contains("No such file"),
+                "Unexpected error message: {}",
+                err
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_input_file_with_missing_flags() {
+        // Mock file content
+        let file_content = "test\nexample\nmissing_flags";
+        let file_path = "test_missing_flags.txt";
+        std::fs::write(file_path, file_content).expect("Failed to create mock input file");
+
+        // Parse the file
+        let result = parse_input_file(file_path);
+        assert!(result.is_ok(), "Failed to parse file with missing flags");
+
+        let items = result.unwrap();
+        assert_eq!(items.len(), 3);
+
+        assert_eq!(items[0].pattern, "test");
+        assert!(items[0].flags.vanity_mode.is_none());
+
+        assert_eq!(items[1].pattern, "example");
+        assert!(items[1].flags.vanity_mode.is_none());
+
+        assert_eq!(items[2].pattern, "missing_flags");
+        assert!(items[2].flags.vanity_mode.is_none());
+
+        // Clean up
+        std::fs::remove_file(file_path).expect("Failed to delete mock input file");
+    }
 }

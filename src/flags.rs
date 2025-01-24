@@ -1,172 +1,159 @@
-//! # Cli and Input File Flags Module
+//! # CLI and Input File Flags Module
 //!
-//! This module is used for getting flags and file names from the cli
-//! and change flags for each string iteration if any other flags set in input file.
+//! This module handles the extraction and management of flags and configuration options
+//! from the command-line interface (CLI) and input files. It provides mechanisms to:
+//! - Parse flags and input patterns from the CLI.
+//! - Combine and prioritize CLI-level and file-based flags.
 
-use crate::file::{get_strings_and_flags_from_file, FileFlags};
-use crate::vanity_addr_generator::VanityMode;
+use crate::{Chain, VanityMode};
+
 use clap::ArgMatches;
 
-/// This struct is used to save the cli flags
+/// Represents the configuration flags for vanity address generation.
+#[derive(Debug, Clone, Default)]
+pub struct VanityFlags {
+    /// The number of threads to use for generation.
+    pub threads: usize,
+    /// The name of the output file, if specified.
+    pub output_file_name: Option<String>,
+
+    /// If `true`, CLI flags override file-based flags.
+    pub force_flags: bool,
+    /// If `true`, pattern matching is case-sensitive.
+    pub is_case_sensitive: bool,
+    /// If `true`, disables fast mode. Fast mode puts a length limit for the searching string.
+    pub disable_fast_mode: bool,
+    /// Specifies the mode of matching (e.g., `prefix`, `suffix`, `anywhere`, `regex`).
+    pub vanity_mode: Option<VanityMode>,
+    /// Specifies the blockchain type (e.g., `Bitcoin`, `Ethereum`, `Solana`).
+    pub chain: Option<Chain>,
+}
+
+/// Enum representing the source of the vanity patterns.
 #[derive(Debug)]
-pub struct CliFlags {
-    threads: u64,
-    strings: Vec<String>,
-    flags: Vec<FileFlags>,
-    force_flags: bool,
-    is_case_sensitive: bool,
-    is_fast_disabled: bool,
-    output_file_name: String,
-    pub vanity_mode: VanityMode,
+pub enum PatternsSource {
+    /// A single pattern provided directly via the CLI.
+    SingleString(String),
+    /// Patterns read from an input file specified by its path.
+    InputFile(String),
 }
 
-impl CliFlags {
-    pub fn get_strings(&self) -> &Vec<String> {
-        &self.strings
-    }
+/// Parses CLI arguments into [VanityFlags] and determines the source of the vanity patterns.
+///
+/// # Arguments
+/// - `matches`: The `ArgMatches` object provided by the `clap` library.
+///
+/// # Returns
+/// - A tuple containing:
+///   - `VanityFlags`: The parsed configuration flags.
+///   - `PatternsSource`: The source of the vanity patterns (either a single string or an input file).
+///
+/// # Behavior
+/// - Determines the blockchain (`chain`) based on flags (e.g., `ethereum`, `solana`, `bitcoin`).
+/// - Determines the vanity mode (`vanity_mode`) based on flags (e.g., `regex`, `anywhere`, `suffix`, `prefix`).
+/// - Parses the number of threads, defaulting to 16 if not specified.
+/// - Detects whether patterns are provided via a single string or an input file.
+pub fn parse_cli(matches: ArgMatches) -> (VanityFlags, PatternsSource) {
+    // 1) Extract chain
+    let chain = if matches.get_flag("ethereum") {
+        Some(Chain::Ethereum)
+    } else if matches.get_flag("solana") {
+        Some(Chain::Solana)
+    } else {
+        Some(Chain::Bitcoin)
+    };
 
-    pub fn get_threads(&self) -> u64 {
-        self.threads
-    }
-}
+    // 2) Extract vanity mode
+    let vanity_mode = if matches.get_flag("regex") {
+        Some(VanityMode::Regex)
+    } else if matches.get_flag("anywhere") {
+        Some(VanityMode::Anywhere)
+    } else if matches.get_flag("suffix") {
+        Some(VanityMode::Suffix)
+    } else {
+        Some(VanityMode::Prefix)
+    };
 
-/// Gets all the set flags, file names from cli and returns them with CliFlags struct
-pub fn get_cli_flags(matches: ArgMatches) -> CliFlags {
+    // 3) Threads
     let threads = matches
         .get_one::<String>("threads")
-        .expect("This was unexpected :(. Something went wrong while getting -t or --threads arg")
-        .trim()
-        .parse::<u64>()
-        .expect("Threads must be a number!");
-    let (strings, flags_vec) = match matches.get_one::<String>("string") {
-        Some(string) => (vec![string.to_owned()], vec![FileFlags::use_cli_flags()]),
-        None => {
-            let file_name = matches.get_one::<String>("input-file").unwrap();
-            get_strings_and_flags_from_file(file_name).unwrap()
-        }
-    };
+        .unwrap_or(&"16".to_owned())
+        .parse::<usize>()
+        .unwrap_or(16);
 
-    let cli_force_flags = matches.get_flag("force-flags");
-    let cli_is_case_sensitive = matches.get_flag("case-sensitive");
-    let cli_is_fast_disabled = matches.get_flag("disable-fast-mode");
-    let cli_output_file_name = match matches.get_one::<String>("output-file") {
-        Some(output_file_name) => output_file_name.to_string(),
-        None => String::from(""),
-    };
-
-    // Sets vanity_mode for searching and mode to predefined decoration strings.
-    let cli_vanity_mode = if matches.get_flag("regex") {
-        VanityMode::Regex
-    } else if matches.get_flag("anywhere") {
-        VanityMode::Anywhere
-    } else if matches.get_flag("suffix") {
-        VanityMode::Suffix
-    } else {
-        VanityMode::Prefix
-    };
-
-    CliFlags {
+    // 4) Build CLI-level `VanityFlags`
+    let cli_flags = VanityFlags {
+        force_flags: matches.get_flag("force-flags"),
+        is_case_sensitive: matches.get_flag("case-sensitive"),
+        disable_fast_mode: matches.get_flag("disable-fast-mode"),
+        output_file_name: matches.get_one::<String>("output-file").cloned(),
+        vanity_mode,
+        chain,
         threads,
-        strings,
-        flags: flags_vec,
-        force_flags: cli_force_flags,
-        is_case_sensitive: cli_is_case_sensitive,
-        is_fast_disabled: cli_is_fast_disabled,
-        output_file_name: cli_output_file_name,
-        vanity_mode: cli_vanity_mode,
+    };
+
+    // 5) Figure out if user gave a single pattern or a file
+    if let Some(path) = matches.get_one::<String>("input-file") {
+        (cli_flags, PatternsSource::InputFile(path.to_string()))
+    } else {
+        let string = matches.get_one::<String>("string");
+        (
+            cli_flags,
+            PatternsSource::SingleString(string.unwrap_or(&String::new()).to_string()),
+        )
     }
 }
 
-/// This struct is used to save the strings flags for each string in the input file.
-/// Each iteration means a new StringFlag structure will be created.
-pub struct StringsFlags {
-    is_case_sensitive: bool,
-    is_fast_disabled: bool,
-    output_file_name: String,
-    pub vanity_mode: VanityMode,
-}
+/// Combines CLI-level flags with file-based flags, giving priority to CLI flags if `force_flags` is set.
+///
+/// # Arguments
+/// - `file_flags`: The `VanityFlags` object derived from the input file.
+///
+/// # Returns
+/// - A unified `VanityFlags` object that combines CLI and file flags.
+///
+/// # Behavior
+/// - If `force_flags` is `true`, the CLI flags override all file-based flags.
+/// - Otherwise, the flags are merged, with file-based flags taking precedence where applicable.
+///
+/// # Example
+/// ```rust
+/// use btc_vanity::flags::VanityFlags;
+///
+/// let cli_flags = VanityFlags {
+///     threads: 8,
+///     force_flags: true,
+///     ..Default::default()
+/// };
+/// let file_flags = VanityFlags {
+///     threads: 4,
+///     ..Default::default()
+/// };
+///
+/// let unified_flags = cli_flags.unify(&file_flags);
+/// assert_eq!(unified_flags.threads, 8); // CLI flags take precedence.
+/// ```
+impl VanityFlags {
+    pub fn unify(&self, file_flags: &VanityFlags) -> VanityFlags {
+        if self.force_flags {
+            // If CLI has force_flags = true, ignore the file-based flags
+            self.clone()
+        } else {
+            VanityFlags {
+                threads: self.threads,
+                output_file_name: file_flags
+                    .output_file_name
+                    .clone()
+                    .or_else(|| self.output_file_name.clone()),
 
-impl StringsFlags {
-    /// Creates a new StringFlags
-    fn from(
-        is_case_sensitive: bool,
-        is_fast_disabled: bool,
-        output_file_name: String,
-        vanity_mode: VanityMode,
-    ) -> Self {
-        StringsFlags {
-            is_case_sensitive,
-            is_fast_disabled,
-            output_file_name,
-            vanity_mode,
-        }
-    }
+                force_flags: self.force_flags,
+                is_case_sensitive: file_flags.is_case_sensitive,
+                disable_fast_mode: file_flags.disable_fast_mode,
 
-    /// If the use used -f or --force flags in cli
-    /// String flags will be same as cli flags
-    fn use_cli(cli_args: &CliFlags) -> Self {
-        StringsFlags {
-            is_case_sensitive: cli_args.is_case_sensitive,
-            is_fast_disabled: cli_args.is_fast_disabled,
-            output_file_name: cli_args.output_file_name.to_string(),
-            vanity_mode: cli_args.vanity_mode,
-        }
-    }
+                vanity_mode: file_flags.vanity_mode.or(self.vanity_mode), // Use `file_flags` if Some, otherwise fall back to `self`.
 
-    pub fn get_vanity_mode(&self) -> VanityMode {
-        self.vanity_mode
-    }
-
-    pub fn get_case_sensitivity(&self) -> bool {
-        self.is_case_sensitive
-    }
-
-    pub fn get_output_file_name(&self) -> &String {
-        &self.output_file_name
-    }
-
-    pub fn get_is_fast_mode_disabled(&self) -> bool {
-        self.is_fast_disabled
-    }
-}
-
-/// Returns A StringFlags depending on string's flags that we get from the input file.
-/// If -f --force is set in cli it just returns StringFlag struct that has the same flags
-/// with the cli flags
-pub fn get_strings_flags(cli_args: &CliFlags, index: usize) -> StringsFlags {
-    match cli_args.force_flags {
-        true => StringsFlags::use_cli(cli_args), // Use the provided CLI arguments directly
-        false => {
-            let flags = &cli_args.flags[index]; // Get flags for the specified index
-            let force_flags = flags.force_flags; // Check if force flags are set
-            let string_vanity_mode = match flags.vanity_mode {
-                Some(vanity_mode) => vanity_mode, // Use specified vanity mode if available
-                None => cli_args.vanity_mode,     // Otherwise, use CLI argument vanity mode
-            };
-            let string_output_file_name = match &flags.output_file_name {
-                Some(output_file_name) => output_file_name, // Use specified output file name if available
-                None => &cli_args.output_file_name, // Otherwise, use CLI argument output file name
-            };
-            // Determine case sensitivity based on force_flags and CLI arguments
-            let string_is_case_sensitive = if force_flags {
-                flags.is_case_sensitive
-            } else {
-                cli_args.is_case_sensitive || flags.is_case_sensitive
-            };
-            // Determine fast mode disabling based on force_flags and CLI arguments
-            let string_is_fast_disabled = if force_flags {
-                flags.disable_fast_mode
-            } else {
-                cli_args.is_fast_disabled || flags.disable_fast_mode
-            };
-
-            // Construct and return the StringsArgs struct
-            StringsFlags::from(
-                string_is_case_sensitive,
-                string_is_fast_disabled,
-                string_output_file_name.to_string(),
-                string_vanity_mode,
-            )
+                chain: file_flags.chain.or(self.chain), // Use `file_flags` if Some, otherwise fall back to `self`.
+            }
         }
     }
 }
