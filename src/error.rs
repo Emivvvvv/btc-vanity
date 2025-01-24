@@ -1,4 +1,5 @@
 use std::io;
+use log::error;
 use thiserror::Error;
 
 /// A unified error type that encapsulates all possible errors in the btc-vanity application.
@@ -33,6 +34,9 @@ pub enum VanityError {
 
     #[error("Request too long!")]
     RequestTooLong,
+
+    #[error!("Case sensitive wallet generation is not supported for Ethereum!")]
+    EthereumCaseSensitiveIsNotSupported,
 }
 
 impl From<KeysAndAddressError> for VanityError {

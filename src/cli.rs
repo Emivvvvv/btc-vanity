@@ -8,28 +8,72 @@
 //! $ btc-vanity --help
 //! ```
 //!
-//! # Some Usage Examples
+//! The CLI tool provides several options to customize your address generation:
 //!
-//! Find a vanity address with prefix "Emiv" and appends the wallet details to -wallet.txt
-//! (if there is no wallet.txt it crates a new one)
-//! ```bash
-//! $ btc-vanity -o wallet.txt Emiv
+//! ```shell
+//! $ btc-vanity [OPTIONS] <PATTERN>
 //! ```
 //!
-//! Gets all the inputs and flags (if available) from the inputs.txt text file
-//! sets the vanity mode anywhere for the strings which don't have any vanity mode flag
-//! and appends all the wallet details to -wallets.txt with using 8 threads
-//! (if there is no wallets.txt it crates a new one)
-//! ```bash
-//! $ btc-vanity -i inputs.txt -o wallets.txt -t 8 -a
+//! #### Blockchain Selection
+//! `--btc`: Generates Bitcoin keypairs and addresses. [default] <br>
+//! `--eth`: Generates Ethereum keypairs and addresses. <br>
+//! `--sol`: Generates Solana keypairs and addresses. <br>
+//!
+//! #### General Options
+//! `-i, --input-file <FILE>`: Reads patterns and it's flags from the specified file for vanity address generation, with one pattern per line. <br>
+//! `-o, --output-file <FILE>`: Saves generated wallet details to the specified file, creating it if it doesn’t exist or appending if it does. <br>
+//! `-t, --threads <N>`: Sets the number of threads for address generation. <br>
+//! `-f, --force-flags`: Forces CLI flags to override any flags specified in the input file, ensuring consistent behavior across all patterns. <br>
+//! `-d, --disable-fast`: Disables fast mode to allow longer patterns (5 for BTC and SOL, 16 for ETH), though it may increase search time. <br>
+//!
+//! #### Matching Options
+//! `-p, --prefix`: Matches the pattern as a prefix of the address. [default] <br>
+//! `-s, --suffix`: Matches the pattern as a suffix of the address. <br>
+//! `-a, --anywhere`: Matches the pattern anywhere in the address. <br>
+//! `-r, --regex <REGEX>`: Matches addresses using a regex pattern, supporting advanced customization like anchors and wildcards. <br>
+//! `-c, --case-sensitive`: Enables case-sensitive matching, making patterns distinguish between uppercase and lowercase characters. <br>
+//!
+//! ### Bitcoin CLI Examples
+//!
+//! Generate a Bitcoin address with prefix `1Emiv` (case-insensitive):
+//!
+//! ```shell
+//! $ btc-vanity Emiv
 //! ```
 //!
-//! Gets all the inputs and flags (if available) from the inputs.txt text file
-//! overrides all flags with the vanity mode to suffix, if a strings has its own
-//! -o <text file> flag it ignores it because of -f flag adn prints all the wallet details
-//! to stdout.
-//! ```bash
-//! $ btc-vanity -f -s -i inputs.txt
+//! Generate a Bitcoin address containing the substring `test` (case-sensitive):
+//!
+//! ```shell
+//! $ btc-vanity -a -c test
+//! ```
+//!
+//! Generate a Bitcoin address using a regex pattern `^1E.*T$`:
+//!
+//! ```shell
+//! $ btc-vanity -r "^1E.*T$"
+//! ```
+//!
+//! Generate multiple Bitcoin addresses and save to wallets.txt:
+//!
+//! > [!NOTE]
+//! > -f flag will override any pattern flags inside the `input-file.txt`.
+//! > For example if there line `emiv -s --eth` will become `emiv -p --btc -c`.
+//! > The resulting wallet will be printed in `wallets.txt`.
+//!
+//! ```shell
+//! $ btc-vanity -f --btc -p -c -i input-file.txt -o wallets.txt
+//! ```
+//!
+//! Generate an Ethereum address starting with 0xdead with 8 threads:
+//!
+//! ```shell
+//! $ btc-vanity --eth -t 8 dead
+//! ```
+//!
+//! Generate a Solana address ending with 123:
+//!
+//! ```shell
+//! $ btc-vanity --sol -s 123
 //! ```
 
 use clap::{Arg, ArgAction, ArgGroup, Command};
@@ -51,13 +95,15 @@ pub fn cli() -> Command {
             Arg::new("ethereum")
                 .long("eth")
                 .action(ArgAction::SetTrue)
-                .conflicts_with_all(["bitcoin", "solana"]).help("Generates Ethereum keypairs and addresses.")
+                .conflicts_with_all(["bitcoin", "solana", "case-sensitive"])
+                .help("Generates Ethereum keypairs and addresses.")
         )
         .arg(
             Arg::new("solana")
                 .long("sol")
                 .action(ArgAction::SetTrue)
-                .conflicts_with_all(["bitcoin", "ethereum"]).help("Generates Solana keypairs and addresses.")
+                .conflicts_with_all(["bitcoin", "ethereum"])
+                .help("Generates Solana keypairs and addresses.")
         )
         .arg(
             Arg::new("string")

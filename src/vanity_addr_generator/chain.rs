@@ -26,7 +26,6 @@ const ALLOWED_REGEX_META: &[char] = &[
 /// adjustments for chain-specific constraints.
 pub trait VanityChain: KeyPairGenerator + Send {
     /// Validates a plain input string for the chain.
-    /// (BTC and SOL uses default implementation)
     ///
     /// # Arguments
     /// - `string`: The input string to validate.
@@ -40,26 +39,10 @@ pub trait VanityChain: KeyPairGenerator + Send {
     /// - Rejects inputs that exceed the length limit in fast mode.
     /// - Rejects inputs that exceed the max length limit.
     /// - Ensures all characters are valid for the specific chain.
-    fn validate_input(string: &str, fast_mode: bool) -> Result<(), VanityError> {
-        // 1) If length > 5 (BASE58_FAST_MODE_MAX) and `fast_mode` is true, reject (too long).
-        if string.len() > BASE58_FAST_MODE_MAX && fast_mode {
-            return Err(VanityError::FastModeEnabled);
-        }
-
-        if string.len() > BASE58_MAX {
-            return Err(VanityError::RequestTooLong);
-        }
-
-        // 2) If any character is not base58, reject.
-        if string.chars().any(|c| !is_valid_base58_char(c)) {
-            return Err(VanityError::InputNotBase58);
-        }
-
-        Ok(())
-    }
+    /// - Makes additional chain-specific checks if needed.
+    fn validate_input(string: &str, fast_mode: bool, case_sensitive: bool) -> Result<(), VanityError>;
 
     /// Validates a regex input string for the chain.
-    /// (BTC and SOL uses default implementation)
     ///
     /// # Arguments
     /// - `regex_str`: The regex pattern string to validate.
@@ -72,27 +55,7 @@ pub trait VanityChain: KeyPairGenerator + Send {
     /// - Allows recognized regex meta characters.
     /// - Ensures alphanumeric characters are valid for the chain.
     /// - Rejects characters that are neither valid regex meta nor chain-specific valid characters.
-    fn validate_regex_pattern(regex_str: &str) -> Result<(), VanityError> {
-        // For each character in the pattern:
-        for c in regex_str.chars() {
-            // 1) If it's a recognized regex meta character, allow it.
-            if ALLOWED_REGEX_META.contains(&c) {
-                continue;
-            }
-
-            // 2) If it's alphanumeric, ensure it's valid base58
-            if c.is_alphanumeric() {
-                if !is_valid_base58_char(c) {
-                    return Err(VanityError::RegexNotBase58);
-                }
-            } else {
-                // 3) Neither a recognized meta char, nor a valid base58 alphanumeric => reject
-                return Err(VanityError::InvalidRegex);
-            }
-        }
-
-        Ok(())
-    }
+    fn validate_regex_pattern(regex_str: &str) -> Result<(), VanityError>;
 
     /// Adjusts a plain input string for chain-specific requirements.
     ///
@@ -118,7 +81,111 @@ pub trait VanityChain: KeyPairGenerator + Send {
     }
 }
 
+/// Validates a Base58 input string for Bitcoin and Solana chains.
+///
+/// # Arguments
+/// - `string`: The input string to validate.
+/// - `fast_mode`: Whether fast mode is enabled.
+///
+/// # Returns
+/// - `Ok(())` if the input is valid.
+/// - `Err(VanityError)` if the input is invalid.
+///
+/// # Behavior
+/// - Rejects inputs that exceed the max length limit or are invalid Base58 strings.
+fn validate_base58_input(string: &str, fast_mode: bool) -> Result<(), VanityError> {
+    if string.len() > BASE58_FAST_MODE_MAX && fast_mode {
+        return Err(VanityError::FastModeEnabled);
+    }
+
+    if string.len() > BASE58_MAX {
+        return Err(VanityError::RequestTooLong);
+    }
+
+    if string.chars().any(|c| !is_valid_base58_char(c)) {
+        return Err(VanityError::InputNotBase58);
+    }
+
+    Ok(())
+}
+
+/// Validates a regex pattern for Base58 for Bitcoin and Solana chains.
+///
+/// # Arguments
+/// - `regex_str`: The regex pattern string to validate.
+///
+/// # Returns
+/// - `Ok(())` if the regex is valid.
+/// - `Err(VanityError)` if the regex contains invalid characters.
+///
+/// # Behavior
+/// - Allows regex meta characters and Base58 alphanumeric characters.
+/// - Rejects invalid regex meta characters and non-Base58 characters.
+fn validate_base58_regex_pattern(regex_str: &str) -> Result<(), VanityError> {
+    // For each character in the pattern:
+    for c in regex_str.chars() {
+        // If it's a recognized regex meta character, allow it.
+        if ALLOWED_REGEX_META.contains(&c) {
+            continue;
+        }
+
+        // If it's alphanumeric, ensure it's valid base58
+        if c.is_alphanumeric() {
+            if !is_valid_base58_char(c) {
+                return Err(VanityError::RegexNotBase58);
+            }
+        } else {
+            // Neither a recognized meta char, nor a valid base58 alphanumeric => reject
+            return Err(VanityError::InvalidRegex);
+        }
+    }
+
+    Ok(())
+}
+
 impl VanityChain for BitcoinKeyPair {
+    /// Validates a Base58 input string for Bitcoin-specific vanity address generation.
+    ///
+    /// # Arguments
+    /// - `string`: The input string to validate.
+    /// - `fast_mode`: Whether fast mode is enabled.
+    /// - `_case_sensitive`: Unused for Bitcoin and Solana as they are case-insensitive.
+    ///
+    /// # Returns
+    /// - `Ok(())` if the input is valid.
+    /// - `Err(VanityError)` if the input is invalid.
+    ///
+    /// # Behavior
+    /// - Rejects inputs that exceed the max length limit or the fast mode length limit.
+    /// - Ensures all characters are valid Base58 characters.
+    ///
+    /// # Implementation Notes
+    /// - The validation relies on the `validate_base58_input` helper function, which encapsulates
+    fn validate_input(string: &str, fast_mode: bool, _case_sensitive: bool) -> Result<(), VanityError> {
+        validate_base58_input(string, fast_mode)
+    }
+
+    /// Validates a regex pattern for Bitcoin-specific vanity address generation.
+    ///
+    /// # Arguments
+    /// - `regex_str`: The regex pattern string to validate.
+    ///
+    /// # Returns
+    /// - `Ok(())` if the regex is valid.
+    /// - `Err(VanityError)` if the regex contains invalid characters.
+    ///
+    /// # Behavior
+    /// - Allows recognized regex meta characters.
+    /// - Ensures all alphanumeric characters in the regex are valid Base58.
+    /// - Rejects invalid regex meta characters or non-Base58 characters.
+    ///
+    /// # Implementation Notes
+    /// - The validation relies on the `validate_base58_regex_pattern` helper function, which
+    ///   encapsulates the Base58-specific regex validation logic.
+    fn validate_regex_pattern(regex_str: &str) -> Result<(), VanityError> {
+        validate_base58_regex_pattern(regex_str)
+    }
+
     /// Adjusts the input string for Bitcoin-specific vanity address generation.
     ///
     /// # Arguments
@@ -163,22 +230,27 @@ impl VanityChain for BitcoinKeyPair {
 }
 
 impl VanityChain for EthereumKeyPair {
-    /// Validates a Base16 string input for Ethereum vanity address generation.
+    /// Validates a Base16 input string for Ethereum-specific vanity address generation.
     ///
     /// # Arguments
     /// - `string`: The input string to validate.
-    /// - `fast_mode`: Indicates whether fast mode is enabled.
+    /// - `fast_mode`: Whether fast mode is enabled.
+    /// - `case_sensitive`: Whether the matching is case-sensitive. **Ethereum does not support case-sensitive inputs.**
     ///
     /// # Returns
     /// - `Ok(())` if the input is valid.
     /// - `Err(VanityError)` if the input is invalid.
     ///
-    /// # Errors
-    /// - Returns `VanityError::FastModeEnabled` if the input is too long for fast mode.
-    /// - Returns `VanityError::RequestTooLong` if the input exceeds the maximum length.
-    /// - Returns `VanityError::InputNotBase16` if the input contains invalid Base16 characters.
-    fn validate_input(string: &str, fast_mode: bool) -> Result<(), VanityError> {
-        // 1) If length > 16 (BASE16_FAST_MODE_MAX) and `fast_mode` is true, reject (too long).
+    /// # Behavior
+    /// - Rejects inputs if `case_sensitive` is enabled.
+    /// - Rejects inputs that exceed the length limit in fast mode.
+    /// - Rejects inputs that exceed the max length limit.
+    /// - Ensures all characters are valid Base16 (hexadecimal) characters.
+    fn validate_input(string: &str, fast_mode: bool, case_sensitive: bool) -> Result<(), VanityError> {
+        if case_sensitive {
+            return Err(VanityError::EthereumCaseSensitiveIsNotSupported)
+        }
+
         if string.len() > BASE16_FAST_MODE_MAX && fast_mode {
             return Err(VanityError::FastModeEnabled);
         }
@@ -187,7 +259,7 @@ impl VanityChain for EthereumKeyPair {
             return Err(VanityError::RequestTooLong);
         }
 
-        // 2) If any character is not base16, reject.
+        // If any character is not base16, reject.
         if string.chars().any(|c| !c.is_ascii_hexdigit()) {
             return Err(VanityError::InputNotBase16);
         }
@@ -207,21 +279,25 @@ impl VanityChain for EthereumKeyPair {
     /// # Errors
     /// - Returns `VanityError::RegexNotBase16` for invalid Base16 characters.
     /// - Returns `VanityError::InvalidRegex` for unrecognized characters.
+    ///
+    /// # Behavior
+    /// - Allows recognized regex meta characters.
+    /// - Ensures all alphanumeric characters in the regex are valid Base16 (hexadecimal).
     fn validate_regex_pattern(regex_str: &str) -> Result<(), VanityError> {
         // For each character in the pattern:
         for c in regex_str.chars() {
-            // 1) If it's a recognized regex meta character, allow it.
+            // If it's a recognized regex meta character, allow it.
             if ALLOWED_REGEX_META.contains(&c) {
                 continue;
             }
 
-            // 2) If it's alphanumeric, ensure it's valid base16.
+            // If it's alphanumeric, ensure it's valid base16.
             if c.is_alphanumeric() {
                 if !c.is_ascii_hexdigit() {
                     return Err(VanityError::RegexNotBase16);
                 }
             } else {
-                // 3) Neither a recognized meta char, nor a valid base16 alphanumeric => reject.
+                // Neither a recognized meta char, nor a valid base16 alphanumeric => reject.
                 return Err(VanityError::InvalidRegex);
             }
         }
@@ -244,7 +320,7 @@ impl VanityChain for EthereumKeyPair {
     /// - For regex patterns, if the pattern starts with `^0x`, the `0x` is removed for vanity
     ///   address generation.
     fn adjust_regex_pattern(regex_str: &str) -> String {
-        let mut pattern_str = regex_str.to_string();
+        let mut pattern_str = regex_str.to_string().to_ascii_lowercase();
         if pattern_str.starts_with("^0x") {
             pattern_str = pattern_str.replacen("^0x", "^", 1);
         }
@@ -252,14 +328,63 @@ impl VanityChain for EthereumKeyPair {
     }
 }
 
-impl VanityChain for SolanaKeyPair {}
+impl VanityChain for SolanaKeyPair {
+    /// Validates a Base58 input string for Solana-specific vanity address generation.
+    ///
+    /// # Arguments
+    /// - `string`: The input string to validate.
+    /// - `fast_mode`: Whether fast mode is enabled.
+    /// - `_case_sensitive`: Unused for Bitcoin and Solana as they are case-insensitive.
+    ///
+    /// # Returns
+    /// - `Ok(())` if the input is valid.
+    /// - `Err(VanityError)` if the input is invalid.
+    ///
+    /// # Behavior
+    /// - Rejects inputs that exceed the max length limit or the fast mode length limit.
+    /// - Ensures all characters are valid Base58 characters.
+    ///
+    /// # Implementation Notes
+    /// - The validation relies on the `validate_base58_input` helper function, which encapsulates
+    fn validate_input(string: &str, fast_mode: bool, _case_sensitive: bool) -> Result<(), VanityError> {
+        validate_base58_input(string, fast_mode)
+    }
 
-/// Returns true if `c` is a valid Base58 character for (legacy) Bitcoin addresses.
+    /// Validates a regex pattern for Solana-specific vanity address generation.
+    ///
+    /// # Arguments
+    /// - `regex_str`: The regex pattern string to validate.
+    ///
+    /// # Returns
+    /// - `Ok(())` if the regex is valid.
+    /// - `Err(VanityError)` if the regex contains invalid characters.
+    ///
+    /// # Behavior
+    /// - Allows recognized regex meta characters.
+    /// - Ensures all alphanumeric characters in the regex are valid Base58.
+    /// - Rejects invalid regex meta characters or non-Base58 characters.
+    ///
+    /// # Implementation Notes
+    /// - The validation relies on the `validate_base58_regex_pattern` helper function, which
+    ///   encapsulates the Base58-specific regex validation logic.
+    fn validate_regex_pattern(regex_str: &str) -> Result<(), VanityError> {
+        validate_base58_regex_pattern(regex_str)
+    }
+}
+
+/// Returns `true` if `c` is a valid Base58 character for Bitcoin and Solana chains.
 ///
-/// Valid base58:
-///   Digits except 0
-///   Uppercase letters except I, O
-///   Lowercase letters except l
+/// # Arguments
+/// - `c`: The character to validate.
+///
+/// # Returns
+/// - `true` if the character is valid.
+/// - `false` otherwise.
+///
+/// # Valid Characters
+/// - Digits: `1-9`
+/// - Uppercase letters (excluding `I` and `O`)
+/// - Lowercase letters (excluding `l`)
 pub fn is_valid_base58_char(c: char) -> bool {
     match c {
         // digits except 0

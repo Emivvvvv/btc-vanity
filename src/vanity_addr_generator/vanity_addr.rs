@@ -62,7 +62,7 @@ impl VanityAddr {
         fast_mode: bool,
         vanity_mode: VanityMode,
     ) -> Result<T, VanityError> {
-        T::validate_input(string, fast_mode)?;
+        T::validate_input(string, fast_mode, case_sensitive)?;
         let adjusted_string = T::adjust_input(string, vanity_mode);
 
         if string.is_empty() {
