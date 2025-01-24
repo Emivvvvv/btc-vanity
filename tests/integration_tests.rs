@@ -1,6 +1,4 @@
-use btc_vanity::{
-    BitcoinKeyPair, EthereumKeyPair, VanityAddr, VanityMode,
-};
+use btc_vanity::{BitcoinKeyPair, EthereumKeyPair, VanityAddr, VanityMode};
 
 #[test]
 fn test_bitcoin_vanity_address_prefix() {

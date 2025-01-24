@@ -2,13 +2,10 @@ use btc_vanity::cli::cli;
 use btc_vanity::error::VanityError;
 use btc_vanity::file::{parse_input_file, write_output_file};
 use btc_vanity::flags::{parse_cli, PatternsSource, VanityFlags};
-use btc_vanity::keys_and_address::{
-    BitcoinKeyPair, EthereumKeyPair, KeyPairGenerator,
-};
+use btc_vanity::keys_and_address::{BitcoinKeyPair, EthereumKeyPair, KeyPairGenerator};
 use btc_vanity::vanity_addr_generator::chain::Chain;
 use btc_vanity::vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};
 
-use bitcoin::hex::DisplayHex;
 use clap::error::ErrorKind;
 use std::path::Path;
 use std::process;

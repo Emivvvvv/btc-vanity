@@ -1,6 +1,6 @@
 # <img src='images/bitcoin.svg' height='22'> <img src='images/ethereum.png' height='22'> btc-vanity
 
-A blazingly fast vanity address generator written with the Rust programming language. Supporting Bitcoin, and Ethereum.
+A blazingly fast vanity address generator written with the Rust programming language. Supporting Bitcoin and Ethereum.
 
 With btc-vanity, you can generate wallets that has custom addresses with prefixes, suffixes, substrings, or even regex patterns.
 
@@ -8,7 +8,7 @@ You can easily run btc-vanity terminal application locally or use it as a librar
 
 ## Key Features
 
-**Multi-Chain Support**: Generate vanity addresses for: `Bitcoin`, and `Ethereum`. <br>
+**Multi-Chain Support**: Generate vanity addresses for: `Bitcoin` and `Ethereum`. <br>
 **Advanced Customization**: Match prefixes, suffixes, substrings, or regex-based patterns with optional case insensitivity. <br>
 **Blazingly Fast Performance**: Fully utilize your hardware with customizable thread counts. <br>
 **Batch File Support**: Bulk generate addresses using input files with desired patterns. <br>
