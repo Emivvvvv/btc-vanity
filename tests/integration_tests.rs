@@ -1,5 +1,5 @@
 use btc_vanity::{
-    BitcoinKeyPair, EthereumKeyPair, KeyPairGenerator, SolanaKeyPair, VanityAddr, VanityMode,
+    BitcoinKeyPair, EthereumKeyPair, VanityAddr, VanityMode,
 };
 
 #[test]
@@ -43,31 +43,6 @@ fn test_ethereum_vanity_address_prefix() {
     assert!(
         keypair.get_address_with_prefix().starts_with("0x123"),
         "Generated Ethereum address does not match prefix"
-    );
-}
-
-#[test]
-fn test_solana_vanity_address_prefix() {
-    // Try generating a Solana vanity address with a specific prefix
-    let result = VanityAddr::generate::<SolanaKeyPair>(
-        "abc", // Prefix
-        8,     // Threads
-        false, // Case-insensitive
-        false, // Disable fast mode
-        VanityMode::Prefix,
-    );
-
-    // Assert that the result is successful
-    assert!(result.is_ok(), "Failed to generate Solana vanity address");
-
-    // Assert that the generated address starts with the prefix
-    let keypair = result.unwrap();
-    assert!(
-        keypair
-            .get_address()
-            .to_ascii_lowercase()
-            .starts_with("abc"),
-        "Generated Solana address does not match prefix"
     );
 }
 

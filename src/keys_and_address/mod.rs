@@ -1,11 +1,10 @@
 //! # Key Pair and Address Generation Module
 //!
 //! This module provides functionality for generating random key pairs and their associated addresses.
-//! Supported cryptocurrencies are `Bitcoin`, `Ethereum`, and `Solana`.
+//! Supported cryptocurrencies are `Bitcoin`, and `Ethereum`.
 
 pub mod btc;
 pub mod eth;
-pub mod sol;
 
 use std::array::from_fn;
 
@@ -13,12 +12,11 @@ use crate::BATCH_SIZE;
 
 use bitcoin::{PrivateKey, PublicKey};
 use secp256k1::{PublicKey as SecpPublicKey, SecretKey};
-use solana_sdk::signature::Keypair;
 
 /// A trait to handle generic key pair and address creation.
 /// Used in vanity address generation.
 ///
-/// Implemented by `BitcoinKeyPair`, `EthereumKeyPair`, and `SolanaKeyPair`.
+/// Implemented by `BitcoinKeyPair`, and `EthereumKeyPair`.
 pub trait KeyPairGenerator {
     /// Generates a random key pair.
     ///
@@ -80,14 +78,3 @@ pub struct EthereumKeyPair {
 }
 
 unsafe impl Send for EthereumKeyPair {}
-
-/// A struct representing a Solana key pair and its associated address.
-/// Implements `KeyPairGenerator` and `Send` traits.
-pub struct SolanaKeyPair {
-    /// A Solana `solana_sdk::signer::Keypair` struct.
-    keypair: Keypair,
-    /// The Solana address as a `String`.
-    address: String,
-}
-
-unsafe impl Send for SolanaKeyPair {}

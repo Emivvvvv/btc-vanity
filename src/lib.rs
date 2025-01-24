@@ -2,7 +2,7 @@
 //! # btc-vanity
 //!
 //! `btc-vanity` is a blazingly fast Rust library and CLI tool designed for generating **vanity cryptocurrency addresses**.
-//! Whether you are looking to create Bitcoin, Ethereum, or Solana addresses with specific patterns or substrings,
+//! Whether you are looking to create Bitcoin or Ethereum addresses with specific patterns or substrings,
 //! `btc-vanity` offers a customizable and highly performant solution to achieve your goals.
 //!
 //! With support for **prefix**, **suffix**, **substring**, or even **regex-based patterns**, this library
@@ -76,30 +76,6 @@
 //!          vanity_address.get_address());
 //! ```
 //!
-//! #### Generate a Solana Vanity Address
-//!
-//! Create a Solana address with `meow` anywhere in the address (case-sensitive) using 4 threads:
-//!
-//! ```rust
-//! use btc_vanity::{SolanaKeyPair, KeyPairGenerator, VanityAddr, VanityMode};
-//!
-//! let vanity_address: SolanaKeyPair = VanityAddr::generate(
-//! "meow",  // Desired substring
-//! 4,      // Number of threads
-//! true,  // Case-sensitive
-//! true,   // Enable fast mode
-//! VanityMode::Anywhere // Match substring anywhere in the address
-//! ).unwrap();
-//!
-//! println!("Solana vanity address:\n\
-//!           private_key: {}\n\
-//!           public_key: {}\n\
-//!           address: {}\n",
-//!          vanity_address.get_private_key_as_base58(),
-//!          vanity_address.get_public_key_as_base58(),
-//!          vanity_address.get_address());
-//! ```
-//!
 //! #### Regex Matching for Bitcoin Addresses
 //!
 //! Find a Bitcoin address that matches a regex pattern `^1E.ET.*T$` with using 12 threads:
@@ -130,5 +106,5 @@ pub mod flags;
 pub mod keys_and_address;
 pub mod vanity_addr_generator;
 
-pub use keys_and_address::{BitcoinKeyPair, EthereumKeyPair, KeyPairGenerator, SolanaKeyPair};
+pub use keys_and_address::{BitcoinKeyPair, EthereumKeyPair, KeyPairGenerator};
 pub use vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};

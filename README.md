@@ -1,6 +1,6 @@
-# <img src='images/bitcoin.svg' height='22'> <img src='images/ethereum.png' height='22'> <img src='images/solana.png' height='22'> btc-vanity
+# <img src='images/bitcoin.svg' height='22'> <img src='images/ethereum.png' height='22'> btc-vanity
 
-A blazingly fast vanity address generator written with the Rust programming language. Supporting Bitcoin, Ethereum, and Solana.
+A blazingly fast vanity address generator written with the Rust programming language. Supporting Bitcoin, and Ethereum.
 
 With btc-vanity, you can generate wallets that has custom addresses with prefixes, suffixes, substrings, or even regex patterns. It's designed for **speed**, **flexibility**, and **security**.
 
@@ -8,7 +8,7 @@ You can easily run btc-vanity terminal application locally or use it as a librar
 
 ## Key Features
 
-**Multi-Chain Support**: Generate vanity addresses for: `Bitcoin`, `Ethereum`, and `Solana`. <br>
+**Multi-Chain Support**: Generate vanity addresses for: `Bitcoin`, and `Ethereum`. <br>
 **Advanced Customization**: Match prefixes, suffixes, substrings, or regex-based patterns with optional case insensitivity. <br>
 **Blazingly Fast Performance**: Fully utilize your hardware with customizable thread counts. <br>
 **Batch File Support**: Bulk generate addresses using input files with desired patterns. <br>
@@ -50,7 +50,6 @@ $ btc-vanity [OPTIONS] <PATTERN>
 #### Blockchain Selection
 `--btc`: Generates Bitcoin keypairs and addresses. [default] <br>
 `--eth`: Generates Ethereum keypairs and addresses. <br>
-`--sol`: Generates Solana keypairs and addresses. <br>
 
 #### General Options
 `-i, --input-file <FILE>`: Reads patterns and it's flags from the specified file for vanity address generation, with one pattern per line. <br>
@@ -103,12 +102,6 @@ Generate an Ethereum address starting with 0xdead with 8 threads:
 $ btc-vanity --eth -t 8 dead
 ```
 
-Generate a Solana address ending with 123:
-
-```shell
-$ btc-vanity --sol -s 123
-```
-
 ## Library Usage
 
 Here are some usage examples of `btc-vanity` as a library.
@@ -158,30 +151,6 @@ println!("Ethereum vanity address:\n\
           address: {}\n",
           vanity_address.get_private_key_as_hex(),
           vanity_address.get_private_key_as_hex(),
-          vanity_address.get_address());
-```
-
-#### Generate a Solana Vanity Address
-
-Create a Solana address with `meow` anywhere in the address (case-sensitive) using 4 threads:
-
-```rust
-use btc_vanity::{SolanaKeyPair, KeyPairGenerator, VanityAddr, VanityMode};
-
-let vanity_address: SolanaKeyPair = VanityAddr::generate(
-            "meow",  // Desired substring
-            4,      // Number of threads
-            true,  // Case-sensitive
-            true,   // Enable fast mode
-            VanityMode::Anywhere // Match substring anywhere in the address
-            ).unwrap();
-
-println!("Solana vanity address:\n\
-          private_key: {}\n\
-          public_key: {}\n\
-          address: {}\n",
-          vanity_address.get_private_key_as_base58(),
-          vanity_address.get_public_key_as_base58(),
           vanity_address.get_address());
 ```
 
