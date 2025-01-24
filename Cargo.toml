@@ -2,7 +2,7 @@
 name = "btc-vanity"
 version = "2.0.1"
 authors = ["Emirhan TALA <tala.emirhan@gmail.com>"]
-description = "A blazingly fast Bitcoin, and Ethereum vanity address generator."
+description = "A blazingly fast Bitcoin and Ethereum vanity address generator."
 edition = "2021"
 license = "Apache-2.0"
 readme = "README.md"
@@ -47,3 +47,7 @@ ci = "github"
 installers = []
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+# Path that installers should place binaries in
+install-path = "CARGO_HOME"
+# Whether to install an updater program
+install-updater = true

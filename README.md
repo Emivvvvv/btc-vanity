@@ -2,7 +2,7 @@
 
 A blazingly fast vanity address generator written with the Rust programming language. Supporting Bitcoin, and Ethereum.
 
-With btc-vanity, you can generate wallets that has custom addresses with prefixes, suffixes, substrings, or even regex patterns. It's designed for **speed**, **flexibility**, and **security**.
+With btc-vanity, you can generate wallets that has custom addresses with prefixes, suffixes, substrings, or even regex patterns.
 
 You can easily run btc-vanity terminal application locally or use it as a library to create your vanity keypair securely.
 

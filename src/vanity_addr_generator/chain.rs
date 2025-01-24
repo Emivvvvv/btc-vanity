@@ -1,7 +1,7 @@
 //! # Vanity Chain Module
 //!
 //! This module defines the [VanityChain] trait, which provides chain-specific behavior for
-//! generating vanity addresses. It supports `Bitcoin`, and `Ethereum` chains and handles:
+//! generating vanity addresses. It supports `Bitcoin` and `Ethereum` chains and handles:
 //! - Input validation for both plain and regex patterns.
 //! - Adjustments to inputs and patterns for chain-specific constraints.
 
@@ -21,7 +21,7 @@ const ALLOWED_REGEX_META: &[char] = &[
 
 /// The `VanityChain` trait defines chain-specific behavior for vanity address generation.
 ///
-/// This trait is implemented for [BitcoinKeyPair], and [EthereumKeyPair]
+/// This trait is implemented for [BitcoinKeyPair] and [EthereumKeyPair]
 /// and provides default implementations for input validation and
 /// adjustments for chain-specific constraints.
 pub trait VanityChain: KeyPairGenerator + Send {
