@@ -21,7 +21,7 @@ You can easily run btc-vanity terminal application locally or use it as a librar
 ### CLI
 
 Install the binary using `cargo`:
-p
+
 ```bash
 $ cargo install btc-vanity
 ```
