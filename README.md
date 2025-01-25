@@ -24,7 +24,7 @@ You can easily run btc-vanity terminal application locally or use it as a librar
 ### CLI
 
 Install the binary using `cargo`:
-p
+
 ```bash
 $ cargo install btc-vanity
 ```
@@ -37,6 +37,7 @@ Or include it as a library in your Rust project:
 [dependencies]
 btc-vanity = "2.0.1"
 ```
+
 Crate on [crates.io](https://crates.io/crates/btc-vanity) <br>
 Documentation on [docs.rs](https://docs.rs/btc-vanity/latest/btc_vanity/index.html)
 
