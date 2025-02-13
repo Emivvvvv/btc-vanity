@@ -1,6 +1,12 @@
 use btc_vanity::{
-    BitcoinKeyPair, EthereumKeyPair, KeyPairGenerator, SolanaKeyPair, VanityAddr, VanityMode,
+    BitcoinKeyPair, VanityAddr, VanityMode,
 };
+#[cfg(all(feature = "ethereum", feature = "solana"))]
+use btc_vanity::KeyPairGenerator;
+#[cfg(feature = "solana")]
+use btc_vanity::SolanaKeyPair;
+#[cfg(feature = "ethereum")]
+use btc_vanity::EthereumKeyPair;
 
 #[test]
 fn test_bitcoin_vanity_address_prefix() {
@@ -25,6 +31,7 @@ fn test_bitcoin_vanity_address_prefix() {
 }
 
 #[test]
+#[cfg(feature = "ethereum")]
 fn test_ethereum_vanity_address_prefix() {
     // Try generating an Ethereum vanity address with a specific prefix
     let result = VanityAddr::generate::<EthereumKeyPair>(
@@ -47,6 +54,7 @@ fn test_ethereum_vanity_address_prefix() {
 }
 
 #[test]
+#[cfg(feature = "solana")]
 fn test_solana_vanity_address_prefix() {
     // Try generating a Solana vanity address with a specific prefix
     let result = VanityAddr::generate::<SolanaKeyPair>(

@@ -1,6 +1,6 @@
 [package]
 name = "btc-vanity"
-version = "2.0.1"
+version = "2.1.0"
 authors = ["Emirhan TALA <tala.emirhan@gmail.com>"]
 description = "A blazingly fast Bitcoin, Ethereum, and Solana vanity address generator."
 edition = "2021"
@@ -15,17 +15,25 @@ rand = "0.9.0-beta.3"
 bitcoin = { version = "0.32.5", features = ["rand-std"] }
 thiserror = "2.0.11"
 clap = "4.5.26"
-num-bigint = { version = "0.4.6", features = ["rand"] }
 num-traits = "0.2.19"
 regex = "1.11.1"
-hex = "0.4.3"
-libsecp256k1 = "0.7.1"
-secp256k1 = { version = "0.30.0", features = ["rand"] }
-sha3 = "0.11.0-pre.4"
-solana-sdk = { version = "2.1.10", default-features = false, features = ["full"] }
-log = "0.4.25"
 memx = "0.1.32"
-openssl = { version = "0.10", features = ["vendored"] }
+
+# Dependencies for Ethereum support
+hex = { version = "0.4.3", optional = true }  # Make it optional
+secp256k1 = { version = "0.30.0", features = ["rand"], optional = true }  # Make it optional
+sha3 = { version = "0.11.0-pre.4", optional = true }  # Make it optional
+
+# Dependencies for Solana support
+solana-sdk = { version = "2.1.10", default-features = false, features = ["full"], optional = true }
+openssl = { version = "0.10", features = ["vendored"], optional = true }
+
+[features]
+default = []
+
+ethereum = ["hex", "secp256k1", "sha3"]
+solana = ["solana-sdk", "openssl"]
+all = ["solana", "ethereum"]
 
 [dev-dependencies]
 tempfile = "3.6"

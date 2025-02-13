@@ -2,12 +2,14 @@
 //!
 //! This module provides functionality to generate Solana key pairs and their associated addresses.
 
+use crate::keys_and_address::{KeyPairGenerator, SolanaKeyPair};
+
 use rand::{rngs::ThreadRng, RngCore};
 use solana_sdk::bs58;
 use solana_sdk::signature::{Keypair, SeedDerivable, Signer};
 use std::cell::RefCell;
 
-use crate::keys_and_address::{KeyPairGenerator, SolanaKeyPair};
+
 
 thread_local! {
     static THREAD_LOCAL_RNG: RefCell<ThreadRng> = RefCell::new(rand::rng());

@@ -505,6 +505,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "ethereum")]
     mod ethereum_vanity_tests {
         use super::*;
         use crate::keys_and_address::{EthereumKeyPair, KeyPairGenerator};
@@ -683,6 +684,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "solana")]
     mod solana_vanity_tests {
         use super::*;
         use crate::keys_and_address::{KeyPairGenerator, SolanaKeyPair};

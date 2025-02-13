@@ -6,13 +6,19 @@
 //! - Adjustments to inputs and patterns for chain-specific constraints.
 
 use crate::error::VanityError;
-use crate::keys_and_address::{BitcoinKeyPair, EthereumKeyPair, KeyPairGenerator, SolanaKeyPair};
+use crate::keys_and_address::{BitcoinKeyPair, KeyPairGenerator};
+#[cfg(feature = "ethereum")]
+use crate::keys_and_address::EthereumKeyPair;
+#[cfg(feature = "solana")]
+use crate::keys_and_address::SolanaKeyPair;
 use crate::VanityMode;
 
 /// Maximum length constraints for fast mode and general input.
 const BASE58_FAST_MODE_MAX: usize = 5;
-const BASE16_FAST_MODE_MAX: usize = 16;
 const BASE58_MAX: usize = 25;
+#[cfg(feature = "ethereum")]
+const BASE16_FAST_MODE_MAX: usize = 16;
+#[cfg(feature = "ethereum")]
 const BASE16_MAX: usize = 40;
 
 const ALLOWED_REGEX_META: &[char] = &[
@@ -237,6 +243,7 @@ impl VanityChain for BitcoinKeyPair {
     }
 }
 
+#[cfg(feature = "ethereum")]
 impl VanityChain for EthereumKeyPair {
     /// Validates a Base16 input string for Ethereum-specific vanity address generation.
     ///
@@ -340,6 +347,7 @@ impl VanityChain for EthereumKeyPair {
     }
 }
 
+#[cfg(feature = "solana")]
 impl VanityChain for SolanaKeyPair {
     /// Validates a Base58 input string for Solana-specific vanity address generation.
     ///

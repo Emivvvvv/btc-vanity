@@ -4,7 +4,9 @@
 //! Supported cryptocurrencies are `Bitcoin`, `Ethereum`, and `Solana`.
 
 pub mod btc;
+#[cfg(feature = "ethereum")]
 pub mod eth;
+#[cfg(feature = "solana")]
 pub mod sol;
 
 use std::array::from_fn;
@@ -12,7 +14,9 @@ use std::array::from_fn;
 use crate::BATCH_SIZE;
 
 use bitcoin::{PrivateKey, PublicKey};
+#[cfg(feature = "ethereum")]
 use secp256k1::{PublicKey as SecpPublicKey, SecretKey};
+#[cfg(feature = "solana")]
 use solana_sdk::signature::Keypair;
 
 /// A trait to handle generic key pair and address creation.
@@ -70,6 +74,7 @@ unsafe impl Send for BitcoinKeyPair {}
 
 /// A struct representing an Ethereum key pair and its associated address.
 /// Implements `KeyPairGenerator` and `Send` traits.
+#[cfg(feature = "ethereum")]
 pub struct EthereumKeyPair {
     /// An Ethereum private key. `secp256k1::SecretKey`
     private_key: SecretKey,
@@ -79,10 +84,12 @@ pub struct EthereumKeyPair {
     address: String,
 }
 
+#[cfg(feature = "ethereum")]
 unsafe impl Send for EthereumKeyPair {}
 
 /// A struct representing a Solana key pair and its associated address.
 /// Implements `KeyPairGenerator` and `Send` traits.
+#[cfg(feature = "solana")]
 pub struct SolanaKeyPair {
     /// A Solana `solana_sdk::signer::Keypair` struct.
     keypair: Keypair,
@@ -90,4 +97,5 @@ pub struct SolanaKeyPair {
     address: String,
 }
 
+#[cfg(feature = "solana")]
 unsafe impl Send for SolanaKeyPair {}

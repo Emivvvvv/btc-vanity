@@ -3,11 +3,16 @@ use btc_vanity::error::VanityError;
 use btc_vanity::file::{parse_input_file, write_output_file};
 use btc_vanity::flags::{parse_cli, PatternsSource, VanityFlags};
 use btc_vanity::keys_and_address::{
-    BitcoinKeyPair, EthereumKeyPair, KeyPairGenerator, SolanaKeyPair,
+    BitcoinKeyPair
 };
+#[cfg(feature = "ethereum")]
+use btc_vanity::keys_and_address::EthereumKeyPair;
+#[cfg(feature = "solana")]
+use btc_vanity::keys_and_address::{SolanaKeyPair, KeyPairGenerator};
 use btc_vanity::vanity_addr_generator::chain::Chain;
 use btc_vanity::vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};
 
+#[cfg(feature = "solana")]
 use bitcoin::hex::DisplayHex;
 use clap::error::ErrorKind;
 use std::path::Path;
@@ -54,6 +59,7 @@ fn generate_vanity_address(pattern: &str, vanity_flags: &VanityFlags) -> Result<
             }
         }
 
+        #[cfg(feature = "ethereum")]
         Chain::Ethereum => {
             // 1) Generate the Ethereum vanity
             let result: Result<EthereumKeyPair, VanityError> =
@@ -89,6 +95,7 @@ fn generate_vanity_address(pattern: &str, vanity_flags: &VanityFlags) -> Result<
             }
         }
 
+        #[cfg(feature = "solana")]
         Chain::Solana => {
             // 1) Generate the Solana vanity
             let result: Result<SolanaKeyPair, VanityError> =
@@ -121,6 +128,15 @@ fn generate_vanity_address(pattern: &str, vanity_flags: &VanityFlags) -> Result<
                     Ok(s)
                 }
                 Err(e) => Err(e.to_string()),
+            }
+        }
+        // This arm handles the case where NEITHER solana NOR ethereum is enabled.
+        #[cfg(all(not(feature = "ethereum"), not(feature = "solana")))]
+        _ => {
+            match vanity_flags.chain.unwrap_or(Chain::Bitcoin){
+                Chain::Ethereum => Err(VanityError::MissingFeatureEthereum.to_string()),
+                Chain::Solana => Err(VanityError::MissingFeatureSolana.to_string()),
+                _ => unreachable!()
             }
         }
     };

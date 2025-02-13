@@ -9,9 +9,7 @@
 //! ensures you can generate your desired address with ease. Built with multithreaded support, it maximizes
 //! performance to quickly find vanity addresses for various blockchains.
 //!
-//! ### Example Usage
-//!
-//! #### 1. Generate a Random Bitcoin Keypair
+//! ### Example Usages
 //!
 //! You can easily generate a random Bitcoin keypair and print the private and public keys along with the address:
 //!
@@ -28,7 +26,6 @@
 //!           random_address.get_comp_public_key(),
 //!           random_address.get_comp_address());
 //! ```
-//!
 //!
 //! Find a Bitcoin address that contains the substring `emiv` (case-insensitive) using 16 threads:
 //!
@@ -52,38 +49,12 @@
 //!          vanity_address.get_comp_address());
 //! ```
 //!
-//! #### Generate an Ethereum Vanity Address
-//!
-//! Match an Ethereum address with the prefix `0xdead` using 8 threads:
+//! Create a Bitcoin address with `meow` anywhere in the address (case-sensitive) using 4 threads:
 //!
 //! ```rust
-//! use btc_vanity::{EthereumKeyPair, KeyPairGenerator, VanityAddr, VanityMode};
+//! use btc_vanity::{BitcoinKeyPair, VanityAddr, VanityMode};
 //!
-//! let vanity_address: EthereumKeyPair = VanityAddr::generate(
-//! "dead", // Desired prefix (without 0x)
-//! 8,      // Number of threads
-//! false,  // Case-insensitive (Case sensitivity not supported on ETH generation)
-//! true,   // Enable fast mode
-//! VanityMode::Prefix // Match substring at the start
-//! ).unwrap();
-//!
-//! println!("Ethereum vanity address:\n\
-//!           private_key: {}\n\
-//!           public_key: {}\n\
-//!           address: {}\n",
-//!          vanity_address.get_private_key_as_hex(),
-//!          vanity_address.get_private_key_as_hex(),
-//!          vanity_address.get_address());
-//! ```
-//!
-//! #### Generate a Solana Vanity Address
-//!
-//! Create a Solana address with `meow` anywhere in the address (case-sensitive) using 4 threads:
-//!
-//! ```rust
-//! use btc_vanity::{SolanaKeyPair, KeyPairGenerator, VanityAddr, VanityMode};
-//!
-//! let vanity_address: SolanaKeyPair = VanityAddr::generate(
+//! let vanity_address: BitcoinKeyPair = VanityAddr::generate(
 //! "meow",  // Desired substring
 //! 4,      // Number of threads
 //! true,  // Case-sensitive
@@ -91,16 +62,14 @@
 //! VanityMode::Anywhere // Match substring anywhere in the address
 //! ).unwrap();
 //!
-//! println!("Solana vanity address:\n\
-//!           private_key: {}\n\
-//!           public_key: {}\n\
-//!           address: {}\n",
-//!          vanity_address.get_private_key_as_base58(),
-//!          vanity_address.get_public_key_as_base58(),
-//!          vanity_address.get_address());
+//! println!("Vanity address:\n\
+//!           private_key (WIF): {}\n\
+//!           public_key (compressed): {}\n\
+//!           address (compressed): {}\n",
+//!          vanity_address.get_wif_private_key(),
+//!          vanity_address.get_comp_public_key(),
+//!          vanity_address.get_comp_address());
 //! ```
-//!
-//! #### Regex Matching for Bitcoin Addresses
 //!
 //! Find a Bitcoin address that matches a regex pattern `^1E.ET.*T$` with using 12 threads:
 //!
@@ -130,5 +99,9 @@ pub mod flags;
 pub mod keys_and_address;
 pub mod vanity_addr_generator;
 
-pub use keys_and_address::{BitcoinKeyPair, EthereumKeyPair, KeyPairGenerator, SolanaKeyPair};
+pub use crate::keys_and_address::{BitcoinKeyPair, KeyPairGenerator};
+#[cfg(feature = "ethereum")]
+pub use crate::keys_and_address::EthereumKeyPair;
+#[cfg(feature = "solana")]
+pub use crate::keys_and_address::SolanaKeyPair;
 pub use vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};

@@ -1,4 +1,3 @@
-use log::error;
 use std::io;
 use thiserror::Error;
 
@@ -37,6 +36,12 @@ pub enum VanityError {
 
     #[error("Case sensitive wallet generation is not supported for Ethereum!")]
     EthereumCaseSensitiveIsNotSupported,
+
+    #[error("Ethereum support is not enabled.  Compile with `--features ethereum`.")]
+    MissingFeatureEthereum,
+
+    #[error("Solana support is not enabled.  Compile with `--features solana`.")]
+    MissingFeatureSolana,
 }
 
 impl From<KeysAndAddressError> for VanityError {
