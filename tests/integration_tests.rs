@@ -1,12 +1,11 @@
 use btc_vanity::{
     BitcoinKeyPair, VanityAddr, VanityMode,
 };
-#[cfg(all(feature = "ethereum", feature = "solana"))]
-use btc_vanity::KeyPairGenerator;
-#[cfg(feature = "solana")]
-use btc_vanity::SolanaKeyPair;
 #[cfg(feature = "ethereum")]
 use btc_vanity::EthereumKeyPair;
+#[cfg(feature = "solana")]
+use btc_vanity::{SolanaKeyPair, KeyPairGenerator};
+
 
 #[test]
 fn test_bitcoin_vanity_address_prefix() {
@@ -14,7 +13,7 @@ fn test_bitcoin_vanity_address_prefix() {
     let result = VanityAddr::generate::<BitcoinKeyPair>(
         "tst", // Prefix
         8,     // Threads
-        true,  // Case-insensitive
+        false,  // Case-insensitive
         true,  // Enable fast mode
         VanityMode::Prefix,
     );
@@ -25,7 +24,7 @@ fn test_bitcoin_vanity_address_prefix() {
     // Assert that the generated address starts with the prefix
     let keypair = result.unwrap();
     assert!(
-        keypair.get_comp_address().starts_with("1tst"),
+        keypair.get_comp_address().to_lowercase().starts_with("1tst"),
         "Generated address does not match prefix"
     );
 }

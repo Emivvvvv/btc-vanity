@@ -5,10 +5,12 @@ use btc_vanity::flags::{parse_cli, PatternsSource, VanityFlags};
 use btc_vanity::keys_and_address::{
     BitcoinKeyPair
 };
-#[cfg(feature = "ethereum")]
-use btc_vanity::keys_and_address::EthereumKeyPair;
+#[cfg(any(feature = "ethereum", feature = "solana"))]
+use btc_vanity::KeyPairGenerator;
 #[cfg(feature = "solana")]
-use btc_vanity::keys_and_address::{SolanaKeyPair, KeyPairGenerator};
+use btc_vanity::SolanaKeyPair;
+#[cfg(feature = "ethereum")]
+use btc_vanity::EthereumKeyPair;
 use btc_vanity::vanity_addr_generator::chain::Chain;
 use btc_vanity::vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};
 
@@ -130,15 +132,11 @@ fn generate_vanity_address(pattern: &str, vanity_flags: &VanityFlags) -> Result<
                 Err(e) => Err(e.to_string()),
             }
         }
-        // This arm handles the case where NEITHER solana NOR ethereum is enabled.
-        #[cfg(all(not(feature = "ethereum"), not(feature = "solana")))]
-        _ => {
-            match vanity_flags.chain.unwrap_or(Chain::Bitcoin){
-                Chain::Ethereum => Err(VanityError::MissingFeatureEthereum.to_string()),
-                Chain::Solana => Err(VanityError::MissingFeatureSolana.to_string()),
-                _ => unreachable!()
-            }
-        }
+        // This arm handles missing features.
+        #[cfg(not(feature = "ethereum"))]
+        Chain::Ethereum => Err(VanityError::MissingFeatureEthereum.to_string()),
+        #[cfg(not(feature = "solana"))]
+        Chain::Solana => Err(VanityError::MissingFeatureSolana.to_string()),
     };
 
     // If we made it here, we have out: Result<String, String>
