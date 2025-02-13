@@ -9,8 +9,6 @@ use solana_sdk::bs58;
 use solana_sdk::signature::{Keypair, SeedDerivable, Signer};
 use std::cell::RefCell;
 
-
-
 thread_local! {
     static THREAD_LOCAL_RNG: RefCell<ThreadRng> = RefCell::new(rand::rng());
 }

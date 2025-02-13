@@ -39,7 +39,7 @@ pub enum VanityError {
     #[cfg(feature = "ethereum")]
     #[error("Case sensitive wallet generation is not supported for Ethereum!")]
     EthereumCaseSensitiveIsNotSupported,
-    
+
     #[error("Ethereum support is not enabled.  Compile with `--features ethereum`.")]
     MissingFeatureEthereum,
 

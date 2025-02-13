@@ -6,11 +6,11 @@
 //! - Adjustments to inputs and patterns for chain-specific constraints.
 
 use crate::error::VanityError;
-use crate::keys_and_address::{BitcoinKeyPair, KeyPairGenerator};
 #[cfg(feature = "ethereum")]
 use crate::keys_and_address::EthereumKeyPair;
 #[cfg(feature = "solana")]
 use crate::keys_and_address::SolanaKeyPair;
+use crate::keys_and_address::{BitcoinKeyPair, KeyPairGenerator};
 use crate::VanityMode;
 
 /// Maximum length constraints for fast mode and general input.

@@ -2,17 +2,15 @@ use btc_vanity::cli::cli;
 use btc_vanity::error::VanityError;
 use btc_vanity::file::{parse_input_file, write_output_file};
 use btc_vanity::flags::{parse_cli, PatternsSource, VanityFlags};
-use btc_vanity::keys_and_address::{
-    BitcoinKeyPair
-};
+use btc_vanity::keys_and_address::BitcoinKeyPair;
+use btc_vanity::vanity_addr_generator::chain::Chain;
+use btc_vanity::vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};
+#[cfg(feature = "ethereum")]
+use btc_vanity::EthereumKeyPair;
 #[cfg(any(feature = "ethereum", feature = "solana"))]
 use btc_vanity::KeyPairGenerator;
 #[cfg(feature = "solana")]
 use btc_vanity::SolanaKeyPair;
-#[cfg(feature = "ethereum")]
-use btc_vanity::EthereumKeyPair;
-use btc_vanity::vanity_addr_generator::chain::Chain;
-use btc_vanity::vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};
 
 #[cfg(feature = "solana")]
 use bitcoin::hex::DisplayHex;

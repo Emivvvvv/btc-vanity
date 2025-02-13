@@ -6,10 +6,10 @@ use std::cell::RefCell;
 
 use crate::keys_and_address::{EthereumKeyPair, KeyPairGenerator};
 
+use hex::encode;
 use rand::{rngs::ThreadRng, RngCore};
 use secp256k1::{All, PublicKey, Secp256k1, SecretKey};
 use sha3::{Digest, Keccak256};
-use hex::encode;
 
 thread_local! {
     static THREAD_LOCAL_SECP256K1: Secp256k1<All> = Secp256k1::new();
