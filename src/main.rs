@@ -2,10 +2,18 @@ use btc_vanity::cli::cli;
 use btc_vanity::error::VanityError;
 use btc_vanity::file::{parse_input_file, write_output_file};
 use btc_vanity::flags::{parse_cli, PatternsSource, VanityFlags};
-use btc_vanity::keys_and_address::{BitcoinKeyPair, EthereumKeyPair, KeyPairGenerator};
+use btc_vanity::keys_and_address::BitcoinKeyPair;
 use btc_vanity::vanity_addr_generator::chain::Chain;
 use btc_vanity::vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};
+#[cfg(feature = "ethereum")]
+use btc_vanity::EthereumKeyPair;
+#[cfg(any(feature = "ethereum", feature = "solana"))]
+use btc_vanity::KeyPairGenerator;
+#[cfg(feature = "solana")]
+use btc_vanity::SolanaKeyPair;
 
+#[cfg(feature = "solana")]
+use bitcoin::hex::DisplayHex;
 use clap::error::ErrorKind;
 use std::path::Path;
 use std::process;
@@ -51,6 +59,7 @@ fn generate_vanity_address(pattern: &str, vanity_flags: &VanityFlags) -> Result<
             }
         }
 
+        #[cfg(feature = "ethereum")]
         Chain::Ethereum => {
             // 1) Generate the Ethereum vanity
             let result: Result<EthereumKeyPair, VanityError> =
@@ -85,6 +94,47 @@ fn generate_vanity_address(pattern: &str, vanity_flags: &VanityFlags) -> Result<
                 Err(e) => Err(e.to_string()),
             }
         }
+
+        #[cfg(feature = "solana")]
+        Chain::Solana => {
+            // 1) Generate the Solana vanity
+            let result: Result<SolanaKeyPair, VanityError> =
+                match vanity_flags.vanity_mode.unwrap_or(VanityMode::Prefix) {
+                    VanityMode::Regex => {
+                        VanityAddr::generate_regex::<SolanaKeyPair>(pattern, vanity_flags.threads)
+                    }
+                    _ => VanityAddr::generate::<SolanaKeyPair>(
+                        pattern,
+                        vanity_flags.threads,
+                        vanity_flags.is_case_sensitive,
+                        !vanity_flags.disable_fast_mode,
+                        vanity_flags.vanity_mode.unwrap_or(VanityMode::Prefix),
+                    ),
+                };
+
+            // 2) Format on success
+            match result {
+                Ok(res) => {
+                    // Keypair -> hex
+                    let keypair_bytes = res.keypair().to_bytes();
+                    let private_key_hex = keypair_bytes.as_hex();
+
+                    let address = res.get_address();
+                    let s = format!(
+                        "private_key (hex): {}\n\
+                         address: {}\n\n",
+                        private_key_hex, address
+                    );
+                    Ok(s)
+                }
+                Err(e) => Err(e.to_string()),
+            }
+        }
+        // This arm handles missing features.
+        #[cfg(not(feature = "ethereum"))]
+        Chain::Ethereum => Err(VanityError::MissingFeatureEthereum.to_string()),
+        #[cfg(not(feature = "solana"))]
+        Chain::Solana => Err(VanityError::MissingFeatureSolana.to_string()),
     };
 
     // If we made it here, we have out: Result<String, String>

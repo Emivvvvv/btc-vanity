@@ -2,12 +2,14 @@
 //!
 //! This module provides functionality to generate Ethereum key pairs and their associated addresses.
 
-use rand::{rngs::ThreadRng, RngCore};
-use secp256k1::{All, PublicKey, Secp256k1, SecretKey};
-use sha3::{Digest, Keccak256};
 use std::cell::RefCell;
 
 use crate::keys_and_address::{EthereumKeyPair, KeyPairGenerator};
+
+use hex::encode;
+use rand::{rngs::ThreadRng, RngCore};
+use secp256k1::{All, PublicKey, Secp256k1, SecretKey};
+use sha3::{Digest, Keccak256};
 
 thread_local! {
     static THREAD_LOCAL_SECP256K1: Secp256k1<All> = Secp256k1::new();
@@ -33,7 +35,7 @@ impl KeyPairGenerator for EthereumKeyPair {
                 // Derive the Ethereum address (Keccak256 hash of the public key, last 20 bytes)
                 let public_key_bytes = public_key.serialize_uncompressed();
                 let public_key_hash = Keccak256::digest(&public_key_bytes[1..]); // Skip the 0x04 prefix
-                let address = hex::encode(&public_key_hash[12..]); // Use the last 20 bytes
+                let address = encode(&public_key_hash[12..]); // Use the last 20 bytes
 
                 EthereumKeyPair {
                     private_key: secret_key,
@@ -60,17 +62,17 @@ impl KeyPairGenerator for EthereumKeyPair {
 impl EthereumKeyPair {
     /// Retrieves the private key as a hex-encoded str
     pub fn get_private_key_as_hex(&self) -> String {
-        hex::encode(self.private_key.secret_bytes())
+        encode(self.private_key.secret_bytes())
     }
 
     /// Retrieves the private key as a hex-encoded `String` with the `0x` prefix.
     pub fn get_private_key_as_hex_with_prefix(&self) -> String {
-        format!("0x{}", hex::encode(self.private_key.secret_bytes()))
+        format!("0x{}", encode(self.private_key.secret_bytes()))
     }
 
     /// Retrieves the public key as a hex-encoded `String`.
     pub fn get_public_key_as_hex(&self) -> String {
-        hex::encode(self.public_key.serialize_uncompressed())
+        encode(self.public_key.serialize_uncompressed())
     }
 
     /// Retrieves the Ethereum address as a hex-encoded `String` with the `0x` prefix.
@@ -109,7 +111,7 @@ mod tests {
         // Derive Ethereum address from public key
         let public_key_bytes = derived_public_key.serialize_uncompressed();
         let public_key_hash = Keccak256::digest(&public_key_bytes[1..]); // Skip the 0x04 prefix
-        let derived_address = hex::encode(&public_key_hash[12..]); // Use the last 20 bytes
+        let derived_address = encode(&public_key_hash[12..]); // Use the last 20 bytes
 
         assert_eq!(key_pair.address, derived_address);
     }
@@ -120,7 +122,7 @@ mod tests {
         let public_key_hex = key_pair.get_public_key_as_hex();
 
         // Verify the public key hex matches the serialized public key
-        let expected_hex = hex::encode(key_pair.public_key.serialize_uncompressed());
+        let expected_hex = encode(key_pair.public_key.serialize_uncompressed());
         assert_eq!(public_key_hex, expected_hex);
     }
 }

@@ -505,6 +505,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "ethereum")]
     mod ethereum_vanity_tests {
         use super::*;
         use crate::keys_and_address::{EthereumKeyPair, KeyPairGenerator};
@@ -678,6 +679,229 @@ mod tests {
             assert!(
                 address.ends_with("12"),
                 "Address should end with '12': {}",
+                address
+            );
+        }
+    }
+
+    #[cfg(feature = "solana")]
+    mod solana_vanity_tests {
+        use super::*;
+        use crate::keys_and_address::{KeyPairGenerator, SolanaKeyPair};
+
+        #[test]
+        fn test_generate_vanity_prefix() {
+            let vanity_string = "et";
+            let keys_and_address = VanityAddr::generate::<SolanaKeyPair>(
+                vanity_string,
+                4,                  // Use 4 threads
+                true,               // Case-insensitivity
+                true,               // Fast mode (limits string size with 44 characters)
+                VanityMode::Prefix, // Vanity mode set to Prefix
+            )
+            .unwrap();
+
+            let vanity_addr_starts_with = "et";
+            assert!(keys_and_address
+                .get_address()
+                .starts_with(vanity_addr_starts_with));
+        }
+
+        #[test]
+        fn test_generate_vanity_suffix() {
+            let vanity_string = "12";
+            let keys_and_address = VanityAddr::generate::<SolanaKeyPair>(
+                vanity_string,
+                4,                  // Use 4 threads
+                false,              // Case-insensitivity
+                true,               // Fast mode (limits string size with 44 characters)
+                VanityMode::Suffix, // Vanity mode set to Suffix
+            )
+            .unwrap();
+
+            assert!(keys_and_address.get_address().ends_with(vanity_string));
+        }
+
+        #[test]
+        fn test_generate_vanity_anywhere() {
+            let vanity_string = "ab";
+            let keys_and_address = VanityAddr::generate::<SolanaKeyPair>(
+                vanity_string,
+                4,                    // Use 4 threads
+                true,                 // Case-insensitivity
+                true,                 // Fast mode (limits string size with 44 characters)
+                VanityMode::Anywhere, // Vanity mode set to Anywhere
+            )
+            .unwrap();
+
+            assert!(keys_and_address.get_address().contains(vanity_string));
+        }
+
+        #[test]
+        #[should_panic(expected = "FastModeEnabled")]
+        fn test_generate_vanity_string_too_long_with_fast_mode() {
+            let vanity_string = "123456"; // String longer than 5 characters
+            let _ = VanityAddr::generate::<SolanaKeyPair>(
+                vanity_string,
+                4,                  // Use 4 threads
+                false,              // Case-insensitivity
+                true,               // Fast mode (limits string size with 44 characters)
+                VanityMode::Prefix, // Vanity mode set to Prefix
+            )
+            .unwrap();
+        }
+
+        #[test]
+        #[should_panic(expected = "InputNotBase58")]
+        fn test_generate_vanity_invalid_base58() {
+            let vanity_string = "emiO"; // Contains invalid base58 character 'O'
+            let _ = VanityAddr::generate::<SolanaKeyPair>(
+                vanity_string,
+                4,                  // Use 4 threads
+                false,              // Case-insensitivity
+                true,               // Fast mode (limits string size with 44 characters)
+                VanityMode::Prefix, // Vanity mode set to Prefix
+            )
+            .unwrap();
+        }
+
+        #[test]
+        fn test_generate_regex_prefix() {
+            let pattern = "^et";
+            let keys_and_address = VanityAddr::generate_regex::<SolanaKeyPair>(pattern, 4).unwrap();
+            let address = keys_and_address.get_address();
+
+            assert!(
+                address.starts_with("et"),
+                "Address should start with 'et': {}",
+                address
+            );
+        }
+
+        #[test]
+        fn test_generate_regex_suffix() {
+            let pattern = "cd$";
+            let keys_and_address = VanityAddr::generate_regex::<SolanaKeyPair>(pattern, 4).unwrap();
+            let address = keys_and_address.get_address();
+
+            assert!(
+                address.ends_with("cd"),
+                "Address should end with 'cd': {}",
+                address
+            );
+        }
+
+        #[test]
+        fn test_generate_regex_anywhere() {
+            let pattern = ".*ab.*";
+            let keys_and_address = VanityAddr::generate_regex::<SolanaKeyPair>(pattern, 4).unwrap();
+            let address = keys_and_address.get_address();
+
+            assert!(
+                address.contains("ab"),
+                "Address should contain 'ab': {}",
+                address
+            );
+        }
+
+        #[test]
+        #[should_panic(expected = "InvalidRegex")]
+        fn test_generate_regex_invalid_syntax() {
+            let pattern = "^(abc";
+            let _ = VanityAddr::generate_regex::<SolanaKeyPair>(pattern, 4).unwrap();
+        }
+
+        #[test]
+        #[should_panic(expected = "RegexNotBase58")]
+        fn test_generate_regex_invalid_characters() {
+            let pattern = "^ghO";
+            let _ = VanityAddr::generate_regex::<SolanaKeyPair>(pattern, 4).unwrap();
+        }
+
+        #[test]
+        fn test_generate_regex_starts_with_e() {
+            let pattern = "^e";
+            let keys_and_address = VanityAddr::generate_regex::<SolanaKeyPair>(pattern, 4).unwrap();
+            let address = keys_and_address.get_address();
+
+            assert!(
+                address.starts_with("e"),
+                "Address should start with 'e': {}",
+                address
+            );
+        }
+
+        #[test]
+        fn test_generate_regex_contains_11() {
+            let pattern = ".*11.*";
+            let keys_and_address = VanityAddr::generate_regex::<SolanaKeyPair>(pattern, 4).unwrap();
+            let address = keys_and_address.get_address();
+
+            assert!(
+                address.contains("11"),
+                "Address should contain '11': {}",
+                address
+            );
+        }
+
+        #[test]
+        fn test_generate_regex_contains_22() {
+            let pattern = ".*22.*";
+            let keys_and_address = VanityAddr::generate_regex::<SolanaKeyPair>(pattern, 4).unwrap();
+            let address = keys_and_address.get_address();
+
+            assert!(
+                address.contains("22"),
+                "Address should contain '22': {}",
+                address
+            );
+        }
+
+        #[test]
+        fn test_generate_regex_ends_with_t() {
+            let pattern = "t$";
+            let keys_and_address = VanityAddr::generate_regex::<SolanaKeyPair>(pattern, 4).unwrap();
+            let address = keys_and_address.get_address();
+
+            assert!(
+                address.ends_with("t"),
+                "Address should end with 't': {}",
+                address
+            );
+        }
+
+        #[test]
+        fn test_generate_regex_complex_sequence() {
+            let pattern = "11.*22";
+            let keys_and_address = VanityAddr::generate_regex::<SolanaKeyPair>(pattern, 4).unwrap();
+            let address = keys_and_address.get_address();
+
+            assert!(
+                address.contains("11") && address.contains("22"),
+                "Address should contain '11' followed by '22': {}",
+                address
+            );
+        }
+
+        #[test]
+        fn test_generate_regex_complex_pattern() {
+            let pattern = "^e.*9.*t$";
+            let keys_and_address = VanityAddr::generate_regex::<SolanaKeyPair>(pattern, 4).unwrap();
+            let address = keys_and_address.get_address();
+
+            assert!(
+                address.starts_with("e"),
+                "Address should start with 'e': {}",
+                address
+            );
+            assert!(
+                address.contains("9"),
+                "Address should contain '9': {}",
+                address
+            );
+            assert!(
+                address.ends_with("t"),
+                "Address should end with 't': {}",
                 address
             );
         }

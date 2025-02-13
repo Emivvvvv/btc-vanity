@@ -65,6 +65,8 @@ fn parse_line(line: &str) -> Option<FileLineItem> {
     // chain
     let chain = if flags_vec.contains(&"--eth") {
         Some(Chain::Ethereum)
+    } else if flags_vec.contains(&"--sol") {
+        Some(Chain::Solana)
     } else if flags_vec.contains(&"--btc") {
         Some(Chain::Bitcoin)
     } else {

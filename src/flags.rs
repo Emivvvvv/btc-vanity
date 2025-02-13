@@ -25,7 +25,7 @@ pub struct VanityFlags {
     pub disable_fast_mode: bool,
     /// Specifies the mode of matching (e.g., `prefix`, `suffix`, `anywhere`, `regex`).
     pub vanity_mode: Option<VanityMode>,
-    /// Specifies the blockchain type (e.g., `Bitcoin`, `Ethereum`).
+    /// Specifies the blockchain type (e.g., `Bitcoin`, `Ethereum`, `Solana`).
     pub chain: Option<Chain>,
 }
 
@@ -49,7 +49,7 @@ pub enum PatternsSource {
 ///   - `PatternsSource`: The source of the vanity patterns (either a single string or an input file).
 ///
 /// # Behavior
-/// - Determines the blockchain (`chain`) based on flags (e.g., `ethereum`, `bitcoin`).
+/// - Determines the blockchain (`chain`) based on flags (e.g., `ethereum`, `solana`, `bitcoin`).
 /// - Determines the vanity mode (`vanity_mode`) based on flags (e.g., `regex`, `anywhere`, `suffix`, `prefix`).
 /// - Parses the number of threads, defaulting to 16 if not specified.
 /// - Detects whether patterns are provided via a single string or an input file.
@@ -57,6 +57,8 @@ pub fn parse_cli(matches: ArgMatches) -> (VanityFlags, PatternsSource) {
     // 1) Extract chain
     let chain = if matches.get_flag("ethereum") {
         Some(Chain::Ethereum)
+    } else if matches.get_flag("solana") {
+        Some(Chain::Solana)
     } else {
         Some(Chain::Bitcoin)
     };

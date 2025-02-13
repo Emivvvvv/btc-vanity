@@ -17,6 +17,7 @@
 //! #### Blockchain Selection
 //! `--btc`: Generates Bitcoin keypairs and addresses. [default] <br>
 //! `--eth`: Generates Ethereum keypairs and addresses. <br>
+//! `--sol`: Generates Solana keypairs and addresses. <br>
 //!
 //! #### General Options
 //! `-i, --input-file <FILE>`: Reads patterns and it's flags from the specified file for vanity address generation, with one pattern per line. <br>
@@ -68,6 +69,12 @@
 //! ```shell
 //! $ btc-vanity --eth -t 8 dead
 //! ```
+//!
+//! Generate a Solana address ending with 123:
+//!
+//! ```shell
+//! $ btc-vanity --sol -s 123
+//! ```
 
 use clap::{Arg, ArgAction, ArgGroup, Command};
 
@@ -81,15 +88,22 @@ pub fn cli() -> Command {
             Arg::new("bitcoin")
                 .long("btc")
                 .action(ArgAction::SetTrue)
-                .conflicts_with_all(["ethereum"])
+                .conflicts_with_all(["ethereum", "solana"])
                 .help("Generates Bitcoin keypairs and addresses. [default]")
         )
         .arg(
             Arg::new("ethereum")
                 .long("eth")
                 .action(ArgAction::SetTrue)
-                .conflicts_with_all(["bitcoin", "case-sensitive"])
+                .conflicts_with_all(["bitcoin", "solana", "case-sensitive"])
                 .help("Generates Ethereum keypairs and addresses.")
+        )
+        .arg(
+            Arg::new("solana")
+                .long("sol")
+                .action(ArgAction::SetTrue)
+                .conflicts_with_all(["bitcoin", "ethereum"])
+                .help("Generates Solana keypairs and addresses.")
         )
         .arg(
             Arg::new("string")

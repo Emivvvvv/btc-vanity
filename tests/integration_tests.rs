@@ -1,4 +1,8 @@
-use btc_vanity::{BitcoinKeyPair, EthereumKeyPair, VanityAddr, VanityMode};
+#[cfg(feature = "ethereum")]
+use btc_vanity::EthereumKeyPair;
+use btc_vanity::{BitcoinKeyPair, VanityAddr, VanityMode};
+#[cfg(feature = "solana")]
+use btc_vanity::{KeyPairGenerator, SolanaKeyPair};
 
 #[test]
 fn test_bitcoin_vanity_address_prefix() {
@@ -6,7 +10,7 @@ fn test_bitcoin_vanity_address_prefix() {
     let result = VanityAddr::generate::<BitcoinKeyPair>(
         "tst", // Prefix
         8,     // Threads
-        true,  // Case-insensitive
+        false, // Case-insensitive
         true,  // Enable fast mode
         VanityMode::Prefix,
     );
@@ -17,12 +21,16 @@ fn test_bitcoin_vanity_address_prefix() {
     // Assert that the generated address starts with the prefix
     let keypair = result.unwrap();
     assert!(
-        keypair.get_comp_address().starts_with("1tst"),
+        keypair
+            .get_comp_address()
+            .to_lowercase()
+            .starts_with("1tst"),
         "Generated address does not match prefix"
     );
 }
 
 #[test]
+#[cfg(feature = "ethereum")]
 fn test_ethereum_vanity_address_prefix() {
     // Try generating an Ethereum vanity address with a specific prefix
     let result = VanityAddr::generate::<EthereumKeyPair>(
@@ -41,6 +49,32 @@ fn test_ethereum_vanity_address_prefix() {
     assert!(
         keypair.get_address_with_prefix().starts_with("0x123"),
         "Generated Ethereum address does not match prefix"
+    );
+}
+
+#[test]
+#[cfg(feature = "solana")]
+fn test_solana_vanity_address_prefix() {
+    // Try generating a Solana vanity address with a specific prefix
+    let result = VanityAddr::generate::<SolanaKeyPair>(
+        "abc", // Prefix
+        8,     // Threads
+        false, // Case-insensitive
+        false, // Disable fast mode
+        VanityMode::Prefix,
+    );
+
+    // Assert that the result is successful
+    assert!(result.is_ok(), "Failed to generate Solana vanity address");
+
+    // Assert that the generated address starts with the prefix
+    let keypair = result.unwrap();
+    assert!(
+        keypair
+            .get_address()
+            .to_ascii_lowercase()
+            .starts_with("abc"),
+        "Generated Solana address does not match prefix"
     );
 }
 

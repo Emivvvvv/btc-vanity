@@ -1,18 +1,24 @@
 //! # Vanity Chain Module
 //!
 //! This module defines the [VanityChain] trait, which provides chain-specific behavior for
-//! generating vanity addresses. It supports `Bitcoin` and `Ethereum` chains and handles:
+//! generating vanity addresses. It supports `Bitcoin`, `Ethereum`, and `Solana` chains and handles:
 //! - Input validation for both plain and regex patterns.
 //! - Adjustments to inputs and patterns for chain-specific constraints.
 
 use crate::error::VanityError;
-use crate::keys_and_address::{BitcoinKeyPair, EthereumKeyPair, KeyPairGenerator};
+#[cfg(feature = "ethereum")]
+use crate::keys_and_address::EthereumKeyPair;
+#[cfg(feature = "solana")]
+use crate::keys_and_address::SolanaKeyPair;
+use crate::keys_and_address::{BitcoinKeyPair, KeyPairGenerator};
 use crate::VanityMode;
 
 /// Maximum length constraints for fast mode and general input.
 const BASE58_FAST_MODE_MAX: usize = 5;
-const BASE16_FAST_MODE_MAX: usize = 16;
 const BASE58_MAX: usize = 25;
+#[cfg(feature = "ethereum")]
+const BASE16_FAST_MODE_MAX: usize = 16;
+#[cfg(feature = "ethereum")]
 const BASE16_MAX: usize = 40;
 
 const ALLOWED_REGEX_META: &[char] = &[
@@ -21,7 +27,7 @@ const ALLOWED_REGEX_META: &[char] = &[
 
 /// The `VanityChain` trait defines chain-specific behavior for vanity address generation.
 ///
-/// This trait is implemented for [BitcoinKeyPair] and [EthereumKeyPair]
+/// This trait is implemented for [BitcoinKeyPair], [EthereumKeyPair], and [SolanaKeyPair]
 /// and provides default implementations for input validation and
 /// adjustments for chain-specific constraints.
 pub trait VanityChain: KeyPairGenerator + Send {
@@ -85,13 +91,75 @@ pub trait VanityChain: KeyPairGenerator + Send {
     }
 }
 
+/// Validates a Base58 input string for Bitcoin and Solana chains.
+///
+/// # Arguments
+/// - `string`: The input string to validate.
+/// - `fast_mode`: Whether fast mode is enabled.
+///
+/// # Returns
+/// - `Ok(())` if the input is valid.
+/// - `Err(VanityError)` if the input is invalid.
+///
+/// # Behavior
+/// - Rejects inputs that exceed the max length limit or are invalid Base58 strings.
+fn validate_base58_input(string: &str, fast_mode: bool) -> Result<(), VanityError> {
+    if string.len() > BASE58_FAST_MODE_MAX && fast_mode {
+        return Err(VanityError::FastModeEnabled);
+    }
+
+    if string.len() > BASE58_MAX {
+        return Err(VanityError::RequestTooLong);
+    }
+
+    if string.chars().any(|c| !is_valid_base58_char(c)) {
+        return Err(VanityError::InputNotBase58);
+    }
+
+    Ok(())
+}
+
+/// Validates a regex pattern for Base58 for Bitcoin and Solana chains.
+///
+/// # Arguments
+/// - `regex_str`: The regex pattern string to validate.
+///
+/// # Returns
+/// - `Ok(())` if the regex is valid.
+/// - `Err(VanityError)` if the regex contains invalid characters.
+///
+/// # Behavior
+/// - Allows regex meta characters and Base58 alphanumeric characters.
+/// - Rejects invalid regex meta characters and non-Base58 characters.
+fn validate_base58_regex_pattern(regex_str: &str) -> Result<(), VanityError> {
+    // For each character in the pattern:
+    for c in regex_str.chars() {
+        // If it's a recognized regex meta character, allow it.
+        if ALLOWED_REGEX_META.contains(&c) {
+            continue;
+        }
+
+        // If it's alphanumeric, ensure it's valid base58
+        if c.is_alphanumeric() {
+            if !is_valid_base58_char(c) {
+                return Err(VanityError::RegexNotBase58);
+            }
+        } else {
+            // Neither a recognized meta char, nor a valid base58 alphanumeric => reject
+            return Err(VanityError::InvalidRegex);
+        }
+    }
+
+    Ok(())
+}
+
 impl VanityChain for BitcoinKeyPair {
     /// Validates a Base58 input string for Bitcoin-specific vanity address generation.
     ///
     /// # Arguments
     /// - `string`: The input string to validate.
     /// - `fast_mode`: Whether fast mode is enabled.
-    /// - `_case_sensitive`: Unused for Bitcoin.
+    /// - `_case_sensitive`: Unused for Bitcoin and Solana as they are case-insensitive.
     ///
     /// # Returns
     /// - `Ok(())` if the input is valid.
@@ -100,24 +168,15 @@ impl VanityChain for BitcoinKeyPair {
     /// # Behavior
     /// - Rejects inputs that exceed the max length limit or the fast mode length limit.
     /// - Ensures all characters are valid Base58 characters.
+    ///
+    /// # Implementation Notes
+    /// - The validation relies on the `validate_base58_input` helper function, which encapsulates
     fn validate_input(
         string: &str,
         fast_mode: bool,
         _case_sensitive: bool,
     ) -> Result<(), VanityError> {
-        if string.len() > BASE58_FAST_MODE_MAX && fast_mode {
-            return Err(VanityError::FastModeEnabled);
-        }
-
-        if string.len() > BASE58_MAX {
-            return Err(VanityError::RequestTooLong);
-        }
-
-        if string.chars().any(|c| !is_valid_base58_char(c)) {
-            return Err(VanityError::InputNotBase58);
-        }
-
-        Ok(())
+        validate_base58_input(string, fast_mode)
     }
 
     /// Validates a regex pattern for Bitcoin-specific vanity address generation.
@@ -133,26 +192,12 @@ impl VanityChain for BitcoinKeyPair {
     /// - Allows recognized regex meta characters.
     /// - Ensures all alphanumeric characters in the regex are valid Base58.
     /// - Rejects invalid regex meta characters or non-Base58 characters.
+    ///
+    /// # Implementation Notes
+    /// - The validation relies on the `validate_base58_regex_pattern` helper function, which
+    ///   encapsulates the Base58-specific regex validation logic.
     fn validate_regex_pattern(regex_str: &str) -> Result<(), VanityError> {
-        // For each character in the pattern:
-        for c in regex_str.chars() {
-            // If it's a recognized regex meta character, allow it.
-            if ALLOWED_REGEX_META.contains(&c) {
-                continue;
-            }
-
-            // If it's alphanumeric, ensure it's valid base58
-            if c.is_alphanumeric() {
-                if !is_valid_base58_char(c) {
-                    return Err(VanityError::RegexNotBase58);
-                }
-            } else {
-                // Neither a recognized meta char, nor a valid base58 alphanumeric => reject
-                return Err(VanityError::InvalidRegex);
-            }
-        }
-
-        Ok(())
+        validate_base58_regex_pattern(regex_str)
     }
 
     /// Adjusts the input string for Bitcoin-specific vanity address generation.
@@ -198,6 +243,7 @@ impl VanityChain for BitcoinKeyPair {
     }
 }
 
+#[cfg(feature = "ethereum")]
 impl VanityChain for EthereumKeyPair {
     /// Validates a Base16 input string for Ethereum-specific vanity address generation.
     ///
@@ -301,7 +347,56 @@ impl VanityChain for EthereumKeyPair {
     }
 }
 
-/// Returns `true` if `c` is a valid Base58 character for Bitcoin.
+#[cfg(feature = "solana")]
+impl VanityChain for SolanaKeyPair {
+    /// Validates a Base58 input string for Solana-specific vanity address generation.
+    ///
+    /// # Arguments
+    /// - `string`: The input string to validate.
+    /// - `fast_mode`: Whether fast mode is enabled.
+    /// - `_case_sensitive`: Unused for Bitcoin and Solana as they are case-insensitive.
+    ///
+    /// # Returns
+    /// - `Ok(())` if the input is valid.
+    /// - `Err(VanityError)` if the input is invalid.
+    ///
+    /// # Behavior
+    /// - Rejects inputs that exceed the max length limit or the fast mode length limit.
+    /// - Ensures all characters are valid Base58 characters.
+    ///
+    /// # Implementation Notes
+    /// - The validation relies on the `validate_base58_input` helper function, which encapsulates
+    fn validate_input(
+        string: &str,
+        fast_mode: bool,
+        _case_sensitive: bool,
+    ) -> Result<(), VanityError> {
+        validate_base58_input(string, fast_mode)
+    }
+
+    /// Validates a regex pattern for Solana-specific vanity address generation.
+    ///
+    /// # Arguments
+    /// - `regex_str`: The regex pattern string to validate.
+    ///
+    /// # Returns
+    /// - `Ok(())` if the regex is valid.
+    /// - `Err(VanityError)` if the regex contains invalid characters.
+    ///
+    /// # Behavior
+    /// - Allows recognized regex meta characters.
+    /// - Ensures all alphanumeric characters in the regex are valid Base58.
+    /// - Rejects invalid regex meta characters or non-Base58 characters.
+    ///
+    /// # Implementation Notes
+    /// - The validation relies on the `validate_base58_regex_pattern` helper function, which
+    ///   encapsulates the Base58-specific regex validation logic.
+    fn validate_regex_pattern(regex_str: &str) -> Result<(), VanityError> {
+        validate_base58_regex_pattern(regex_str)
+    }
+}
+
+/// Returns `true` if `c` is a valid Base58 character for Bitcoin and Solana chains.
 ///
 /// # Arguments
 /// - `c`: The character to validate.
@@ -332,6 +427,7 @@ pub enum Chain {
     #[default]
     Bitcoin,
     Ethereum,
+    Solana,
 }
 
 impl std::str::FromStr for Chain {
@@ -342,6 +438,7 @@ impl std::str::FromStr for Chain {
         match chain.to_lowercase().as_str() {
             "bitcoin" => Ok(Chain::Bitcoin),
             "ethereum" => Ok(Chain::Ethereum),
+            "solana" => Ok(Chain::Solana),
             _ => Err(format!("Unsupported chain: {}", chain)),
         }
     }
@@ -356,6 +453,7 @@ impl std::fmt::Display for Chain {
             match self {
                 Chain::Bitcoin => "bitcoin",
                 Chain::Ethereum => "ethereum",
+                Chain::Solana => "solana",
             }
         )
     }
