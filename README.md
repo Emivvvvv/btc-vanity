@@ -166,10 +166,10 @@ Match an Ethereum address with the prefix `0xdead` using 8 threads:
 ```rust
 # #[cfg(feature = "ethereum")] // Important: Only compile this example with the feature!
 # {
-use btc_vanity::{EthereumKeyPair, VanityAddr, VanityMode}; // Removed KeyPairGenerator
+use btc_vanity::{EthereumKeyPair, VanityAddr, VanityMode};
 
 let vanity_address: EthereumKeyPair = VanityAddr::generate(
-            "dead", // Desired prefix (without 0x)
+            "dead", // Desired prefix
             8,      // Number of threads
             false,  // Case-insensitive (Case sensitivity not supported on ETH generation)
             true,   // Enable fast mode
@@ -177,12 +177,12 @@ let vanity_address: EthereumKeyPair = VanityAddr::generate(
             ).unwrap();
 
 println!("Ethereum vanity address:\n\
-          private_key: {}\n\
-          public_key: {}\n\
-          address: {}\n",
+          private_key (hex): {}\n\
+          public_key (hex): {}\n\
+          address (hex): {}\n",
           vanity_address.get_private_key_as_hex(),
-          vanity_address.get_private_key_as_hex(),  // Corrected: Duplicate for demonstration
-          vanity_address.get_address());
+          vanity_address.get_public_key_as_hex(),
+          vanity_address.get_address_with_prefix());
 # }
 ```
 
@@ -205,11 +205,11 @@ let vanity_address: SolanaKeyPair = VanityAddr::generate(
             ).unwrap();
 
 println!("Solana vanity address:\n\
-          private_key: {}\n\
-          public_key: {}\n\
-          address: {}\n",
-          vanity_address.keypair().as_hex(), // Corrected: Use keypair and as_hex
-          vanity_address.keypair().as_hex(), // Corrected:  Duplicate for demonstration
+          private_key (Base58): {}\n\
+          public_key (Base58): {}\n\
+          address (Base58): {}\n",
+          vanity_address.get_private_key_as_base58(),
+          vanity_address.get_public_key_as_base58(),
           vanity_address.get_address());
 
 # }
