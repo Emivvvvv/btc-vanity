@@ -90,7 +90,7 @@
 //!          vanity_address.get_comp_address());
 //! ```
 
-pub const BATCH_SIZE: usize = 64;
+pub const BATCH_SIZE: usize = 256;
 
 pub mod cli;
 pub mod error;

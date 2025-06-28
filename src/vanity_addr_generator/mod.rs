@@ -6,4 +6,3 @@ pub mod chain;
 pub mod vanity_addr;
 
 mod comp;
-

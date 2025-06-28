@@ -138,7 +138,6 @@ impl SearchEngines {
         vanity_mode: VanityMode,
     ) -> T {
         let string_bytes = string.as_bytes();
-        let _string_len = string_bytes.len();
         let lower_string_bytes = if !case_sensitive {
             string_bytes
                 .iter()
@@ -161,61 +160,71 @@ impl SearchEngines {
             thread::spawn(move || {
                 let mut batch: [T; BATCH_SIZE] = T::generate_batch();
                 let mut dummy = T::generate_random();
+                
+                // Pre-compute pattern length for efficiency
+                let pattern_len = if case_sensitive {
+                    thread_string_bytes.len()
+                } else {
+                    thread_lower_string_bytes.len()
+                };
 
                 while !found_any.load(Ordering::Relaxed) {
                     // Generate a batch of addresses
                     T::fill_batch(&mut batch);
 
-                    // Check each address in the batch
-                    for (i, keys_and_address) in batch.iter().enumerate() {
-                        let address_bytes = keys_and_address.get_address_bytes();
+                    // Check each address in the batch with loop unrolling for better performance
+                    let mut i = 0;
+                    while i < BATCH_SIZE {
+                        // Process multiple addresses per iteration to improve cache efficiency
+                        let end = std::cmp::min(i + 8, BATCH_SIZE);
+                        
+                        for j in i..end {
+                            // Early exit check every few iterations to minimize atomic load overhead
+                            if j % 4 == 0 && found_any.load(Ordering::Relaxed) {
+                                return;
+                            }
 
-                        let matches = match vanity_mode {
-                            VanityMode::Prefix => {
-                                if case_sensitive {
-                                    eq_prefix_memx(address_bytes, &thread_string_bytes)
-                                } else {
-                                    eq_prefix_case_insensitive(
-                                        address_bytes,
-                                        &thread_lower_string_bytes,
-                                    )
-                                }
-                            }
-                            VanityMode::Suffix => {
-                                if case_sensitive {
-                                    eq_suffix_memx(address_bytes, &thread_string_bytes)
-                                } else {
-                                    eq_suffix_case_insensitive(
-                                        address_bytes,
-                                        &thread_lower_string_bytes,
-                                    )
-                                }
-                            }
-                            VanityMode::Anywhere => {
-                                if case_sensitive {
-                                    contains_memx(address_bytes, &thread_string_bytes)
-                                } else {
-                                    contains_case_insensitive(
-                                        address_bytes,
-                                        &thread_string_bytes,
-                                    )
-                                }
-                            }
-                            VanityMode::Regex => unreachable!(),
-                        };
+                            let keys_and_address = &batch[j];
+                            let address_bytes = keys_and_address.get_address_bytes();
 
-                        // If match found...
-                        if matches && !found_any.load(Ordering::Relaxed) {
-                            // Mark as found (and check if we are the first)
-                            if !found_any.swap(true, Ordering::Relaxed) {
-                                // We're the first thread to set found_any = true
-                                // Attempt to send the result
-                                std::mem::swap(&mut batch[i], &mut dummy);
-                                let _ = sender.send(dummy);
+                            // Early length check to avoid expensive pattern matching
+                            if address_bytes.len() < pattern_len {
+                                continue;
                             }
-                            // Return immediately: no need to generate more
-                            return;
+
+                            let matches = if case_sensitive {
+                                // Uses memx (good for case-sensitive)
+                                match vanity_mode {
+                                    VanityMode::Prefix => eq_prefix_memx(address_bytes, &thread_string_bytes),
+                                    VanityMode::Suffix => eq_suffix_memx(address_bytes, &thread_string_bytes), 
+                                    VanityMode::Anywhere => contains_memx(address_bytes, &thread_string_bytes),
+                                    VanityMode::Regex => unreachable!("Regex mode should not be handled here"),
+                                }
+                            } else {
+                                // Uses optimized case-insensitive functions
+                                match vanity_mode {
+                                    VanityMode::Prefix => eq_prefix_case_insensitive(address_bytes, &thread_lower_string_bytes),
+                                    VanityMode::Suffix => eq_suffix_case_insensitive(address_bytes, &thread_lower_string_bytes),
+                                    VanityMode::Anywhere => contains_case_insensitive(address_bytes, &thread_lower_string_bytes),
+                                    VanityMode::Regex => unreachable!("Regex mode should not be handled here"),
+                                }
+                            };
+
+                            // If match found...
+                            if matches {
+                                // Mark as found (and check if we are the first)
+                                if !found_any.swap(true, Ordering::Relaxed) {
+                                    // We're the first thread to set found_any = true
+                                    // Attempt to send the result
+                                    std::mem::swap(&mut batch[j], &mut dummy);
+                                    let _ = sender.send(dummy);
+                                }
+                                // Return immediately: no need to generate more
+                                return;
+                            }
                         }
+                        
+                        i = end;
                     }
                 }
             });
@@ -247,11 +256,7 @@ impl SearchEngines {
         threads: usize,
     ) -> Result<T, VanityError> {
         // Validate the regex syntax
-        Arc::new(Regex::new(&regex_str).map_err(|_e| VanityError::InvalidRegex)?);
-
-        thread_local! {
-            static THREAD_REGEX: std::cell::RefCell<Option<Regex>> = const {std::cell::RefCell::new(None)};
-        }
+        let _test_regex = Regex::new(&regex_str).map_err(|_e| VanityError::InvalidRegex)?;
 
         let (sender, receiver) = mpsc::channel();
         let found_any = Arc::new(AtomicBool::new(false));
@@ -262,36 +267,28 @@ impl SearchEngines {
             let regex_clone = regex_str.clone();
 
             thread::spawn(move || {
-                // Initialize the regex in thread-local storage.
-                THREAD_REGEX.with(|local_regex| {
-                    let mut batch: [T; BATCH_SIZE] = T::generate_batch();
-                    let mut dummy = T::generate_random();
+                // Compile regex once per thread
+                let regex = Regex::new(&regex_clone).unwrap();
+                let mut batch: [T; BATCH_SIZE] = T::generate_batch();
+                let mut dummy = T::generate_random();
 
-                    let mut local_regex_ref = local_regex.borrow_mut();
-                    if local_regex_ref.is_none() {
-                        *local_regex_ref = Some(Regex::new(&regex_clone).unwrap());
-                    }
+                while !found_any.load(Ordering::Relaxed) {
+                    // Generate a batch of addresses
+                    T::fill_batch(&mut batch);
 
-                    let regex = local_regex_ref.as_ref().unwrap();
-
-                    while !found_any.load(Ordering::Relaxed) {
-                        // Generate a batch of addresses
-                        T::fill_batch(&mut batch);
-
-                        // Check each address in the batch
-                        for (i, keys_and_address) in batch.iter().enumerate() {
-                            let address = keys_and_address.get_address();
-                            if regex.is_match(address) && !found_any.load(Ordering::Relaxed) {
-                                // If a match is found, send it to the main thread
-                                if !found_any.swap(true, Ordering::Relaxed) {
-                                    std::mem::swap(&mut batch[i], &mut dummy);
-                                    let _ = sender.send(dummy);
-                                    return;
-                                }
+                    // Check each address in the batch
+                    for (i, keys_and_address) in batch.iter().enumerate() {
+                        let address = keys_and_address.get_address();
+                        if regex.is_match(address) && !found_any.load(Ordering::Relaxed) {
+                            // If a match is found, send it to the main thread
+                            if !found_any.swap(true, Ordering::Relaxed) {
+                                std::mem::swap(&mut batch[i], &mut dummy);
+                                let _ = sender.send(dummy);
+                                return;
                             }
                         }
                     }
-                });
+                }
             });
         }
 

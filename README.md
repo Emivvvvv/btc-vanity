@@ -1,5 +1,5 @@
 # <img src='images/bitcoin.svg' height='22'> <img src='images/ethereum.png' height='22'> <img src='images/solana.png' height='22'> btc-vanity
-#### v 2.1.0
+#### v 2.1.1
 A blazingly fast vanity address generator written with the Rust programming language.  Supporting Bitcoin (always included), Ethereum, and Solana (via optional features).
 
 With btc-vanity, you can generate wallets that have custom addresses with prefixes, suffixes, substrings, or even regex patterns. It's designed for **speed**, **flexibility**, and **security**.
@@ -237,7 +237,7 @@ println!("Bitcoin regex-matched vanity address:\n\
 
 ## Contributing
 
-Contributions are welcome! If you’d like to improve btc-vanity or add support for additional chains, feel free to open an issue or submit a pull request on GitHub.
+Contributions are welcome! If you'd like to improve btc-vanity or add support for additional chains, feel free to open an issue or submit a pull request on GitHub.
 
 ## Disclaimer
 
