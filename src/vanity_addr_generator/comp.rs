@@ -43,7 +43,7 @@ pub fn contains_memx(addr: &[u8], pat: &[u8]) -> bool {
     memmem(addr, pat).is_some()
 }
 
-/// Performs a case-insensitive prefix match using unsafe direct memory access.
+/// Performs a case-insensitive prefix match.
 ///
 /// # Arguments
 /// - `data`: The target byte slice to check.
@@ -52,16 +52,15 @@ pub fn contains_memx(addr: &[u8], pat: &[u8]) -> bool {
 /// # Returns
 /// - `true` if the beginning of `data` matches `pattern` (case-insensitively).
 /// - `false` otherwise.
-///
-/// # Safety
-/// - Caller must ensure `data` is bigger than or equal to `pattern`.
-/// - Caller must ensure `data` and `pattern` are valid and not out of bounds.
-/// - Performs unchecked memory access for performance optimization.
 #[inline(always)]
-pub unsafe fn eq_prefix_case_insensitive(data: &[u8], pattern: &[u8]) -> bool {
+pub fn eq_prefix_case_insensitive(data: &[u8], pattern: &[u8]) -> bool {
+    if data.len() < pattern.len() {
+        return false;
+    }
+    
     for i in 0..pattern.len() {
-        let a = *data.get_unchecked(i);
-        let b = *pattern.get_unchecked(i);
+        let a = data[i];
+        let b = pattern[i];
 
         // Convert `a` to lowercase if it is an uppercase ASCII letter
         let a = if a.is_ascii_uppercase() {
@@ -78,7 +77,7 @@ pub unsafe fn eq_prefix_case_insensitive(data: &[u8], pattern: &[u8]) -> bool {
     true
 }
 
-/// Performs a case-insensitive suffix match using unsafe direct memory access.
+/// Performs a case-insensitive suffix match.
 ///
 /// # Arguments
 /// - `data`: The target byte slice to check.
@@ -87,17 +86,16 @@ pub unsafe fn eq_prefix_case_insensitive(data: &[u8], pattern: &[u8]) -> bool {
 /// # Returns
 /// - `true` if the end of `data` matches `pattern` (case-insensitively).
 /// - `false` otherwise.
-///
-/// # Safety
-/// - Caller must ensure `data` is bigger than or equal to `pattern`.
-/// - Caller must ensure `data` and `pattern` are valid and not out of bounds.
-/// - Performs unchecked memory access for performance optimization.
 #[inline(always)]
-pub unsafe fn eq_suffix_case_insensitive(data: &[u8], pattern: &[u8]) -> bool {
+pub fn eq_suffix_case_insensitive(data: &[u8], pattern: &[u8]) -> bool {
+    if data.len() < pattern.len() {
+        return false;
+    }
+    
     let start = data.len() - pattern.len();
     for i in 0..pattern.len() {
-        let a = *data.get_unchecked(start + i);
-        let b = *pattern.get_unchecked(i);
+        let a = data[start + i];
+        let b = pattern[i];
 
         // Convert `a` to lowercase if it is an uppercase ASCII letter
         let a = if a.is_ascii_uppercase() {
@@ -114,31 +112,30 @@ pub unsafe fn eq_suffix_case_insensitive(data: &[u8], pattern: &[u8]) -> bool {
     true
 }
 
-/// Performs a case-insensitive substring match (anywhere match) using unsafe direct memory access.
+/// Performs a case-insensitive substring match (anywhere match).
 ///
 /// # Arguments
 /// - `data`: The target byte slice to check.
 /// - `pattern`: The byte slice to find within `data`.
-/// - `pattern_len`: The length of the pattern to match.
 ///
 /// # Returns
 /// - `true` if `pattern` is found anywhere within `data` (case-insensitively).
 /// - `false` otherwise.
-///
-/// # Safety
-/// - Caller must ensure `data` is bigger than or equal to `pattern`.
-/// - Caller must ensure `data` and `pattern` are valid and not out of bounds.
-/// - Performs unchecked memory access for performance optimization.
 #[inline(always)]
-pub unsafe fn contains_case_insensitive(data: &[u8], pattern: &[u8], pattern_len: usize) -> bool {
+pub fn contains_case_insensitive(data: &[u8], pattern: &[u8]) -> bool {
+    if data.len() < pattern.len() {
+        return false;
+    }
+
+    let pattern_len = pattern.len();
     let data_len = data.len();
 
     for start in 0..=(data_len - pattern_len) {
         let mut found = true;
 
         for i in 0..pattern_len {
-            let a = *data.get_unchecked(start + i);
-            let b = *pattern.get_unchecked(i);
+            let a = data[start + i];
+            let b = pattern[i];
 
             // Convert `a` to lowercase if it is an uppercase ASCII letter
             let a = if a.is_ascii_uppercase() {

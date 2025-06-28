@@ -1,6 +1,6 @@
 [package]
 name = "btc-vanity"
-version = "2.1.0"
+version = "2.1.1"
 authors = ["Emirhan TALA <tala.emirhan@gmail.com>"]
 description = "A blazingly fast Bitcoin, Ethereum, and Solana vanity address generator."
 edition = "2021"
@@ -27,6 +27,7 @@ sha3 = { version = "0.11.0-pre.4", optional = true }  # Make it optional
 # Dependencies for Solana support
 solana-sdk = { version = "2.1.10", default-features = false, features = ["full"], optional = true }
 openssl = { version = "0.10", features = ["vendored"], optional = true }
+aho-corasick = "1.1.3"
 
 [features]
 default = []

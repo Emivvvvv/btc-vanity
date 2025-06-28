@@ -12,9 +12,9 @@ use std::thread;
 
 use crate::error::VanityError;
 use crate::vanity_addr_generator::chain::VanityChain;
-use crate::vanity_addr_generator::compx::{
-    contains_case_insensitive, contains_memx, eq_prefix_case_insensitive, eq_prefix_memx,
-    eq_suffix_case_insensitive, eq_suffix_memx,
+use crate::vanity_addr_generator::comp::{
+    contains_memx, eq_prefix_memx, eq_suffix_memx,
+    contains_case_insensitive, eq_prefix_case_insensitive, eq_suffix_case_insensitive,
 };
 use crate::BATCH_SIZE;
 
@@ -138,7 +138,6 @@ impl SearchEngines {
         vanity_mode: VanityMode,
     ) -> T {
         let string_bytes = string.as_bytes();
-        let string_len = string_bytes.len();
         let _string_len = string_bytes.len();
         let lower_string_bytes = if !case_sensitive {
             string_bytes
@@ -176,37 +175,30 @@ impl SearchEngines {
                                 if case_sensitive {
                                     eq_prefix_memx(address_bytes, &thread_string_bytes)
                                 } else {
-                                    unsafe {
-                                        eq_prefix_case_insensitive(
-                                            address_bytes,
-                                            &thread_lower_string_bytes,
-                                        )
-                                    }
+                                    eq_prefix_case_insensitive(
+                                        address_bytes,
+                                        &thread_lower_string_bytes,
+                                    )
                                 }
                             }
                             VanityMode::Suffix => {
                                 if case_sensitive {
                                     eq_suffix_memx(address_bytes, &thread_string_bytes)
                                 } else {
-                                    unsafe {
-                                        eq_suffix_case_insensitive(
-                                            address_bytes,
-                                            &thread_lower_string_bytes,
-                                        )
-                                    }
+                                    eq_suffix_case_insensitive(
+                                        address_bytes,
+                                        &thread_lower_string_bytes,
+                                    )
                                 }
                             }
                             VanityMode::Anywhere => {
                                 if case_sensitive {
                                     contains_memx(address_bytes, &thread_string_bytes)
                                 } else {
-                                    unsafe {
-                                        contains_case_insensitive(
-                                            address_bytes,
-                                            &thread_string_bytes,
-                                            string_len,
-                                        )
-                                    }
+                                    contains_case_insensitive(
+                                        address_bytes,
+                                        &thread_string_bytes,
+                                    )
                                 }
                             }
                             VanityMode::Regex => unreachable!(),

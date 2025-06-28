@@ -353,8 +353,9 @@ dependencies = [
 
 [[package]]
 name = "btc-vanity"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
+ "aho-corasick",
  "bitcoin",
  "clap",
  "hex",
