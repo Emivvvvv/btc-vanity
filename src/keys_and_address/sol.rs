@@ -51,7 +51,7 @@ impl SolanaKeyPair {
 
     /// Retrieves the private key in Base58 encoding as a `String`.
     pub fn get_private_key_as_base58(&self) -> String {
-        bs58::encode(self.keypair.secret().to_bytes()).into_string()
+        bs58::encode(self.keypair.secret_bytes()).into_string()
     }
 
     /// Retrieves the public key in Base58 encoding as `String` reference.
@@ -84,7 +84,7 @@ mod tests {
     #[test]
     fn test_get_private_key_as_base58() {
         let key_pair = SolanaKeyPair::generate_random();
-        let private_key_base58 = bs58::encode(key_pair.keypair.secret().to_bytes()).into_string();
+        let private_key_base58 = bs58::encode(key_pair.keypair.secret_bytes()).into_string();
 
         assert_eq!(key_pair.get_private_key_as_base58(), private_key_base58);
     }
