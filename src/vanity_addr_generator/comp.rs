@@ -170,16 +170,22 @@ pub fn contains_case_insensitive(data: &[u8], pattern: &[u8]) -> bool {
         let mut pos = 0;
         while pos <= data_len - pattern_len {
             let mut j = pattern_len;
+            let mut found_mismatch = false;
 
             // Check from the end of the pattern
             while j > 0 {
                 j -= 1;
-                if ASCII_LOWERCASE[data[pos + j] as usize] != pattern[j] {
+                let data_char = data[pos + j];
+                let pattern_char = pattern[j];
+                let data_lower = ASCII_LOWERCASE[data_char as usize];
+                
+                if data_lower != pattern_char {
+                    found_mismatch = true;
                     break;
                 }
             }
 
-            if j == 0 {
+            if j == 0 && !found_mismatch {
                 return true; // Match found
             }
 
@@ -199,7 +205,11 @@ pub fn contains_case_insensitive(data: &[u8], pattern: &[u8]) -> bool {
     for start in 0..=(data_len - pattern_len) {
         let mut matches = true;
         for i in 0..pattern_len {
-            if ASCII_LOWERCASE[data[start + i] as usize] != pattern[i] {
+            let data_char = data[start + i];
+            let pattern_char = pattern[i];
+            let data_lower = ASCII_LOWERCASE[data_char as usize];
+            
+            if data_lower != pattern_char {
                 matches = false;
                 break;
             }
@@ -209,4 +219,52 @@ pub fn contains_case_insensitive(data: &[u8], pattern: &[u8]) -> bool {
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_case_insensitive_contains() {
+        let address = "abcDEF123";
+        let pattern = "abc";
+        let address_bytes = address.as_bytes();
+        let pattern_bytes = pattern.as_bytes();
+        
+        let result = contains_case_insensitive(address_bytes, pattern_bytes);
+        let contains_result = address.to_lowercase().contains(pattern);
+        
+        assert_eq!(result, contains_result);
+        assert!(result);
+    }
+
+    #[test]
+    fn test_case_insensitive_contains_hex() {
+        // Test with Ethereum-like hex addresses
+        let address = "a1b2c3d4e5f6789abcdef";
+        let pattern = "abc";
+        let address_bytes = address.as_bytes();
+        let pattern_bytes = pattern.as_bytes();
+        
+        let result = contains_case_insensitive(address_bytes, pattern_bytes);
+        let contains_result = address.to_lowercase().contains(pattern);
+        
+        assert_eq!(result, contains_result);
+        assert!(result);
+    }
+
+    #[test]
+    fn test_case_insensitive_contains_no_match() {
+        let address = "2091ab99a2e6bcd34293eb76aafb55dab7ae2de1";
+        let pattern = "abc";
+        let address_bytes = address.as_bytes();
+        let pattern_bytes = pattern.as_bytes();
+        
+        let result = contains_case_insensitive(address_bytes, pattern_bytes);
+        let contains_result = address.to_lowercase().contains(pattern);
+        
+        assert_eq!(result, contains_result);
+        assert!(!result);
+    }
 }
