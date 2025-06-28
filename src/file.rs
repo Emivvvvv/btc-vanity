@@ -160,10 +160,9 @@ pub fn write_output_file(output_path: &Path, buffer: &str) -> Result<(), VanityE
     let mut file = match file_result {
         Ok(file) => file,
         Err(e) => {
-            return Err(VanityError::FileError(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Failed to open or create file: {}", e),
-            )))
+            return Err(VanityError::FileError(io::Error::other(format!(
+                "Failed to open or create file: {e}"
+            ))))
         }
     };
 
@@ -171,7 +170,7 @@ pub fn write_output_file(output_path: &Path, buffer: &str) -> Result<(), VanityE
     if let Err(e) = file.write_all(buffer.as_bytes()) {
         return Err(VanityError::FileError(io::Error::new(
             io::ErrorKind::WriteZero,
-            format!("Failed to write to file: {}", e),
+            format!("Failed to write to file: {e}"),
         )));
     }
 

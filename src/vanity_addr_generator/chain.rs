@@ -439,7 +439,7 @@ impl std::str::FromStr for Chain {
             "bitcoin" => Ok(Chain::Bitcoin),
             "ethereum" => Ok(Chain::Ethereum),
             "solana" => Ok(Chain::Solana),
-            _ => Err(format!("Unsupported chain: {}", chain)),
+            _ => Err(format!("Unsupported chain: {chain}")),
         }
     }
 }

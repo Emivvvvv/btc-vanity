@@ -181,7 +181,7 @@ impl SearchEngines {
                         #[allow(clippy::needless_range_loop)]
                         for j in i..end {
                             // Early exit check every few iterations to minimize atomic load overhead
-                            if j % 4 == 0 && found_any.load(Ordering::Relaxed) {
+                            if j.is_multiple_of(4) && found_any.load(Ordering::Relaxed) {
                                 return;
                             }
 

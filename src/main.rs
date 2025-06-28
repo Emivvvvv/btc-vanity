@@ -84,10 +84,9 @@ fn generate_vanity_address(pattern: &str, vanity_flags: &VanityFlags) -> Result<
                     let address = res.get_address();
 
                     let s = format!(
-                        "private_key (hex): 0x{}\n\
-                         public_key (hex): 0x{}\n\
-                         address: 0x{}\n\n",
-                        private_key_hex, pub_key_hex, address
+                        "private_key (hex): 0x{private_key_hex}\n\
+                         public_key (hex): 0x{pub_key_hex}\n\
+                         address: 0x{address}\n\n"
                     );
                     Ok(s)
                 }
@@ -121,9 +120,8 @@ fn generate_vanity_address(pattern: &str, vanity_flags: &VanityFlags) -> Result<
 
                     let address = res.get_address();
                     let s = format!(
-                        "private_key (hex): {}\n\
-                         address: {}\n\n",
-                        private_key_hex, address
+                        "private_key (hex): {private_key_hex}\n\
+                         address: {address}\n\n"
                     );
                     Ok(s)
                 }
@@ -141,10 +139,10 @@ fn generate_vanity_address(pattern: &str, vanity_flags: &VanityFlags) -> Result<
     match out {
         Ok(s) => {
             let seconds = start.elapsed().as_secs_f64();
-            println!("FOUND IN {:.4} SECONDS!\n", seconds);
+            println!("FOUND IN {seconds:.4} SECONDS!\n");
             Ok(s)
         }
-        Err(e) => Err(format!("Skipping because of error: {}\n\n", e)),
+        Err(e) => Err(format!("Skipping because of error: {e}\n\n")),
     }
 }
 
@@ -180,10 +178,7 @@ fn handle_item(pattern: &str, flags: &VanityFlags) {
     );
 
     // 3) Build "buffer1"
-    let buffer1 = format!(
-        "Key pair whose address {}: '{}' {}\n",
-        vanity_mode_str, pattern, case_str
-    );
+    let buffer1 = format!("Key pair whose address {vanity_mode_str}: '{pattern}' {case_str}\n");
 
     // 4) Actually generate the address
     let result = generate_vanity_address(pattern, flags);
@@ -196,16 +191,16 @@ fn handle_item(pattern: &str, flags: &VanityFlags) {
             if let Some(ref file_path) = flags.output_file_name {
                 // example from your existing code:
                 if let Err(e) =
-                    write_output_file(Path::new(file_path), &format!("{}\n{}", buffer1, buffer2))
+                    write_output_file(Path::new(file_path), &format!("{buffer1}\n{buffer2}"))
                 {
-                    eprintln!("Failed to write output: {}", e);
+                    eprintln!("Failed to write output: {e}");
                 }
             } else {
-                println!("{}", buffer2);
+                println!("{buffer2}");
             }
         }
         Err(error_message) => {
-            eprintln!("{}", error_message);
+            eprintln!("{error_message}");
         }
     }
 }
@@ -221,7 +216,7 @@ fn main() {
                 );
                 eprintln!("Usage: btc-vanity [OPTIONS] <string>");
             } else {
-                eprintln!("{}", err);
+                eprintln!("{err}");
             }
             process::exit(1);
         }
@@ -240,7 +235,7 @@ fn main() {
             let items = match parse_input_file(&file_path) {
                 Ok(lines) => lines,
                 Err(e) => {
-                    eprintln!("Error reading file '{}': {}", file_path, e);
+                    eprintln!("Error reading file '{file_path}': {e}");
                     process::exit(1);
                 }
             };
