@@ -13,8 +13,8 @@ use std::thread;
 use crate::error::VanityError;
 use crate::vanity_addr_generator::chain::VanityChain;
 use crate::vanity_addr_generator::comp::{
-    contains_memx, eq_prefix_memx, eq_suffix_memx,
-    contains_case_insensitive, eq_prefix_case_insensitive, eq_suffix_case_insensitive,
+    contains_case_insensitive, contains_memx, eq_prefix_case_insensitive, eq_prefix_memx,
+    eq_suffix_case_insensitive, eq_suffix_memx,
 };
 use crate::BATCH_SIZE;
 
@@ -160,7 +160,7 @@ impl SearchEngines {
             thread::spawn(move || {
                 let mut batch: [T; BATCH_SIZE] = T::generate_batch();
                 let mut dummy = T::generate_random();
-                
+
                 // Pre-compute pattern length for efficiency
                 let pattern_len = if case_sensitive {
                     thread_string_bytes.len()
@@ -177,7 +177,8 @@ impl SearchEngines {
                     while i < BATCH_SIZE {
                         // Process multiple addresses per iteration to improve cache efficiency
                         let end = std::cmp::min(i + 8, BATCH_SIZE);
-                        
+
+                        #[allow(clippy::needless_range_loop)]
                         for j in i..end {
                             // Early exit check every few iterations to minimize atomic load overhead
                             if j % 4 == 0 && found_any.load(Ordering::Relaxed) {
@@ -195,18 +196,37 @@ impl SearchEngines {
                             let matches = if case_sensitive {
                                 // Uses memx (good for case-sensitive)
                                 match vanity_mode {
-                                    VanityMode::Prefix => eq_prefix_memx(address_bytes, &thread_string_bytes),
-                                    VanityMode::Suffix => eq_suffix_memx(address_bytes, &thread_string_bytes), 
-                                    VanityMode::Anywhere => contains_memx(address_bytes, &thread_string_bytes),
-                                    VanityMode::Regex => unreachable!("Regex mode should not be handled here"),
+                                    VanityMode::Prefix => {
+                                        eq_prefix_memx(address_bytes, &thread_string_bytes)
+                                    }
+                                    VanityMode::Suffix => {
+                                        eq_suffix_memx(address_bytes, &thread_string_bytes)
+                                    }
+                                    VanityMode::Anywhere => {
+                                        contains_memx(address_bytes, &thread_string_bytes)
+                                    }
+                                    VanityMode::Regex => {
+                                        unreachable!("Regex mode should not be handled here")
+                                    }
                                 }
                             } else {
                                 // Uses optimized case-insensitive functions
                                 match vanity_mode {
-                                    VanityMode::Prefix => eq_prefix_case_insensitive(address_bytes, &thread_lower_string_bytes),
-                                    VanityMode::Suffix => eq_suffix_case_insensitive(address_bytes, &thread_lower_string_bytes),
-                                    VanityMode::Anywhere => contains_case_insensitive(address_bytes, &thread_lower_string_bytes),
-                                    VanityMode::Regex => unreachable!("Regex mode should not be handled here"),
+                                    VanityMode::Prefix => eq_prefix_case_insensitive(
+                                        address_bytes,
+                                        &thread_lower_string_bytes,
+                                    ),
+                                    VanityMode::Suffix => eq_suffix_case_insensitive(
+                                        address_bytes,
+                                        &thread_lower_string_bytes,
+                                    ),
+                                    VanityMode::Anywhere => contains_case_insensitive(
+                                        address_bytes,
+                                        &thread_lower_string_bytes,
+                                    ),
+                                    VanityMode::Regex => {
+                                        unreachable!("Regex mode should not be handled here")
+                                    }
                                 }
                             };
 
@@ -223,7 +243,7 @@ impl SearchEngines {
                                 return;
                             }
                         }
-                        
+
                         i = end;
                     }
                 }
