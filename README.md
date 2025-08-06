@@ -19,9 +19,6 @@ You can easily run the btc-vanity terminal application locally or use it as a li
 
 ## Installation
 
-> [!CAUTION]
-> btc-vanity has recently migrated to version 2. Please use it cautiously.
-
 ### CLI
 
 Install the binary using `cargo`:
