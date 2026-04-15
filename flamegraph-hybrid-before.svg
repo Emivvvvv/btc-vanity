@@ -1,0 +1,2234 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" width="1200" height="390" onload="init(evt)" viewBox="0 0 1200 390" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<!-- Flame graph stack visualization. See https://github.com/brendangregg/FlameGraph for latest version, and http://www.brendangregg.com/flamegraphs.html for examples. -->
+<!-- NOTES:  -->
+<defs>
+	<linearGradient id="background" y1="0" y2="1" x1="0" x2="0" >
+		<stop stop-color="#eeeeee" offset="5%" />
+		<stop stop-color="#eeeeb0" offset="95%" />
+	</linearGradient>
+</defs>
+<style type="text/css">
+	text { font-family:Verdana; font-size:12px; fill:rgb(0,0,0); }
+	#search, #ignorecase { opacity:0.1; cursor:pointer; }
+	#search:hover, #search.show, #ignorecase:hover, #ignorecase.show { opacity:1; }
+	#subtitle { text-anchor:middle; font-color:rgb(160,160,160); }
+	#title { text-anchor:middle; font-size:17px}
+	#unzoom { cursor:pointer; }
+	#frames > *:hover { stroke:black; stroke-width:0.5; cursor:pointer; }
+	.hide { display:none; }
+	.parent { opacity:0.5; }
+</style>
+<script type="text/ecmascript">
+<![CDATA[
+	"use strict";
+	var details, searchbtn, unzoombtn, matchedtxt, svg, searching, currentSearchTerm, ignorecase, ignorecaseBtn;
+	function init(evt) {
+		details = document.getElementById("details").firstChild;
+		searchbtn = document.getElementById("search");
+		ignorecaseBtn = document.getElementById("ignorecase");
+		unzoombtn = document.getElementById("unzoom");
+		matchedtxt = document.getElementById("matched");
+		svg = document.getElementsByTagName("svg")[0];
+		searching = 0;
+		currentSearchTerm = null;
+
+		// use GET parameters to restore a flamegraphs state.
+		var params = get_params();
+		if (params.x && params.y)
+			zoom(find_group(document.querySelector('[x="' + params.x + '"][y="' + params.y + '"]')));
+                if (params.s) search(params.s);
+	}
+
+	// event listeners
+	window.addEventListener("click", function(e) {
+		var target = find_group(e.target);
+		if (target) {
+			if (target.nodeName == "a") {
+				if (e.ctrlKey === false) return;
+				e.preventDefault();
+			}
+			if (target.classList.contains("parent")) unzoom(true);
+			zoom(target);
+			if (!document.querySelector('.parent')) {
+				// we have basically done a clearzoom so clear the url
+				var params = get_params();
+				if (params.x) delete params.x;
+				if (params.y) delete params.y;
+				history.replaceState(null, null, parse_params(params));
+				unzoombtn.classList.add("hide");
+				return;
+			}
+
+			// set parameters for zoom state
+			var el = target.querySelector("rect");
+			if (el && el.attributes && el.attributes.y && el.attributes._orig_x) {
+				var params = get_params()
+				params.x = el.attributes._orig_x.value;
+				params.y = el.attributes.y.value;
+				history.replaceState(null, null, parse_params(params));
+			}
+		}
+		else if (e.target.id == "unzoom") clearzoom();
+		else if (e.target.id == "search") search_prompt();
+		else if (e.target.id == "ignorecase") toggle_ignorecase();
+	}, false)
+
+	// mouse-over for info
+	// show
+	window.addEventListener("mouseover", function(e) {
+		var target = find_group(e.target);
+		if (target) details.nodeValue = "Function: " + g_to_text(target);
+	}, false)
+
+	// clear
+	window.addEventListener("mouseout", function(e) {
+		var target = find_group(e.target);
+		if (target) details.nodeValue = ' ';
+	}, false)
+
+	// ctrl-F for search
+	// ctrl-I to toggle case-sensitive search
+	window.addEventListener("keydown",function (e) {
+		if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+			e.preventDefault();
+			search_prompt();
+		}
+		else if (e.ctrlKey && e.keyCode === 73) {
+			e.preventDefault();
+			toggle_ignorecase();
+		}
+	}, false)
+
+	// functions
+	function get_params() {
+		var params = {};
+		var paramsarr = window.location.search.substr(1).split('&');
+		for (var i = 0; i < paramsarr.length; ++i) {
+			var tmp = paramsarr[i].split("=");
+			if (!tmp[0] || !tmp[1]) continue;
+			params[tmp[0]]  = decodeURIComponent(tmp[1]);
+		}
+		return params;
+	}
+	function parse_params(params) {
+		var uri = "?";
+		for (var key in params) {
+			uri += key + '=' + encodeURIComponent(params[key]) + '&';
+		}
+		if (uri.slice(-1) == "&")
+			uri = uri.substring(0, uri.length - 1);
+		if (uri == '?')
+			uri = window.location.href.split('?')[0];
+		return uri;
+	}
+	function find_child(node, selector) {
+		var children = node.querySelectorAll(selector);
+		if (children.length) return children[0];
+	}
+	function find_group(node) {
+		var parent = node.parentElement;
+		if (!parent) return;
+		if (parent.id == "frames") return node;
+		return find_group(parent);
+	}
+	function orig_save(e, attr, val) {
+		if (e.attributes["_orig_" + attr] != undefined) return;
+		if (e.attributes[attr] == undefined) return;
+		if (val == undefined) val = e.attributes[attr].value;
+		e.setAttribute("_orig_" + attr, val);
+	}
+	function orig_load(e, attr) {
+		if (e.attributes["_orig_"+attr] == undefined) return;
+		e.attributes[attr].value = e.attributes["_orig_" + attr].value;
+		e.removeAttribute("_orig_"+attr);
+	}
+	function g_to_text(e) {
+		var text = find_child(e, "title").firstChild.nodeValue;
+		return (text)
+	}
+	function g_to_func(e) {
+		var func = g_to_text(e);
+		// if there's any manipulation we want to do to the function
+		// name before it's searched, do it here before returning.
+		return (func);
+	}
+	function update_text(e) {
+		var r = find_child(e, "rect");
+		var t = find_child(e, "text");
+		var w = parseFloat(r.attributes.width.value) -3;
+		var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+		t.attributes.x.value = parseFloat(r.attributes.x.value) + 3;
+
+		// Smaller than this size won't fit anything
+		if (w < 2 * 12 * 0.59) {
+			t.textContent = "";
+			return;
+		}
+
+		t.textContent = txt;
+		var sl = t.getSubStringLength(0, txt.length);
+		// check if only whitespace or if we can fit the entire string into width w
+		if (/^ *$/.test(txt) || sl < w)
+			return;
+
+		// this isn't perfect, but gives a good starting point
+		// and avoids calling getSubStringLength too often
+		var start = Math.floor((w/sl) * txt.length);
+		for (var x = start; x > 0; x = x-2) {
+			if (t.getSubStringLength(0, x + 2) <= w) {
+				t.textContent = txt.substring(0, x) + "..";
+				return;
+			}
+		}
+		t.textContent = "";
+	}
+
+	// zoom
+	function zoom_reset(e) {
+		if (e.attributes != undefined) {
+			orig_load(e, "x");
+			orig_load(e, "width");
+		}
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_reset(c[i]);
+		}
+	}
+	function zoom_child(e, x, ratio) {
+		if (e.attributes != undefined) {
+			if (e.attributes.x != undefined) {
+				orig_save(e, "x");
+				e.attributes.x.value = (parseFloat(e.attributes.x.value) - x - 10) * ratio + 10;
+				if (e.tagName == "text")
+					e.attributes.x.value = find_child(e.parentNode, "rect[x]").attributes.x.value + 3;
+			}
+			if (e.attributes.width != undefined) {
+				orig_save(e, "width");
+				e.attributes.width.value = parseFloat(e.attributes.width.value) * ratio;
+			}
+		}
+
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_child(c[i], x - 10, ratio);
+		}
+	}
+	function zoom_parent(e) {
+		if (e.attributes) {
+			if (e.attributes.x != undefined) {
+				orig_save(e, "x");
+				e.attributes.x.value = 10;
+			}
+			if (e.attributes.width != undefined) {
+				orig_save(e, "width");
+				e.attributes.width.value = parseInt(svg.width.baseVal.value) - (10 * 2);
+			}
+		}
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_parent(c[i]);
+		}
+	}
+	function zoom(node) {
+		var attr = find_child(node, "rect").attributes;
+		var width = parseFloat(attr.width.value);
+		var xmin = parseFloat(attr.x.value);
+		var xmax = parseFloat(xmin + width);
+		var ymin = parseFloat(attr.y.value);
+		var ratio = (svg.width.baseVal.value - 2 * 10) / width;
+
+		// XXX: Workaround for JavaScript float issues (fix me)
+		var fudge = 0.0001;
+
+		unzoombtn.classList.remove("hide");
+
+		var el = document.getElementById("frames").children;
+		for (var i = 0; i < el.length; i++) {
+			var e = el[i];
+			var a = find_child(e, "rect").attributes;
+			var ex = parseFloat(a.x.value);
+			var ew = parseFloat(a.width.value);
+			var upstack;
+			// Is it an ancestor
+			if (0 == 0) {
+				upstack = parseFloat(a.y.value) > ymin;
+			} else {
+				upstack = parseFloat(a.y.value) < ymin;
+			}
+			if (upstack) {
+				// Direct ancestor
+				if (ex <= xmin && (ex+ew+fudge) >= xmax) {
+					e.classList.add("parent");
+					zoom_parent(e);
+					update_text(e);
+				}
+				// not in current path
+				else
+					e.classList.add("hide");
+			}
+			// Children maybe
+			else {
+				// no common path
+				if (ex < xmin || ex + fudge >= xmax) {
+					e.classList.add("hide");
+				}
+				else {
+					zoom_child(e, xmin, ratio);
+					update_text(e);
+				}
+			}
+		}
+		search();
+	}
+	function unzoom(dont_update_text) {
+		unzoombtn.classList.add("hide");
+		var el = document.getElementById("frames").children;
+		for(var i = 0; i < el.length; i++) {
+			el[i].classList.remove("parent");
+			el[i].classList.remove("hide");
+			zoom_reset(el[i]);
+			if(!dont_update_text) update_text(el[i]);
+		}
+		search();
+	}
+	function clearzoom() {
+		unzoom();
+
+		// remove zoom state
+		var params = get_params();
+		if (params.x) delete params.x;
+		if (params.y) delete params.y;
+		history.replaceState(null, null, parse_params(params));
+	}
+
+	// search
+	function toggle_ignorecase() {
+		ignorecase = !ignorecase;
+		if (ignorecase) {
+			ignorecaseBtn.classList.add("show");
+		} else {
+			ignorecaseBtn.classList.remove("show");
+		}
+		reset_search();
+		search();
+	}
+	function reset_search() {
+		var el = document.querySelectorAll("#frames rect");
+		for (var i = 0; i < el.length; i++) {
+			orig_load(el[i], "fill")
+		}
+		var params = get_params();
+		delete params.s;
+		history.replaceState(null, null, parse_params(params));
+	}
+	function search_prompt() {
+		if (!searching) {
+			var term = prompt("Enter a search term (regexp " +
+			    "allowed, eg: ^ext4_)"
+			    + (ignorecase ? ", ignoring case" : "")
+			    + "\nPress Ctrl-i to toggle case sensitivity", "");
+			if (term != null) search(term);
+		} else {
+			reset_search();
+			searching = 0;
+			currentSearchTerm = null;
+			searchbtn.classList.remove("show");
+			searchbtn.firstChild.nodeValue = "Search"
+			matchedtxt.classList.add("hide");
+			matchedtxt.firstChild.nodeValue = ""
+		}
+	}
+	function search(term) {
+		if (term) currentSearchTerm = term;
+		if (currentSearchTerm === null) return;
+
+		var re = new RegExp(currentSearchTerm, ignorecase ? 'i' : '');
+		var el = document.getElementById("frames").children;
+		var matches = new Object();
+		var maxwidth = 0;
+		for (var i = 0; i < el.length; i++) {
+			var e = el[i];
+			var func = g_to_func(e);
+			var rect = find_child(e, "rect");
+			if (func == null || rect == null)
+				continue;
+
+			// Save max width. Only works as we have a root frame
+			var w = parseFloat(rect.attributes.width.value);
+			if (w > maxwidth)
+				maxwidth = w;
+
+			if (func.match(re)) {
+				// highlight
+				var x = parseFloat(rect.attributes.x.value);
+				orig_save(rect, "fill");
+				rect.attributes.fill.value = "rgb(230,0,230)";
+
+				// remember matches
+				if (matches[x] == undefined) {
+					matches[x] = w;
+				} else {
+					if (w > matches[x]) {
+						// overwrite with parent
+						matches[x] = w;
+					}
+				}
+				searching = 1;
+			}
+		}
+		if (!searching)
+			return;
+		var params = get_params();
+		params.s = currentSearchTerm;
+		history.replaceState(null, null, parse_params(params));
+
+		searchbtn.classList.add("show");
+		searchbtn.firstChild.nodeValue = "Reset Search";
+
+		// calculate percent matched, excluding vertical overlap
+		var count = 0;
+		var lastx = -1;
+		var lastw = 0;
+		var keys = Array();
+		for (k in matches) {
+			if (matches.hasOwnProperty(k))
+				keys.push(k);
+		}
+		// sort the matched frames by their x location
+		// ascending, then width descending
+		keys.sort(function(a, b){
+			return a - b;
+		});
+		// Step through frames saving only the biggest bottom-up frames
+		// thanks to the sort order. This relies on the tree property
+		// where children are always smaller than their parents.
+		var fudge = 0.0001;	// JavaScript floating point
+		for (var k in keys) {
+			var x = parseFloat(keys[k]);
+			var w = matches[keys[k]];
+			if (x >= lastx + lastw - fudge) {
+				count += w;
+				lastx = x;
+				lastw = w;
+			}
+		}
+		// display matched percent
+		matchedtxt.classList.remove("hide");
+		var pct = 100 * count / maxwidth;
+		if (pct != 100) pct = pct.toFixed(1)
+		matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+	}
+]]>
+</script>
+<rect x="0.0" y="0" width="1200.0" height="390.0" fill="url(#background)"  />
+<text id="title" x="600.00" y="24" >Flame Graph</text>
+<text id="details" x="10.00" y="373" > </text>
+<text id="unzoom" x="10.00" y="24" class="hide">Reset Zoom</text>
+<text id="search" x="1090.00" y="24" >Search</text>
+<text id="ignorecase" x="1174.00" y="24" >ic</text>
+<text id="matched" x="1090.00" y="373" > </text>
+<g id="frames">
+<g >
+<title>libsystem_malloc`free_tiny (14 samples, 0.02%)</title><rect x="938.3" y="85" width="0.3" height="15.0" fill="rgb(230,119,28)" rx="2" ry="2" />
+<text  x="941.34" y="95.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_size (8 samples, 0.01%)</title><rect x="808.4" y="101" width="0.2" height="15.0" fill="rgb(219,66,15)" rx="2" ry="2" />
+<text  x="811.44" y="111.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_size (7 samples, 0.01%)</title><rect x="549.6" y="69" width="0.1" height="15.0" fill="rgb(219,66,15)" rx="2" ry="2" />
+<text  x="552.60" y="79.5" ></text>
+</g>
+<g >
+<title>libdispatch`_dispatch_lane_serial_drain (604 samples, 0.89%)</title><rect x="10.0" y="229" width="10.5" height="15.0" fill="rgb(254,225,54)" rx="2" ry="2" />
+<text  x="13.00" y="239.5" ></text>
+</g>
+<g >
+<title>btc-vanity`base58ck::encode_check_to_fmt::h90a791ed09e15a16 (529 samples, 0.78%)</title><rect x="802.2" y="197" width="9.1" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="805.15" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`core::ops::function::FnOnce::call_once$u7b$$u7b$vtable.shim$u7d$$u7d$::h08961978e0ffa25c (7,447 samples, 10.96%)</title><rect x="801.9" y="261" width="129.3" height="15.0" fill="rgb(252,220,52)" rx="2" ry="2" />
+<text  x="804.87" y="271.5" >btc-vanity`core:..</text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_modinv64_update_de_62 (92 samples, 0.14%)</title><rect x="206.2" y="149" width="1.6" height="15.0" fill="rgb(225,93,22)" rx="2" ry="2" />
+<text  x="209.23" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_modinv64 (723 samples, 1.06%)</title><rect x="708.2" y="165" width="12.6" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="711.23" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h6415b2f09fa49544 (74 samples, 0.11%)</title><rect x="812.7" y="181" width="1.3" height="15.0" fill="rgb(246,191,45)" rx="2" ry="2" />
+<text  x="815.73" y="191.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`thread_start (7,447 samples, 10.96%)</title><rect x="284.4" y="309" width="129.3" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="287.37" y="319.5" >libsystem_pthrea..</text>
+</g>
+<g >
+<title>btc-vanity`bitcoin::crypto::key::PublicKey::pubkey_hash::h9377682ca6f7baea (182 samples, 0.27%)</title><rect x="296.5" y="213" width="3.2" height="15.0" fill="rgb(210,25,6)" rx="2" ry="2" />
+<text  x="299.53" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`core::ops::function::FnOnce::call_once$u7b$$u7b$vtable.shim$u7d$$u7d$::he7d2463eeafe8796 (295 samples, 0.43%)</title><rect x="149.9" y="261" width="5.1" height="15.0" fill="rgb(237,149,35)" rx="2" ry="2" />
+<text  x="152.87" y="271.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::h345c878c042c5169 (91 samples, 0.13%)</title><rect x="555.3" y="165" width="1.6" height="15.0" fill="rgb(243,177,42)" rx="2" ry="2" />
+<text  x="558.32" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_modinv64 (973 samples, 1.43%)</title><rect x="1095.7" y="165" width="16.9" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="1098.72" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ecmult_gen (1,222 samples, 1.80%)</title><rect x="814.3" y="197" width="21.3" height="15.0" fill="rgb(252,218,52)" rx="2" ry="2" />
+<text  x="817.33" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`_realloc (72 samples, 0.11%)</title><rect x="937.9" y="133" width="1.3" height="15.0" fill="rgb(233,131,31)" rx="2" ry="2" />
+<text  x="940.90" y="143.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..hash160..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h263d1bc0764fe841 (133 samples, 0.20%)</title><rect x="811.7" y="197" width="2.3" height="15.0" fill="rgb(242,171,40)" rx="2" ry="2" />
+<text  x="814.71" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin..address..AddressInner$u20$as$u20$core..fmt..Display$GT$::fmt::h421696cc7fe2f7b1 (531 samples, 0.78%)</title><rect x="802.1" y="213" width="9.2" height="15.0" fill="rgb(216,53,12)" rx="2" ry="2" />
+<text  x="805.12" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`base58ck::encode_check_to_fmt::h90a791ed09e15a16 (633 samples, 0.93%)</title><rect x="155.3" y="197" width="11.0" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="158.32" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_free_no_lock (6 samples, 0.01%)</title><rect x="162.1" y="69" width="0.1" height="15.0" fill="rgb(230,117,27)" rx="2" ry="2" />
+<text  x="165.10" y="79.5" ></text>
+</g>
+<g >
+<title>btc-vanity`bitcoin::crypto::key::PublicKey::pubkey_hash::h9377682ca6f7baea (226 samples, 0.33%)</title><rect x="166.8" y="213" width="3.9" height="15.0" fill="rgb(210,25,6)" rx="2" ry="2" />
+<text  x="169.81" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..hash160..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h263d1bc0764fe841 (166 samples, 0.24%)</title><rect x="1073.0" y="197" width="2.9" height="15.0" fill="rgb(242,171,40)" rx="2" ry="2" />
+<text  x="1075.99" y="207.5" ></text>
+</g>
+<g >
+<title>Thread_3163674 (7,447 samples, 10.96%)</title><rect x="543.1" y="325" width="129.4" height="15.0" fill="rgb(209,21,5)" rx="2" ry="2" />
+<text  x="546.12" y="335.5" >Thread_3163674</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$alloc..string..String$u20$as$u20$core..fmt..Write$GT$::write_char::ha9c8747d9e7e6ec6 (145 samples, 0.21%)</title><rect x="806.6" y="181" width="2.5" height="15.0" fill="rgb(214,41,9)" rx="2" ry="2" />
+<text  x="809.56" y="191.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_free_no_lock (8 samples, 0.01%)</title><rect x="421.4" y="69" width="0.1" height="15.0" fill="rgb(230,117,27)" rx="2" ry="2" />
+<text  x="424.37" y="79.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`_pthread_start (7,447 samples, 10.96%)</title><rect x="1060.6" y="293" width="129.4" height="15.0" fill="rgb(253,220,52)" rx="2" ry="2" />
+<text  x="1063.62" y="303.5" >libsystem_pthrea..</text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_fe_impl_inv (977 samples, 1.44%)</title><rect x="1095.6" y="181" width="17.0" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="1098.65" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`core::ops::function::FnOnce::call_once$u7b$$u7b$vtable.shim$u7d$$u7d$::hdb6e18581de6758c (7,447 samples, 10.96%)</title><rect x="20.5" y="261" width="129.4" height="15.0" fill="rgb(229,114,27)" rx="2" ry="2" />
+<text  x="23.49" y="271.5" >btc-vanity`core:..</text>
+</g>
+<g >
+<title>libsystem_pthread`_pthread_start (7,447 samples, 10.96%)</title><rect x="20.5" y="293" width="129.4" height="15.0" fill="rgb(253,220,52)" rx="2" ry="2" />
+<text  x="23.49" y="303.5" >libsystem_pthrea..</text>
+</g>
+<g >
+<title>libsystem_malloc`szone_malloc_should_clear (13 samples, 0.02%)</title><rect x="939.2" y="133" width="0.2" height="15.0" fill="rgb(245,188,45)" rx="2" ry="2" />
+<text  x="942.15" y="143.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_pubkey_serialize (13 samples, 0.02%)</title><rect x="170.5" y="197" width="0.2" height="15.0" fill="rgb(233,129,31)" rx="2" ry="2" />
+<text  x="173.51" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_size (8 samples, 0.01%)</title><rect x="808.1" y="85" width="0.1" height="15.0" fill="rgb(228,106,25)" rx="2" ry="2" />
+<text  x="811.07" y="95.5" ></text>
+</g>
+<g >
+<title>libsystem_kernel`__semwait_signal (9 samples, 0.01%)</title><rect x="151.3" y="85" width="0.2" height="15.0" fill="rgb(221,76,18)" rx="2" ry="2" />
+<text  x="154.33" y="95.5" ></text>
+</g>
+<g >
+<title>btc-vanity`base58ck::encode_check_to_fmt::h90a791ed09e15a16 (493 samples, 0.73%)</title><rect x="672.9" y="197" width="8.5" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="675.86" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_should_clear (11 samples, 0.02%)</title><rect x="678.7" y="117" width="0.2" height="15.0" fill="rgb(237,148,35)" rx="2" ry="2" />
+<text  x="681.72" y="127.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`_realloc (69 samples, 0.10%)</title><rect x="807.4" y="133" width="1.2" height="15.0" fill="rgb(233,131,31)" rx="2" ry="2" />
+<text  x="810.38" y="143.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`free_tiny (24 samples, 0.04%)</title><rect x="283.9" y="229" width="0.5" height="15.0" fill="rgb(230,119,28)" rx="2" ry="2" />
+<text  x="286.94" y="239.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_gej_add_ge (4,476 samples, 6.59%)</title><rect x="594.1" y="197" width="77.7" height="15.0" fill="rgb(227,101,24)" rx="2" ry="2" />
+<text  x="597.06" y="207.5" >btc-vani..</text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_free_no_lock (11 samples, 0.02%)</title><rect x="284.0" y="213" width="0.2" height="15.0" fill="rgb(230,117,27)" rx="2" ry="2" />
+<text  x="287.04" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_gej_add_ge (4,360 samples, 6.42%)</title><rect x="207.8" y="197" width="75.8" height="15.0" fill="rgb(227,101,24)" rx="2" ry="2" />
+<text  x="210.82" y="207.5" >btc-vani..</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::h345c878c042c5169 (72 samples, 0.11%)</title><rect x="812.8" y="165" width="1.2" height="15.0" fill="rgb(243,177,42)" rx="2" ry="2" />
+<text  x="815.77" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sys::pal::unix::thread::Thread::new::thread_start::haaea9455534b1761 (7,447 samples, 10.96%)</title><rect x="413.7" y="277" width="129.4" height="15.0" fill="rgb(241,168,40)" rx="2" ry="2" />
+<text  x="416.75" y="287.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>btc-vanity`std::thread::local::LocalKey$LT$T$GT$::with::hfc8fde8558e4a2ca (7,433 samples, 10.94%)</title><rect x="413.8" y="229" width="129.1" height="15.0" fill="rgb(207,13,3)" rx="2" ry="2" />
+<text  x="416.78" y="239.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_try_realloc_in_place (12 samples, 0.02%)</title><rect x="549.7" y="85" width="0.2" height="15.0" fill="rgb(226,99,23)" rx="2" ry="2" />
+<text  x="552.72" y="95.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$core..fmt..Formatter$u20$as$u20$core..fmt..Write$GT$::write_char::h4391dcb71dbda10b (6 samples, 0.01%)</title><rect x="166.2" y="181" width="0.1" height="15.0" fill="rgb(224,90,21)" rx="2" ry="2" />
+<text  x="169.22" y="191.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_should_clear (10 samples, 0.01%)</title><rect x="1069.0" y="117" width="0.2" height="15.0" fill="rgb(237,148,35)" rx="2" ry="2" />
+<text  x="1071.98" y="127.5" ></text>
+</g>
+<g >
+<title>btc-vanity`alloc::raw_vec::finish_grow::hac59b676dbd2f39a (86 samples, 0.13%)</title><rect x="420.8" y="149" width="1.5" height="15.0" fill="rgb(237,151,36)" rx="2" ry="2" />
+<text  x="423.76" y="159.5" ></text>
+</g>
+<g >
+<title>libsystem_kernel`mach_msg2_internal (143 samples, 0.21%)</title><rect x="151.6" y="69" width="2.4" height="15.0" fill="rgb(239,159,38)" rx="2" ry="2" />
+<text  x="154.55" y="79.5" ></text>
+</g>
+<g >
+<title>btc-vanity`alloc::raw_vec::RawVecInner$LT$A$GT$::reserve::do_reserve_and_handle::hcf2035797f2735d3 (111 samples, 0.16%)</title><rect x="1067.3" y="165" width="1.9" height="15.0" fill="rgb(206,6,1)" rx="2" ry="2" />
+<text  x="1070.30" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256d..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::hdaef84c97d9b7f7d (181 samples, 0.27%)</title><rect x="550.4" y="181" width="3.2" height="15.0" fill="rgb(233,133,31)" rx="2" ry="2" />
+<text  x="553.42" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sys::pal::unix::thread::Thread::new::thread_start::haaea9455534b1761 (7,447 samples, 10.96%)</title><rect x="543.1" y="277" width="129.4" height="15.0" fill="rgb(241,168,40)" rx="2" ry="2" />
+<text  x="546.12" y="287.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>Metal`-[_MTLCommandBuffer.status] (8 samples, 0.01%)</title><rect x="150.5" y="117" width="0.2" height="15.0" fill="rgb(251,214,51)" rx="2" ry="2" />
+<text  x="153.51" y="127.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_realloc (55 samples, 0.08%)</title><rect x="1068.0" y="101" width="0.9" height="15.0" fill="rgb(222,80,19)" rx="2" ry="2" />
+<text  x="1070.96" y="111.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_size (6 samples, 0.01%)</title><rect x="938.8" y="85" width="0.1" height="15.0" fill="rgb(228,106,25)" rx="2" ry="2" />
+<text  x="941.75" y="95.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_modinv64 (800 samples, 1.18%)</title><rect x="836.3" y="165" width="13.9" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="839.27" y="175.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_malloc_should_clear (13 samples, 0.02%)</title><rect x="678.7" y="133" width="0.2" height="15.0" fill="rgb(245,188,45)" rx="2" ry="2" />
+<text  x="681.68" y="143.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_realloc (48 samples, 0.07%)</title><rect x="677.7" y="101" width="0.8" height="15.0" fill="rgb(222,80,19)" rx="2" ry="2" />
+<text  x="680.66" y="111.5" ></text>
+</g>
+<g >
+<title>btc-vanity`bitcoin::crypto::key::PublicKey::pubkey_hash::h9377682ca6f7baea (178 samples, 0.26%)</title><rect x="942.9" y="213" width="3.1" height="15.0" fill="rgb(210,25,6)" rx="2" ry="2" />
+<text  x="945.87" y="223.5" ></text>
+</g>
+<g >
+<title>libsystem_c`clock_gettime_nsec_np (10 samples, 0.01%)</title><rect x="154.2" y="69" width="0.2" height="15.0" fill="rgb(250,210,50)" rx="2" ry="2" />
+<text  x="157.19" y="79.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_fe_impl_inv (1,063 samples, 1.57%)</title><rect x="448.8" y="181" width="18.5" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="451.80" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::thread::local::LocalKey$LT$T$GT$::with::hfc8fde8558e4a2ca (7,416 samples, 10.92%)</title><rect x="284.5" y="229" width="128.8" height="15.0" fill="rgb(207,13,3)" rx="2" ry="2" />
+<text  x="287.47" y="239.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>libsystem_malloc`szone_realloc (45 samples, 0.07%)</title><rect x="807.6" y="101" width="0.8" height="15.0" fill="rgb(222,80,19)" rx="2" ry="2" />
+<text  x="810.62" y="111.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::h345c878c042c5169 (71 samples, 0.10%)</title><rect x="298.2" y="165" width="1.3" height="15.0" fill="rgb(243,177,42)" rx="2" ry="2" />
+<text  x="301.23" y="175.5" ></text>
+</g>
+<g >
+<title>libdispatch`_dispatch_workloop_worker_thread (604 samples, 0.89%)</title><rect x="10.0" y="277" width="10.5" height="15.0" fill="rgb(220,69,16)" rx="2" ry="2" />
+<text  x="13.00" y="287.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sys::pal::unix::thread::Thread::new::thread_start::haaea9455534b1761 (295 samples, 0.43%)</title><rect x="149.9" y="277" width="5.1" height="15.0" fill="rgb(241,168,40)" rx="2" ry="2" />
+<text  x="152.87" y="287.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`start_wqthread (604 samples, 0.89%)</title><rect x="10.0" y="309" width="10.5" height="15.0" fill="rgb(241,168,40)" rx="2" ry="2" />
+<text  x="13.00" y="319.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sys::backtrace::__rust_begin_short_backtrace::ha7a46a074def3d39 (7,445 samples, 10.96%)</title><rect x="543.1" y="245" width="129.4" height="15.0" fill="rgb(245,187,44)" rx="2" ry="2" />
+<text  x="546.12" y="255.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$alloc..string..String$u20$as$u20$core..fmt..Write$GT$::write_char::ha9c8747d9e7e6ec6 (120 samples, 0.18%)</title><rect x="676.8" y="181" width="2.1" height="15.0" fill="rgb(214,41,9)" rx="2" ry="2" />
+<text  x="679.84" y="191.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_malloc_should_clear (9 samples, 0.01%)</title><rect x="938.6" y="85" width="0.2" height="15.0" fill="rgb(245,188,45)" rx="2" ry="2" />
+<text  x="941.60" y="95.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_seckey_verify (7 samples, 0.01%)</title><rect x="801.1" y="213" width="0.1" height="15.0" fill="rgb(243,179,42)" rx="2" ry="2" />
+<text  x="804.11" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sys::backtrace::__rust_begin_short_backtrace::ha7a46a074def3d39 (7,446 samples, 10.96%)</title><rect x="413.7" y="245" width="129.4" height="15.0" fill="rgb(245,187,44)" rx="2" ry="2" />
+<text  x="416.75" y="255.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>libsystem_malloc`szone_malloc_should_clear (21 samples, 0.03%)</title><rect x="1068.4" y="85" width="0.3" height="15.0" fill="rgb(245,188,45)" rx="2" ry="2" />
+<text  x="1071.37" y="95.5" ></text>
+</g>
+<g >
+<title>Thread_3163667.DispatchQueue_61: (604 samples, 0.89%)</title><rect x="10.0" y="325" width="10.5" height="15.0" fill="rgb(234,136,32)" rx="2" ry="2" />
+<text  x="13.00" y="335.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..hash160..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h263d1bc0764fe841 (162 samples, 0.24%)</title><rect x="942.9" y="197" width="2.8" height="15.0" fill="rgb(242,171,40)" rx="2" ry="2" />
+<text  x="945.91" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sys::pal::unix::thread::Thread::new::thread_start::haaea9455534b1761 (7,447 samples, 10.96%)</title><rect x="801.9" y="277" width="129.3" height="15.0" fill="rgb(241,168,40)" rx="2" ry="2" />
+<text  x="804.87" y="287.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>libsystem_pthread`_pthread_wqthread (604 samples, 0.89%)</title><rect x="10.0" y="293" width="10.5" height="15.0" fill="rgb(226,98,23)" rx="2" ry="2" />
+<text  x="13.00" y="303.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_pubkey_serialize (7 samples, 0.01%)</title><rect x="814.0" y="197" width="0.1" height="15.0" fill="rgb(233,129,31)" rx="2" ry="2" />
+<text  x="817.02" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_from_free_list (7 samples, 0.01%)</title><rect x="939.2" y="101" width="0.1" height="15.0" fill="rgb(222,80,19)" rx="2" ry="2" />
+<text  x="942.21" y="111.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`_pthread_start (7,447 samples, 10.96%)</title><rect x="543.1" y="293" width="129.4" height="15.0" fill="rgb(253,220,52)" rx="2" ry="2" />
+<text  x="546.12" y="303.5" >libsystem_pthrea..</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::h345c878c042c5169 (159 samples, 0.23%)</title><rect x="1069.4" y="149" width="2.8" height="15.0" fill="rgb(243,177,42)" rx="2" ry="2" />
+<text  x="1072.40" y="159.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`_malloc_zone_realloc (57 samples, 0.08%)</title><rect x="291.9" y="117" width="0.9" height="15.0" fill="rgb(205,1,0)" rx="2" ry="2" />
+<text  x="294.86" y="127.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$rand..rngs..thread..ThreadRng$u20$as$u20$rand_core..RngCore$GT$::try_fill_bytes::hacf258647d4e22cd (7 samples, 0.01%)</title><rect x="811.3" y="213" width="0.2" height="15.0" fill="rgb(210,27,6)" rx="2" ry="2" />
+<text  x="814.34" y="223.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`thread_start (7,447 samples, 10.96%)</title><rect x="543.1" y="309" width="129.4" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="546.12" y="319.5" >libsystem_pthrea..</text>
+</g>
+<g >
+<title>libdispatch`_dispatch_continuation_pop (604 samples, 0.89%)</title><rect x="10.0" y="181" width="10.5" height="15.0" fill="rgb(230,115,27)" rx="2" ry="2" />
+<text  x="13.00" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ecmult_gen (1,066 samples, 1.57%)</title><rect x="299.9" y="197" width="18.6" height="15.0" fill="rgb(252,218,52)" rx="2" ry="2" />
+<text  x="302.94" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_platform`_os_unfair_lock_lock_slow (7 samples, 0.01%)</title><rect x="284.2" y="213" width="0.2" height="15.0" fill="rgb(221,75,18)" rx="2" ry="2" />
+<text  x="287.23" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ge_set_gej (1,005 samples, 1.48%)</title><rect x="576.6" y="197" width="17.5" height="15.0" fill="rgb(251,211,50)" rx="2" ry="2" />
+<text  x="579.60" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`thread_start (7,447 samples, 10.96%)</title><rect x="931.2" y="309" width="129.4" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="934.25" y="319.5" >libsystem_pthrea..</text>
+</g>
+<g >
+<title>libsystem_platform`_platform_memmove (8 samples, 0.01%)</title><rect x="295.8" y="133" width="0.1" height="15.0" fill="rgb(246,189,45)" rx="2" ry="2" />
+<text  x="298.80" y="143.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`_realloc (65 samples, 0.10%)</title><rect x="420.9" y="133" width="1.1" height="15.0" fill="rgb(233,131,31)" rx="2" ry="2" />
+<text  x="423.89" y="143.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$core..fmt..Formatter$u20$as$u20$core..fmt..Write$GT$::write_char::h4391dcb71dbda10b (8 samples, 0.01%)</title><rect x="295.9" y="181" width="0.2" height="15.0" fill="rgb(224,90,21)" rx="2" ry="2" />
+<text  x="298.94" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_eckey_pubkey_serialize (8 samples, 0.01%)</title><rect x="1076.0" y="181" width="0.1" height="15.0" fill="rgb(207,13,3)" rx="2" ry="2" />
+<text  x="1078.98" y="191.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`_pthread_start (7,447 samples, 10.96%)</title><rect x="672.5" y="293" width="129.4" height="15.0" fill="rgb(253,220,52)" rx="2" ry="2" />
+<text  x="675.50" y="303.5" >libsystem_pthrea..</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..ripemd160..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h5944bfbdb14b67ea (74 samples, 0.11%)</title><rect x="943.1" y="181" width="1.3" height="15.0" fill="rgb(221,75,18)" rx="2" ry="2" />
+<text  x="946.10" y="191.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_size (7 samples, 0.01%)</title><rect x="550.0" y="101" width="0.1" height="15.0" fill="rgb(219,66,15)" rx="2" ry="2" />
+<text  x="552.98" y="111.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`free_tiny (9 samples, 0.01%)</title><rect x="807.7" y="85" width="0.2" height="15.0" fill="rgb(230,119,28)" rx="2" ry="2" />
+<text  x="810.71" y="95.5" ></text>
+</g>
+<g >
+<title>libsystem_platform`_platform_memmove (7 samples, 0.01%)</title><rect x="425.2" y="133" width="0.2" height="15.0" fill="rgb(246,189,45)" rx="2" ry="2" />
+<text  x="428.23" y="143.5" ></text>
+</g>
+<g >
+<title>btc-vanity`bitcoin::crypto::key::PublicKey::pubkey_hash::h9377682ca6f7baea (181 samples, 0.27%)</title><rect x="425.9" y="213" width="3.2" height="15.0" fill="rgb(210,25,6)" rx="2" ry="2" />
+<text  x="428.91" y="223.5" ></text>
+</g>
+<g >
+<title>IOKit`io_connect_method (604 samples, 0.89%)</title><rect x="10.0" y="69" width="10.5" height="15.0" fill="rgb(216,54,12)" rx="2" ry="2" />
+<text  x="13.00" y="79.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$alloc..string..String$u20$as$u20$core..fmt..Write$GT$::write_char::ha9c8747d9e7e6ec6 (110 samples, 0.16%)</title><rect x="548.5" y="181" width="1.9" height="15.0" fill="rgb(214,41,9)" rx="2" ry="2" />
+<text  x="551.45" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sys::pal::unix::thread::Thread::new::thread_start::haaea9455534b1761 (7,447 samples, 10.96%)</title><rect x="931.2" y="277" width="129.4" height="15.0" fill="rgb(241,168,40)" rx="2" ry="2" />
+<text  x="934.25" y="287.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ecmult_gen (1,100 samples, 1.62%)</title><rect x="429.1" y="197" width="19.1" height="15.0" fill="rgb(252,218,52)" rx="2" ry="2" />
+<text  x="432.14" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::thread::local::LocalKey$LT$T$GT$::with::hfc8fde8558e4a2ca (7,414 samples, 10.92%)</title><rect x="931.4" y="229" width="128.8" height="15.0" fill="rgb(207,13,3)" rx="2" ry="2" />
+<text  x="934.40" y="239.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_eckey_pubkey_serialize (6 samples, 0.01%)</title><rect x="299.5" y="181" width="0.1" height="15.0" fill="rgb(207,13,3)" rx="2" ry="2" />
+<text  x="302.54" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h6415b2f09fa49544 (162 samples, 0.24%)</title><rect x="163.4" y="165" width="2.8" height="15.0" fill="rgb(246,191,45)" rx="2" ry="2" />
+<text  x="166.37" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin..address..AddressInner$u20$as$u20$core..fmt..Display$GT$::fmt::h421696cc7fe2f7b1 (499 samples, 0.73%)</title><rect x="672.8" y="213" width="8.6" height="15.0" fill="rgb(216,53,12)" rx="2" ry="2" />
+<text  x="675.76" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$alloc..string..String$u20$as$u20$core..fmt..Write$GT$::write_char::ha9c8747d9e7e6ec6 (142 samples, 0.21%)</title><rect x="160.7" y="181" width="2.5" height="15.0" fill="rgb(214,41,9)" rx="2" ry="2" />
+<text  x="163.74" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::h345c878c042c5169 (158 samples, 0.23%)</title><rect x="293.2" y="149" width="2.7" height="15.0" fill="rgb(243,177,42)" rx="2" ry="2" />
+<text  x="296.20" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`wgpu_core::device::global::_$LT$impl$u20$wgpu_core..global..Global$LT$G$GT$$GT$::device_poll::h6ab2c89720bc1f2e (294 samples, 0.43%)</title><rect x="149.9" y="165" width="5.1" height="15.0" fill="rgb(229,113,27)" rx="2" ry="2" />
+<text  x="152.87" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_fe_impl_inv (979 samples, 1.44%)</title><rect x="577.1" y="181" width="17.0" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="580.05" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin..address..AddressInner$u20$as$u20$core..fmt..Display$GT$::fmt::h421696cc7fe2f7b1 (639 samples, 0.94%)</title><rect x="155.2" y="213" width="11.1" height="15.0" fill="rgb(216,53,12)" rx="2" ry="2" />
+<text  x="158.22" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_fe_impl_get_b32 (6 samples, 0.01%)</title><rect x="557.0" y="165" width="0.1" height="15.0" fill="rgb(234,136,32)" rx="2" ry="2" />
+<text  x="560.04" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..ripemd160..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::he1c0e4b40451add2 (97 samples, 0.14%)</title><rect x="167.0" y="165" width="1.7" height="15.0" fill="rgb(210,25,6)" rx="2" ry="2" />
+<text  x="169.98" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`bitcoin::crypto::key::PublicKey::pubkey_hash::h9377682ca6f7baea (192 samples, 0.28%)</title><rect x="1072.9" y="213" width="3.3" height="15.0" fill="rgb(210,25,6)" rx="2" ry="2" />
+<text  x="1075.87" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ge_set_gej (754 samples, 1.11%)</title><rect x="707.7" y="197" width="13.1" height="15.0" fill="rgb(251,211,50)" rx="2" ry="2" />
+<text  x="710.69" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_kernel`mach_msg2_trap (141 samples, 0.21%)</title><rect x="151.6" y="53" width="2.4" height="15.0" fill="rgb(215,49,11)" rx="2" ry="2" />
+<text  x="154.59" y="63.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_free_no_lock (13 samples, 0.02%)</title><rect x="1189.6" y="213" width="0.2" height="15.0" fill="rgb(230,117,27)" rx="2" ry="2" />
+<text  x="1192.62" y="223.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`free_tiny (22 samples, 0.03%)</title><rect x="1060.2" y="229" width="0.4" height="15.0" fill="rgb(230,119,28)" rx="2" ry="2" />
+<text  x="1063.21" y="239.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_size (7 samples, 0.01%)</title><rect x="549.6" y="85" width="0.1" height="15.0" fill="rgb(228,106,25)" rx="2" ry="2" />
+<text  x="552.60" y="95.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_pubkey_serialize (9 samples, 0.01%)</title><rect x="684.2" y="197" width="0.2" height="15.0" fill="rgb(233,129,31)" rx="2" ry="2" />
+<text  x="687.22" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`core::ops::function::FnOnce::call_once$u7b$$u7b$vtable.shim$u7d$$u7d$::h08961978e0ffa25c (7,447 samples, 10.96%)</title><rect x="155.0" y="261" width="129.4" height="15.0" fill="rgb(252,220,52)" rx="2" ry="2" />
+<text  x="157.99" y="271.5" >btc-vanity`core:..</text>
+</g>
+<g >
+<title>libsystem_pthread`thread_start (7,447 samples, 10.96%)</title><rect x="20.5" y="309" width="129.4" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="23.49" y="319.5" >libsystem_pthrea..</text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_free_no_lock (6 samples, 0.01%)</title><rect x="807.8" y="69" width="0.1" height="15.0" fill="rgb(230,117,27)" rx="2" ry="2" />
+<text  x="810.76" y="79.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h6415b2f09fa49544 (87 samples, 0.13%)</title><rect x="1074.4" y="181" width="1.5" height="15.0" fill="rgb(246,191,45)" rx="2" ry="2" />
+<text  x="1077.37" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sys::backtrace::__rust_begin_short_backtrace::ha7a46a074def3d39 (7,445 samples, 10.96%)</title><rect x="801.9" y="245" width="129.3" height="15.0" fill="rgb(245,187,44)" rx="2" ry="2" />
+<text  x="804.87" y="255.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$rand_chacha..chacha..ChaCha12Core$u20$as$u20$rand_core..block..BlockRngCore$GT$::generate::ha6e94346ff32efa3 (23 samples, 0.03%)</title><rect x="166.4" y="213" width="0.4" height="15.0" fill="rgb(239,156,37)" rx="2" ry="2" />
+<text  x="169.41" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$alloc..string..String$u20$as$u20$core..fmt..Write$GT$::write_char::ha9c8747d9e7e6ec6 (114 samples, 0.17%)</title><rect x="420.3" y="181" width="2.0" height="15.0" fill="rgb(214,41,9)" rx="2" ry="2" />
+<text  x="423.31" y="191.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_malloc_should_clear (14 samples, 0.02%)</title><rect x="422.0" y="133" width="0.3" height="15.0" fill="rgb(245,188,45)" rx="2" ry="2" />
+<text  x="425.01" y="143.5" ></text>
+</g>
+<g >
+<title>libdispatch`_dispatch_lane_invoke (604 samples, 0.89%)</title><rect x="10.0" y="245" width="10.5" height="15.0" fill="rgb(238,152,36)" rx="2" ry="2" />
+<text  x="13.00" y="255.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_should_clear (23 samples, 0.03%)</title><rect x="808.6" y="117" width="0.4" height="15.0" fill="rgb(237,148,35)" rx="2" ry="2" />
+<text  x="811.65" y="127.5" ></text>
+</g>
+<g >
+<title>btc-vanity`base58ck::encode_check_to_fmt::h90a791ed09e15a16 (660 samples, 0.97%)</title><rect x="414.0" y="197" width="11.5" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="417.02" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sync::mpmc::list::Channel$LT$T$GT$::recv::h2b408b3accf83874 (7,447 samples, 10.96%)</title><rect x="20.5" y="197" width="129.4" height="15.0" fill="rgb(215,49,11)" rx="2" ry="2" />
+<text  x="23.49" y="207.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$rand_chacha..chacha..ChaCha12Core$u20$as$u20$rand_core..block..BlockRngCore$GT$::generate::ha6e94346ff32efa3 (11 samples, 0.02%)</title><rect x="942.7" y="213" width="0.2" height="15.0" fill="rgb(239,156,37)" rx="2" ry="2" />
+<text  x="945.68" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_pubkey_serialize (13 samples, 0.02%)</title><rect x="1075.9" y="197" width="0.3" height="15.0" fill="rgb(233,129,31)" rx="2" ry="2" />
+<text  x="1078.93" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_pubkey_create (6,715 samples, 9.89%)</title><rect x="684.4" y="213" width="116.7" height="15.0" fill="rgb(229,113,27)" rx="2" ry="2" />
+<text  x="687.45" y="223.5" >btc-vanity`rus..</text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_should_clear (17 samples, 0.03%)</title><rect x="1068.4" y="69" width="0.3" height="15.0" fill="rgb(237,148,35)" rx="2" ry="2" />
+<text  x="1071.44" y="79.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_from_free_list (12 samples, 0.02%)</title><rect x="1068.5" y="53" width="0.2" height="15.0" fill="rgb(222,80,19)" rx="2" ry="2" />
+<text  x="1071.53" y="63.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`free_tiny (9 samples, 0.01%)</title><rect x="162.0" y="85" width="0.2" height="15.0" fill="rgb(230,119,28)" rx="2" ry="2" />
+<text  x="165.05" y="95.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..ripemd160..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h5944bfbdb14b67ea (73 samples, 0.11%)</title><rect x="681.8" y="181" width="1.2" height="15.0" fill="rgb(221,75,18)" rx="2" ry="2" />
+<text  x="684.77" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$wgpu..backend..wgpu_core..ContextWgpuCore$u20$as$u20$wgpu..context..Context$GT$::device_poll::h988387b6562c5ffd (294 samples, 0.43%)</title><rect x="149.9" y="181" width="5.1" height="15.0" fill="rgb(251,215,51)" rx="2" ry="2" />
+<text  x="152.87" y="191.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`_realloc (67 samples, 0.10%)</title><rect x="291.8" y="133" width="1.2" height="15.0" fill="rgb(233,131,31)" rx="2" ry="2" />
+<text  x="294.79" y="143.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_realloc (31 samples, 0.05%)</title><rect x="549.4" y="101" width="0.5" height="15.0" fill="rgb(222,80,19)" rx="2" ry="2" />
+<text  x="552.39" y="111.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$T$u20$as$u20$wgpu..context..DynContext$GT$::device_poll::hf21af9929dbca0cf (294 samples, 0.43%)</title><rect x="149.9" y="197" width="5.1" height="15.0" fill="rgb(242,174,41)" rx="2" ry="2" />
+<text  x="152.87" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h6415b2f09fa49544 (72 samples, 0.11%)</title><rect x="427.6" y="181" width="1.2" height="15.0" fill="rgb(246,191,45)" rx="2" ry="2" />
+<text  x="430.56" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h6415b2f09fa49544 (163 samples, 0.24%)</title><rect x="1069.3" y="165" width="2.9" height="15.0" fill="rgb(246,191,45)" rx="2" ry="2" />
+<text  x="1072.33" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin..address..AddressInner$u20$as$u20$core..fmt..Display$GT$::fmt::h421696cc7fe2f7b1 (669 samples, 0.98%)</title><rect x="1060.8" y="213" width="11.6" height="15.0" fill="rgb(216,53,12)" rx="2" ry="2" />
+<text  x="1063.76" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::h345c878c042c5169 (171 samples, 0.25%)</title><rect x="550.5" y="149" width="3.0" height="15.0" fill="rgb(243,177,42)" rx="2" ry="2" />
+<text  x="553.50" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`base58ck::encode_check_to_fmt::h90a791ed09e15a16 (634 samples, 0.93%)</title><rect x="931.6" y="197" width="11.0" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="934.61" y="207.5" ></text>
+</g>
+<g >
+<title>libdispatch`_dispatch_client_callout (604 samples, 0.89%)</title><rect x="10.0" y="165" width="10.5" height="15.0" fill="rgb(225,95,22)" rx="2" ry="2" />
+<text  x="13.00" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`base58ck::encode_check_to_fmt::h90a791ed09e15a16 (650 samples, 0.96%)</title><rect x="284.8" y="197" width="11.3" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="287.79" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h6415b2f09fa49544 (167 samples, 0.25%)</title><rect x="939.6" y="165" width="2.9" height="15.0" fill="rgb(246,191,45)" rx="2" ry="2" />
+<text  x="942.60" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ge_set_gej (1,081 samples, 1.59%)</title><rect x="189.0" y="197" width="18.8" height="15.0" fill="rgb(251,211,50)" rx="2" ry="2" />
+<text  x="192.04" y="207.5" ></text>
+</g>
+<g >
+<title>libdispatch`_dispatch_semaphore_wait_slow (7,424 samples, 10.93%)</title><rect x="20.9" y="149" width="129.0" height="15.0" fill="rgb(247,193,46)" rx="2" ry="2" />
+<text  x="23.89" y="159.5" >libdispatch`_dis..</text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_fe_impl_get_b32 (7 samples, 0.01%)</title><rect x="170.6" y="165" width="0.1" height="15.0" fill="rgb(234,136,32)" rx="2" ry="2" />
+<text  x="173.59" y="175.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`_pthread_exit_if_canceled (8 samples, 0.01%)</title><rect x="151.3" y="53" width="0.2" height="15.0" fill="rgb(223,82,19)" rx="2" ry="2" />
+<text  x="154.35" y="63.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_eckey_pubkey_serialize (10 samples, 0.01%)</title><rect x="170.5" y="181" width="0.2" height="15.0" fill="rgb(207,13,3)" rx="2" ry="2" />
+<text  x="173.54" y="191.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_free_no_lock (13 samples, 0.02%)</title><rect x="1068.1" y="69" width="0.2" height="15.0" fill="rgb(230,117,27)" rx="2" ry="2" />
+<text  x="1071.09" y="79.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`_malloc_zone_realloc (57 samples, 0.08%)</title><rect x="421.0" y="117" width="0.9" height="15.0" fill="rgb(205,1,0)" rx="2" ry="2" />
+<text  x="423.96" y="127.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_malloc_should_clear (16 samples, 0.02%)</title><rect x="162.2" y="85" width="0.3" height="15.0" fill="rgb(245,188,45)" rx="2" ry="2" />
+<text  x="165.22" y="95.5" ></text>
+</g>
+<g >
+<title>all (67,922 samples, 100%)</title><rect x="10.0" y="341" width="1180.0" height="15.0" fill="rgb(213,39,9)" rx="2" ry="2" />
+<text  x="13.00" y="351.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_gej_add_ge (4,411 samples, 6.49%)</title><rect x="983.3" y="197" width="76.7" height="15.0" fill="rgb(227,101,24)" rx="2" ry="2" />
+<text  x="986.33" y="207.5" >btc-vani..</text>
+</g>
+<g >
+<title>libsystem_malloc`_malloc_zone_realloc (55 samples, 0.08%)</title><rect x="161.7" y="117" width="1.0" height="15.0" fill="rgb(205,1,0)" rx="2" ry="2" />
+<text  x="164.72" y="127.5" ></text>
+</g>
+<g >
+<title>btc-vanity`core::ops::function::FnOnce::call_once$u7b$$u7b$vtable.shim$u7d$$u7d$::h08961978e0ffa25c (7,447 samples, 10.96%)</title><rect x="672.5" y="261" width="129.4" height="15.0" fill="rgb(252,220,52)" rx="2" ry="2" />
+<text  x="675.50" y="271.5" >btc-vanity`core:..</text>
+</g>
+<g >
+<title>libsystem_malloc`_malloc_zone_realloc (43 samples, 0.06%)</title><rect x="549.2" y="117" width="0.7" height="15.0" fill="rgb(205,1,0)" rx="2" ry="2" />
+<text  x="552.18" y="127.5" ></text>
+</g>
+<g >
+<title>btc-vanity`core::ops::function::FnOnce::call_once$u7b$$u7b$vtable.shim$u7d$$u7d$::h08961978e0ffa25c (7,447 samples, 10.96%)</title><rect x="931.2" y="261" width="129.4" height="15.0" fill="rgb(252,220,52)" rx="2" ry="2" />
+<text  x="934.25" y="271.5" >btc-vanity`core:..</text>
+</g>
+<g >
+<title>btc-vanity`std::thread::local::LocalKey$LT$T$GT$::with::hfc8fde8558e4a2ca (7,401 samples, 10.90%)</title><rect x="672.7" y="229" width="128.6" height="15.0" fill="rgb(207,13,3)" rx="2" ry="2" />
+<text  x="675.69" y="239.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ge_set_gej (1,095 samples, 1.61%)</title><rect x="448.2" y="197" width="19.1" height="15.0" fill="rgb(251,211,50)" rx="2" ry="2" />
+<text  x="451.25" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_free_no_lock (16 samples, 0.02%)</title><rect x="801.5" y="213" width="0.3" height="15.0" fill="rgb(230,117,27)" rx="2" ry="2" />
+<text  x="804.51" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`alloc::raw_vec::finish_grow::hac59b676dbd2f39a (78 samples, 0.11%)</title><rect x="291.7" y="149" width="1.4" height="15.0" fill="rgb(237,151,36)" rx="2" ry="2" />
+<text  x="294.70" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ecmult_gen (1,143 samples, 1.68%)</title><rect x="946.1" y="197" width="19.9" height="15.0" fill="rgb(252,218,52)" rx="2" ry="2" />
+<text  x="949.12" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..ripemd160..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h5944bfbdb14b67ea (62 samples, 0.09%)</title><rect x="554.2" y="181" width="1.1" height="15.0" fill="rgb(221,75,18)" rx="2" ry="2" />
+<text  x="557.19" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`alloc::raw_vec::RawVecInner$LT$A$GT$::reserve::do_reserve_and_handle::hcf2035797f2735d3 (95 samples, 0.14%)</title><rect x="420.6" y="165" width="1.7" height="15.0" fill="rgb(206,6,1)" rx="2" ry="2" />
+<text  x="423.61" y="175.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_size (6 samples, 0.01%)</title><rect x="1068.7" y="85" width="0.1" height="15.0" fill="rgb(228,106,25)" rx="2" ry="2" />
+<text  x="1071.74" y="95.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sys::backtrace::__rust_begin_short_backtrace::ha7a46a074def3d39 (7,447 samples, 10.96%)</title><rect x="284.4" y="245" width="129.3" height="15.0" fill="rgb(245,187,44)" rx="2" ry="2" />
+<text  x="287.37" y="255.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>libsystem_platform`_os_unfair_lock_lock_slow (6 samples, 0.01%)</title><rect x="931.1" y="213" width="0.1" height="15.0" fill="rgb(221,75,18)" rx="2" ry="2" />
+<text  x="934.07" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_modinv64 (1,045 samples, 1.54%)</title><rect x="189.7" y="165" width="18.1" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="192.67" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h6415b2f09fa49544 (61 samples, 0.09%)</title><rect x="683.1" y="181" width="1.0" height="15.0" fill="rgb(246,191,45)" rx="2" ry="2" />
+<text  x="686.08" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sys::pal::unix::thread::Thread::new::thread_start::haaea9455534b1761 (7,447 samples, 10.96%)</title><rect x="20.5" y="277" width="129.4" height="15.0" fill="rgb(241,168,40)" rx="2" ry="2" />
+<text  x="23.49" y="287.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::h345c878c042c5169 (60 samples, 0.09%)</title><rect x="683.1" y="165" width="1.0" height="15.0" fill="rgb(243,177,42)" rx="2" ry="2" />
+<text  x="686.09" y="175.5" ></text>
+</g>
+<g >
+<title>libobjc.A`objc_msgSend (28 samples, 0.04%)</title><rect x="154.5" y="117" width="0.5" height="15.0" fill="rgb(247,194,46)" rx="2" ry="2" />
+<text  x="157.49" y="127.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256d..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::hdaef84c97d9b7f7d (173 samples, 0.25%)</title><rect x="422.3" y="181" width="3.1" height="15.0" fill="rgb(233,133,31)" rx="2" ry="2" />
+<text  x="425.35" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_fe_impl_inv (727 samples, 1.07%)</title><rect x="708.2" y="181" width="12.6" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="711.16" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_pubkey_create (6,499 samples, 9.57%)</title><rect x="170.7" y="213" width="112.9" height="15.0" fill="rgb(229,113,27)" rx="2" ry="2" />
+<text  x="173.73" y="223.5" >btc-vanity`ru..</text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_pubkey_create (6,542 samples, 9.63%)</title><rect x="429.1" y="213" width="113.6" height="15.0" fill="rgb(229,113,27)" rx="2" ry="2" />
+<text  x="432.07" y="223.5" >btc-vanity`rus..</text>
+</g>
+<g >
+<title>btc-vanity`alloc::raw_vec::finish_grow::hac59b676dbd2f39a (97 samples, 0.14%)</title><rect x="161.5" y="149" width="1.7" height="15.0" fill="rgb(237,151,36)" rx="2" ry="2" />
+<text  x="164.49" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$rand..rngs..thread..ThreadRng$u20$as$u20$rand_core..RngCore$GT$::try_fill_bytes::hacf258647d4e22cd (6 samples, 0.01%)</title><rect x="296.1" y="213" width="0.1" height="15.0" fill="rgb(210,27,6)" rx="2" ry="2" />
+<text  x="299.10" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$rand_chacha..chacha..ChaCha12Core$u20$as$u20$rand_core..block..BlockRngCore$GT$::generate::ha6e94346ff32efa3 (19 samples, 0.03%)</title><rect x="425.6" y="213" width="0.3" height="15.0" fill="rgb(239,156,37)" rx="2" ry="2" />
+<text  x="428.58" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::thread::local::LocalKey$LT$T$GT$::with::hfc8fde8558e4a2ca (7,415 samples, 10.92%)</title><rect x="1060.7" y="229" width="128.8" height="15.0" fill="rgb(207,13,3)" rx="2" ry="2" />
+<text  x="1063.69" y="239.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$alloc..string..String$u20$as$u20$core..fmt..Write$GT$::write_char::ha9c8747d9e7e6ec6 (109 samples, 0.16%)</title><rect x="291.2" y="181" width="1.9" height="15.0" fill="rgb(214,41,9)" rx="2" ry="2" />
+<text  x="294.16" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sys::pal::unix::thread::Thread::new::thread_start::haaea9455534b1761 (7,447 samples, 10.96%)</title><rect x="1060.6" y="277" width="129.4" height="15.0" fill="rgb(241,168,40)" rx="2" ry="2" />
+<text  x="1063.62" y="287.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_free_no_lock (11 samples, 0.02%)</title><rect x="1060.3" y="213" width="0.2" height="15.0" fill="rgb(230,117,27)" rx="2" ry="2" />
+<text  x="1063.29" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin..address..AddressInner$u20$as$u20$core..fmt..Display$GT$::fmt::h421696cc7fe2f7b1 (670 samples, 0.99%)</title><rect x="413.8" y="213" width="11.7" height="15.0" fill="rgb(216,53,12)" rx="2" ry="2" />
+<text  x="416.85" y="223.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`free_tiny (18 samples, 0.03%)</title><rect x="1068.0" y="85" width="0.3" height="15.0" fill="rgb(230,119,28)" rx="2" ry="2" />
+<text  x="1071.03" y="95.5" ></text>
+</g>
+<g >
+<title>libsystem_c`clock_gettime (12 samples, 0.02%)</title><rect x="154.2" y="85" width="0.2" height="15.0" fill="rgb(207,12,3)" rx="2" ry="2" />
+<text  x="157.16" y="95.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_pubkey_create (6,505 samples, 9.58%)</title><rect x="1076.3" y="213" width="113.0" height="15.0" fill="rgb(229,113,27)" rx="2" ry="2" />
+<text  x="1079.28" y="223.5" >btc-vanity`ru..</text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_seckey_verify (10 samples, 0.01%)</title><rect x="1189.3" y="213" width="0.2" height="15.0" fill="rgb(243,179,42)" rx="2" ry="2" />
+<text  x="1192.29" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..ripemd160..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h5944bfbdb14b67ea (74 samples, 0.11%)</title><rect x="1073.0" y="181" width="1.3" height="15.0" fill="rgb(221,75,18)" rx="2" ry="2" />
+<text  x="1076.03" y="191.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_should_clear (13 samples, 0.02%)</title><rect x="163.0" y="117" width="0.2" height="15.0" fill="rgb(237,148,35)" rx="2" ry="2" />
+<text  x="165.95" y="127.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_modinv64_update_de_62 (80 samples, 0.12%)</title><rect x="1111.2" y="149" width="1.4" height="15.0" fill="rgb(225,93,22)" rx="2" ry="2" />
+<text  x="1114.23" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sys::pal::unix::time::Timespec::sub_timespec::h2c09139377d83d22 (7 samples, 0.01%)</title><rect x="154.4" y="101" width="0.1" height="15.0" fill="rgb(249,202,48)" rx="2" ry="2" />
+<text  x="157.37" y="111.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::h345c878c042c5169 (87 samples, 0.13%)</title><rect x="1074.4" y="165" width="1.5" height="15.0" fill="rgb(243,177,42)" rx="2" ry="2" />
+<text  x="1077.37" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_pubkey_serialize (11 samples, 0.02%)</title><rect x="428.9" y="197" width="0.2" height="15.0" fill="rgb(233,129,31)" rx="2" ry="2" />
+<text  x="431.86" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..hash160..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h263d1bc0764fe841 (165 samples, 0.24%)</title><rect x="425.9" y="197" width="2.9" height="15.0" fill="rgb(242,171,40)" rx="2" ry="2" />
+<text  x="428.94" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_from_free_list (11 samples, 0.02%)</title><rect x="292.6" y="53" width="0.1" height="15.0" fill="rgb(222,80,19)" rx="2" ry="2" />
+<text  x="295.55" y="63.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`_pthread_start (7,447 samples, 10.96%)</title><rect x="284.4" y="293" width="129.3" height="15.0" fill="rgb(253,220,52)" rx="2" ry="2" />
+<text  x="287.37" y="303.5" >libsystem_pthrea..</text>
+</g>
+<g >
+<title>libsystem_malloc`free_tiny (54 samples, 0.08%)</title><rect x="930.3" y="229" width="0.9" height="15.0" fill="rgb(230,119,28)" rx="2" ry="2" />
+<text  x="933.26" y="239.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_malloc_should_clear (24 samples, 0.04%)</title><rect x="808.6" y="133" width="0.4" height="15.0" fill="rgb(245,188,45)" rx="2" ry="2" />
+<text  x="811.63" y="143.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h6415b2f09fa49544 (71 samples, 0.10%)</title><rect x="298.2" y="181" width="1.3" height="15.0" fill="rgb(246,191,45)" rx="2" ry="2" />
+<text  x="301.23" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::thread::local::LocalKey$LT$T$GT$::with::hfc8fde8558e4a2ca (7,382 samples, 10.87%)</title><rect x="802.0" y="229" width="128.3" height="15.0" fill="rgb(207,13,3)" rx="2" ry="2" />
+<text  x="805.01" y="239.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>btc-vanity`std::sys::backtrace::__rust_begin_short_backtrace::ha7a46a074def3d39 (7,447 samples, 10.96%)</title><rect x="672.5" y="245" width="129.4" height="15.0" fill="rgb(245,187,44)" rx="2" ry="2" />
+<text  x="675.50" y="255.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$core..fmt..Formatter$u20$as$u20$core..fmt..Write$GT$::write_char::h4391dcb71dbda10b (7 samples, 0.01%)</title><rect x="425.4" y="181" width="0.1" height="15.0" fill="rgb(224,90,21)" rx="2" ry="2" />
+<text  x="428.35" y="191.5" ></text>
+</g>
+<g >
+<title>Thread_3163673 (7,447 samples, 10.96%)</title><rect x="413.7" y="325" width="129.4" height="15.0" fill="rgb(216,50,12)" rx="2" ry="2" />
+<text  x="416.75" y="335.5" >Thread_3163673</text>
+</g>
+<g >
+<title>btc-vanity`std::time::Instant::elapsed::hb3c42a0052c57abb (25 samples, 0.04%)</title><rect x="154.1" y="117" width="0.4" height="15.0" fill="rgb(224,91,21)" rx="2" ry="2" />
+<text  x="157.06" y="127.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_try_realloc_in_place (7 samples, 0.01%)</title><rect x="421.8" y="85" width="0.1" height="15.0" fill="rgb(226,99,23)" rx="2" ry="2" />
+<text  x="424.79" y="95.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h6415b2f09fa49544 (169 samples, 0.25%)</title><rect x="422.4" y="165" width="3.0" height="15.0" fill="rgb(246,191,45)" rx="2" ry="2" />
+<text  x="425.41" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`core::ops::function::FnOnce::call_once$u7b$$u7b$vtable.shim$u7d$$u7d$::h08961978e0ffa25c (7,447 samples, 10.96%)</title><rect x="543.1" y="261" width="129.4" height="15.0" fill="rgb(252,220,52)" rx="2" ry="2" />
+<text  x="546.12" y="271.5" >btc-vanity`core:..</text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_eckey_pubkey_serialize (9 samples, 0.01%)</title><rect x="557.0" y="181" width="0.1" height="15.0" fill="rgb(207,13,3)" rx="2" ry="2" />
+<text  x="559.98" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_modinv64_update_de_62 (83 samples, 0.12%)</title><rect x="336.1" y="149" width="1.5" height="15.0" fill="rgb(225,93,22)" rx="2" ry="2" />
+<text  x="339.12" y="159.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_try_realloc_in_place (8 samples, 0.01%)</title><rect x="808.2" y="85" width="0.2" height="15.0" fill="rgb(226,99,23)" rx="2" ry="2" />
+<text  x="811.21" y="95.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_modinv64 (1,061 samples, 1.56%)</title><rect x="448.8" y="165" width="18.5" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="451.84" y="175.5" ></text>
+</g>
+<g >
+<title>libsystem_c`nanosleep (172 samples, 0.25%)</title><rect x="151.1" y="101" width="3.0" height="15.0" fill="rgb(224,87,20)" rx="2" ry="2" />
+<text  x="154.07" y="111.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sys::backtrace::__rust_begin_short_backtrace::h04896d9d8d58f2a7 (295 samples, 0.43%)</title><rect x="149.9" y="245" width="5.1" height="15.0" fill="rgb(236,146,34)" rx="2" ry="2" />
+<text  x="152.87" y="255.5" ></text>
+</g>
+<g >
+<title>Thread_3163671 (7,447 samples, 10.96%)</title><rect x="155.0" y="325" width="129.4" height="15.0" fill="rgb(228,110,26)" rx="2" ry="2" />
+<text  x="157.99" y="335.5" >Thread_3163671</text>
+</g>
+<g >
+<title>btc-vanity`base58ck::encode_check_to_fmt::h90a791ed09e15a16 (594 samples, 0.87%)</title><rect x="543.3" y="197" width="10.3" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="546.33" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_free_no_lock (9 samples, 0.01%)</title><rect x="938.4" y="69" width="0.1" height="15.0" fill="rgb(230,117,27)" rx="2" ry="2" />
+<text  x="941.39" y="79.5" ></text>
+</g>
+<g >
+<title>IOGPU`IOGPUCommandQueueSubmitCommandBuffers (604 samples, 0.89%)</title><rect x="10.0" y="101" width="10.5" height="15.0" fill="rgb(219,67,16)" rx="2" ry="2" />
+<text  x="13.00" y="111.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..ripemd160..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::he1c0e4b40451add2 (54 samples, 0.08%)</title><rect x="811.7" y="165" width="1.0" height="15.0" fill="rgb(210,25,6)" rx="2" ry="2" />
+<text  x="814.72" y="175.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`thread_start (7,447 samples, 10.96%)</title><rect x="672.5" y="309" width="129.4" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="675.50" y="319.5" >libsystem_pthrea..</text>
+</g>
+<g >
+<title>libsystem_kernel`clock_get_time (147 samples, 0.22%)</title><rect x="151.5" y="85" width="2.5" height="15.0" fill="rgb(242,173,41)" rx="2" ry="2" />
+<text  x="154.48" y="95.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_realloc (42 samples, 0.06%)</title><rect x="161.9" y="101" width="0.8" height="15.0" fill="rgb(222,80,19)" rx="2" ry="2" />
+<text  x="164.94" y="111.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_size (8 samples, 0.01%)</title><rect x="808.4" y="117" width="0.2" height="15.0" fill="rgb(228,106,25)" rx="2" ry="2" />
+<text  x="811.44" y="127.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_modinv64_update_de_62 (59 samples, 0.09%)</title><rect x="849.1" y="149" width="1.1" height="15.0" fill="rgb(225,93,22)" rx="2" ry="2" />
+<text  x="852.14" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$rand_chacha..chacha..ChaCha12Core$u20$as$u20$rand_core..block..BlockRngCore$GT$::generate::ha6e94346ff32efa3 (18 samples, 0.03%)</title><rect x="553.7" y="213" width="0.3" height="15.0" fill="rgb(239,156,37)" rx="2" ry="2" />
+<text  x="556.70" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin..address..AddressInner$u20$as$u20$core..fmt..Display$GT$::fmt::h421696cc7fe2f7b1 (602 samples, 0.89%)</title><rect x="543.2" y="213" width="10.4" height="15.0" fill="rgb(216,53,12)" rx="2" ry="2" />
+<text  x="546.19" y="223.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_malloc_should_clear (14 samples, 0.02%)</title><rect x="550.1" y="133" width="0.2" height="15.0" fill="rgb(245,188,45)" rx="2" ry="2" />
+<text  x="553.11" y="143.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ecmult_gen (1,113 samples, 1.64%)</title><rect x="557.3" y="197" width="19.3" height="15.0" fill="rgb(252,218,52)" rx="2" ry="2" />
+<text  x="560.26" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_gej_add_ge (7 samples, 0.01%)</title><rect x="707.6" y="181" width="0.1" height="15.0" fill="rgb(227,101,24)" rx="2" ry="2" />
+<text  x="710.57" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..hash160..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h263d1bc0764fe841 (161 samples, 0.24%)</title><rect x="554.1" y="197" width="2.8" height="15.0" fill="rgb(242,171,40)" rx="2" ry="2" />
+<text  x="557.12" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`_pthread_start (7,447 samples, 10.96%)</title><rect x="931.2" y="293" width="129.4" height="15.0" fill="rgb(253,220,52)" rx="2" ry="2" />
+<text  x="934.25" y="303.5" >libsystem_pthrea..</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256d..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::hdaef84c97d9b7f7d (168 samples, 0.25%)</title><rect x="1069.3" y="181" width="2.9" height="15.0" fill="rgb(233,133,31)" rx="2" ry="2" />
+<text  x="1072.29" y="191.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`free_tiny (21 samples, 0.03%)</title><rect x="413.4" y="229" width="0.3" height="15.0" fill="rgb(230,119,28)" rx="2" ry="2" />
+<text  x="416.36" y="239.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_modinv64 (972 samples, 1.43%)</title><rect x="966.4" y="165" width="16.9" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="969.45" y="175.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`free_tiny (23 samples, 0.03%)</title><rect x="672.0" y="229" width="0.4" height="15.0" fill="rgb(230,119,28)" rx="2" ry="2" />
+<text  x="675.05" y="239.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..ripemd160..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::he1c0e4b40451add2 (74 samples, 0.11%)</title><rect x="943.1" y="165" width="1.3" height="15.0" fill="rgb(210,25,6)" rx="2" ry="2" />
+<text  x="946.10" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`core::ops::function::FnOnce::call_once$u7b$$u7b$vtable.shim$u7d$$u7d$::h08961978e0ffa25c (7,447 samples, 10.96%)</title><rect x="413.7" y="261" width="129.4" height="15.0" fill="rgb(252,220,52)" rx="2" ry="2" />
+<text  x="416.75" y="271.5" >btc-vanity`core:..</text>
+</g>
+<g >
+<title>btc-vanity`std::sys::backtrace::__rust_begin_short_backtrace::ha7a46a074def3d39 (7,447 samples, 10.96%)</title><rect x="155.0" y="245" width="129.4" height="15.0" fill="rgb(245,187,44)" rx="2" ry="2" />
+<text  x="157.99" y="255.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>btc-vanity`alloc::raw_vec::finish_grow::hac59b676dbd2f39a (103 samples, 0.15%)</title><rect x="807.3" y="149" width="1.8" height="15.0" fill="rgb(237,151,36)" rx="2" ry="2" />
+<text  x="810.28" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`alloc::raw_vec::finish_grow::hac59b676dbd2f39a (76 samples, 0.11%)</title><rect x="549.0" y="149" width="1.3" height="15.0" fill="rgb(237,151,36)" rx="2" ry="2" />
+<text  x="552.03" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ecmult_gen (1,037 samples, 1.53%)</title><rect x="171.0" y="197" width="18.0" height="15.0" fill="rgb(252,218,52)" rx="2" ry="2" />
+<text  x="174.03" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin..address..AddressInner$u20$as$u20$core..fmt..Display$GT$::fmt::h421696cc7fe2f7b1 (662 samples, 0.97%)</title><rect x="284.6" y="213" width="11.5" height="15.0" fill="rgb(216,53,12)" rx="2" ry="2" />
+<text  x="287.58" y="223.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`free_tiny (20 samples, 0.03%)</title><rect x="1189.5" y="229" width="0.4" height="15.0" fill="rgb(230,119,28)" rx="2" ry="2" />
+<text  x="1192.55" y="239.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_fe_impl_inv (802 samples, 1.18%)</title><rect x="836.2" y="181" width="14.0" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="839.24" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`alloc::raw_vec::finish_grow::hac59b676dbd2f39a (89 samples, 0.13%)</title><rect x="677.4" y="149" width="1.5" height="15.0" fill="rgb(237,151,36)" rx="2" ry="2" />
+<text  x="680.38" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256d..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::hdaef84c97d9b7f7d (127 samples, 0.19%)</title><rect x="809.1" y="181" width="2.2" height="15.0" fill="rgb(233,133,31)" rx="2" ry="2" />
+<text  x="812.13" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h6415b2f09fa49544 (91 samples, 0.13%)</title><rect x="555.3" y="181" width="1.6" height="15.0" fill="rgb(246,191,45)" rx="2" ry="2" />
+<text  x="558.32" y="191.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_free_no_lock (31 samples, 0.05%)</title><rect x="930.5" y="213" width="0.6" height="15.0" fill="rgb(230,117,27)" rx="2" ry="2" />
+<text  x="933.54" y="223.5" ></text>
+</g>
+<g >
+<title>IOGPU`-[IOGPUMetalCommandQueue._submitCommandBuffers:count:] (604 samples, 0.89%)</title><rect x="10.0" y="117" width="10.5" height="15.0" fill="rgb(227,103,24)" rx="2" ry="2" />
+<text  x="13.00" y="127.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ecmult_gen (1,331 samples, 1.96%)</title><rect x="684.6" y="197" width="23.1" height="15.0" fill="rgb(252,218,52)" rx="2" ry="2" />
+<text  x="687.57" y="207.5" >b..</text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_free_no_lock (9 samples, 0.01%)</title><rect x="292.2" y="69" width="0.2" height="15.0" fill="rgb(230,117,27)" rx="2" ry="2" />
+<text  x="295.24" y="79.5" ></text>
+</g>
+<g >
+<title>btc-vanity`alloc::raw_vec::RawVecInner$LT$A$GT$::reserve::do_reserve_and_handle::hcf2035797f2735d3 (105 samples, 0.15%)</title><rect x="937.6" y="165" width="1.8" height="15.0" fill="rgb(206,6,1)" rx="2" ry="2" />
+<text  x="940.55" y="175.5" ></text>
+</g>
+<g >
+<title>libdispatch`_dispatch_source_invoke (604 samples, 0.89%)</title><rect x="10.0" y="213" width="10.5" height="15.0" fill="rgb(231,121,28)" rx="2" ry="2" />
+<text  x="13.00" y="223.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_free_list_add_ptr (8 samples, 0.01%)</title><rect x="801.6" y="197" width="0.2" height="15.0" fill="rgb(243,178,42)" rx="2" ry="2" />
+<text  x="804.65" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_free_no_lock (9 samples, 0.01%)</title><rect x="413.5" y="213" width="0.2" height="15.0" fill="rgb(230,117,27)" rx="2" ry="2" />
+<text  x="416.54" y="223.5" ></text>
+</g>
+<g >
+<title>libsystem_kernel`__ulock_wait2 (6 samples, 0.01%)</title><rect x="284.2" y="197" width="0.2" height="15.0" fill="rgb(218,61,14)" rx="2" ry="2" />
+<text  x="287.25" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin..address..AddressInner$u20$as$u20$core..fmt..Display$GT$::fmt::h421696cc7fe2f7b1 (643 samples, 0.95%)</title><rect x="931.5" y="213" width="11.1" height="15.0" fill="rgb(216,53,12)" rx="2" ry="2" />
+<text  x="934.46" y="223.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_should_clear (11 samples, 0.02%)</title><rect x="422.1" y="117" width="0.2" height="15.0" fill="rgb(237,148,35)" rx="2" ry="2" />
+<text  x="425.07" y="127.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`_realloc (57 samples, 0.08%)</title><rect x="549.1" y="133" width="1.0" height="15.0" fill="rgb(233,131,31)" rx="2" ry="2" />
+<text  x="552.11" y="143.5" ></text>
+</g>
+<g >
+<title>libsystem_kernel`mach_msg2_trap (604 samples, 0.89%)</title><rect x="10.0" y="37" width="10.5" height="15.0" fill="rgb(215,49,11)" rx="2" ry="2" />
+<text  x="13.00" y="47.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_pubkey_serialize (11 samples, 0.02%)</title><rect x="557.0" y="197" width="0.1" height="15.0" fill="rgb(233,129,31)" rx="2" ry="2" />
+<text  x="559.95" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_kernel`cerror (9 samples, 0.01%)</title><rect x="151.3" y="69" width="0.2" height="15.0" fill="rgb(238,152,36)" rx="2" ry="2" />
+<text  x="154.33" y="79.5" ></text>
+</g>
+<g >
+<title>btc-vanity`alloc::raw_vec::finish_grow::hac59b676dbd2f39a (90 samples, 0.13%)</title><rect x="937.8" y="149" width="1.6" height="15.0" fill="rgb(237,151,36)" rx="2" ry="2" />
+<text  x="940.82" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$alloc..string..String$u20$as$u20$core..fmt..Write$GT$::write_char::ha9c8747d9e7e6ec6 (143 samples, 0.21%)</title><rect x="936.9" y="181" width="2.5" height="15.0" fill="rgb(214,41,9)" rx="2" ry="2" />
+<text  x="939.93" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..ripemd160..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::he1c0e4b40451add2 (72 samples, 0.11%)</title><rect x="1073.1" y="165" width="1.2" height="15.0" fill="rgb(210,25,6)" rx="2" ry="2" />
+<text  x="1076.06" y="175.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`_malloc_zone_realloc (57 samples, 0.08%)</title><rect x="938.0" y="117" width="1.0" height="15.0" fill="rgb(205,1,0)" rx="2" ry="2" />
+<text  x="941.01" y="127.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_free_list_add_ptr (10 samples, 0.01%)</title><rect x="930.9" y="197" width="0.1" height="15.0" fill="rgb(243,178,42)" rx="2" ry="2" />
+<text  x="933.87" y="207.5" ></text>
+</g>
+<g >
+<title>Thread_3163675 (7,447 samples, 10.96%)</title><rect x="672.5" y="325" width="129.4" height="15.0" fill="rgb(253,221,52)" rx="2" ry="2" />
+<text  x="675.50" y="335.5" >Thread_3163675</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..ripemd160..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h5944bfbdb14b67ea (54 samples, 0.08%)</title><rect x="811.7" y="181" width="1.0" height="15.0" fill="rgb(221,75,18)" rx="2" ry="2" />
+<text  x="814.72" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ge_set_gej (999 samples, 1.47%)</title><rect x="1095.3" y="197" width="17.3" height="15.0" fill="rgb(251,211,50)" rx="2" ry="2" />
+<text  x="1098.27" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_gej_add_ge (4,600 samples, 6.77%)</title><rect x="850.2" y="197" width="79.9" height="15.0" fill="rgb(227,101,24)" rx="2" ry="2" />
+<text  x="853.17" y="207.5" >btc-vanit..</text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_free_list_add_ptr (8 samples, 0.01%)</title><rect x="1060.3" y="197" width="0.2" height="15.0" fill="rgb(243,178,42)" rx="2" ry="2" />
+<text  x="1063.35" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`metal::commandbuffer::CommandBufferRef::status::h25948809d5d08ebf (18 samples, 0.03%)</title><rect x="150.7" y="117" width="0.3" height="15.0" fill="rgb(219,64,15)" rx="2" ry="2" />
+<text  x="153.67" y="127.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::h345c878c042c5169 (168 samples, 0.25%)</title><rect x="422.4" y="149" width="3.0" height="15.0" fill="rgb(243,177,42)" rx="2" ry="2" />
+<text  x="425.43" y="159.5" ></text>
+</g>
+<g >
+<title>libsystem_kernel`semaphore_timedwait_trap (7,424 samples, 10.93%)</title><rect x="20.9" y="117" width="129.0" height="15.0" fill="rgb(212,35,8)" rx="2" ry="2" />
+<text  x="23.89" y="127.5" >libsystem_kernel..</text>
+</g>
+<g >
+<title>libsystem_malloc`szone_size (6 samples, 0.01%)</title><rect x="939.0" y="117" width="0.2" height="15.0" fill="rgb(228,106,25)" rx="2" ry="2" />
+<text  x="942.05" y="127.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_should_clear (13 samples, 0.02%)</title><rect x="550.1" y="117" width="0.2" height="15.0" fill="rgb(237,148,35)" rx="2" ry="2" />
+<text  x="553.12" y="127.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_free_no_lock (14 samples, 0.02%)</title><rect x="672.2" y="213" width="0.2" height="15.0" fill="rgb(230,117,27)" rx="2" ry="2" />
+<text  x="675.18" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h6415b2f09fa49544 (102 samples, 0.15%)</title><rect x="168.7" y="181" width="1.8" height="15.0" fill="rgb(246,191,45)" rx="2" ry="2" />
+<text  x="171.68" y="191.5" ></text>
+</g>
+<g >
+<title>Thread_3163670 (295 samples, 0.43%)</title><rect x="149.9" y="325" width="5.1" height="15.0" fill="rgb(235,140,33)" rx="2" ry="2" />
+<text  x="152.87" y="335.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ge_set_gej (1,100 samples, 1.62%)</title><rect x="318.5" y="197" width="19.1" height="15.0" fill="rgb(251,211,50)" rx="2" ry="2" />
+<text  x="321.46" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_should_clear (11 samples, 0.02%)</title><rect x="421.5" y="69" width="0.2" height="15.0" fill="rgb(237,148,35)" rx="2" ry="2" />
+<text  x="424.53" y="79.5" ></text>
+</g>
+<g >
+<title>btc-vanity`core::ops::function::FnOnce::call_once$u7b$$u7b$vtable.shim$u7d$$u7d$::h08961978e0ffa25c (7,447 samples, 10.96%)</title><rect x="284.4" y="261" width="129.3" height="15.0" fill="rgb(252,220,52)" rx="2" ry="2" />
+<text  x="287.37" y="271.5" >btc-vanity`core:..</text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_pubkey_serialize (12 samples, 0.02%)</title><rect x="945.8" y="197" width="0.2" height="15.0" fill="rgb(233,129,31)" rx="2" ry="2" />
+<text  x="948.75" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`free_tiny (10 samples, 0.01%)</title><rect x="421.3" y="85" width="0.2" height="15.0" fill="rgb(230,119,28)" rx="2" ry="2" />
+<text  x="424.34" y="95.5" ></text>
+</g>
+<g >
+<title>Thread_3163672 (7,447 samples, 10.96%)</title><rect x="284.4" y="325" width="129.3" height="15.0" fill="rgb(222,80,19)" rx="2" ry="2" />
+<text  x="287.37" y="335.5" >Thread_3163672</text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_seckey_verify (11 samples, 0.02%)</title><rect x="283.7" y="213" width="0.2" height="15.0" fill="rgb(243,179,42)" rx="2" ry="2" />
+<text  x="286.67" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..ripemd160..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::he1c0e4b40451add2 (62 samples, 0.09%)</title><rect x="554.2" y="165" width="1.1" height="15.0" fill="rgb(210,25,6)" rx="2" ry="2" />
+<text  x="557.19" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_modinv64 (1,069 samples, 1.57%)</title><rect x="319.0" y="165" width="18.6" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="321.99" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::thread::Thread::park_timeout::h5897ff3e54552050 (7,424 samples, 10.93%)</title><rect x="20.9" y="165" width="129.0" height="15.0" fill="rgb(232,125,29)" rx="2" ry="2" />
+<text  x="23.89" y="175.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_should_clear (10 samples, 0.01%)</title><rect x="678.1" y="69" width="0.2" height="15.0" fill="rgb(237,148,35)" rx="2" ry="2" />
+<text  x="681.11" y="79.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_gej_add_ge (4,409 samples, 6.49%)</title><rect x="1112.6" y="197" width="76.6" height="15.0" fill="rgb(227,101,24)" rx="2" ry="2" />
+<text  x="1115.62" y="207.5" >btc-vani..</text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ecmult_gen (1,079 samples, 1.59%)</title><rect x="1076.5" y="197" width="18.8" height="15.0" fill="rgb(252,218,52)" rx="2" ry="2" />
+<text  x="1079.52" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`thread_start (7,447 samples, 10.96%)</title><rect x="155.0" y="309" width="129.4" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="157.99" y="319.5" >libsystem_pthrea..</text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_pubkey_create (6,677 samples, 9.83%)</title><rect x="814.2" y="213" width="116.0" height="15.0" fill="rgb(229,113,27)" rx="2" ry="2" />
+<text  x="817.16" y="223.5" >btc-vanity`rus..</text>
+</g>
+<g >
+<title>libsystem_malloc`free_tiny (7 samples, 0.01%)</title><rect x="542.9" y="229" width="0.2" height="15.0" fill="rgb(230,119,28)" rx="2" ry="2" />
+<text  x="545.93" y="239.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_should_clear (15 samples, 0.02%)</title><rect x="162.2" y="69" width="0.3" height="15.0" fill="rgb(237,148,35)" rx="2" ry="2" />
+<text  x="165.24" y="79.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_seckey_verify (9 samples, 0.01%)</title><rect x="1060.1" y="213" width="0.1" height="15.0" fill="rgb(243,179,42)" rx="2" ry="2" />
+<text  x="1063.05" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$alloc..string..String$u20$as$u20$core..fmt..Write$GT$::write_char::ha9c8747d9e7e6ec6 (8 samples, 0.01%)</title><rect x="543.2" y="197" width="0.1" height="15.0" fill="rgb(214,41,9)" rx="2" ry="2" />
+<text  x="546.19" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_modinv64_update_de_62 (82 samples, 0.12%)</title><rect x="592.6" y="149" width="1.5" height="15.0" fill="rgb(225,93,22)" rx="2" ry="2" />
+<text  x="595.63" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_gej_add_ge (4,339 samples, 6.39%)</title><rect x="337.6" y="197" width="75.3" height="15.0" fill="rgb(227,101,24)" rx="2" ry="2" />
+<text  x="340.57" y="207.5" >btc-vani..</text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_scalar_set_b32 (6 samples, 0.01%)</title><rect x="671.9" y="197" width="0.1" height="15.0" fill="rgb(216,51,12)" rx="2" ry="2" />
+<text  x="674.92" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$alloc..string..String$u20$as$u20$core..fmt..Write$GT$::write_char::ha9c8747d9e7e6ec6 (10 samples, 0.01%)</title><rect x="1060.8" y="197" width="0.2" height="15.0" fill="rgb(214,41,9)" rx="2" ry="2" />
+<text  x="1063.78" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256d..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::hdaef84c97d9b7f7d (163 samples, 0.24%)</title><rect x="293.1" y="181" width="2.8" height="15.0" fill="rgb(233,133,31)" rx="2" ry="2" />
+<text  x="296.11" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_seckey_verify (8 samples, 0.01%)</title><rect x="542.7" y="213" width="0.2" height="15.0" fill="rgb(243,179,42)" rx="2" ry="2" />
+<text  x="545.72" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h6415b2f09fa49544 (159 samples, 0.23%)</title><rect x="293.2" y="165" width="2.7" height="15.0" fill="rgb(246,191,45)" rx="2" ry="2" />
+<text  x="296.18" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sys::pal::unix::time::Timespec::now::h1a1f915569e7e417 (13 samples, 0.02%)</title><rect x="154.1" y="101" width="0.3" height="15.0" fill="rgb(241,170,40)" rx="2" ry="2" />
+<text  x="157.14" y="111.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256d..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::hdaef84c97d9b7f7d (170 samples, 0.25%)</title><rect x="163.3" y="181" width="2.9" height="15.0" fill="rgb(233,133,31)" rx="2" ry="2" />
+<text  x="166.26" y="191.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_size (6 samples, 0.01%)</title><rect x="808.1" y="69" width="0.1" height="15.0" fill="rgb(219,66,15)" rx="2" ry="2" />
+<text  x="811.11" y="79.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$alloc..string..String$u20$as$u20$core..fmt..Write$GT$::write_char::ha9c8747d9e7e6ec6 (6 samples, 0.01%)</title><rect x="931.5" y="197" width="0.1" height="15.0" fill="rgb(214,41,9)" rx="2" ry="2" />
+<text  x="934.49" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$alloc..string..String$u20$as$u20$core..fmt..Write$GT$::write_char::ha9c8747d9e7e6ec6 (9 samples, 0.01%)</title><rect x="413.8" y="197" width="0.2" height="15.0" fill="rgb(214,41,9)" rx="2" ry="2" />
+<text  x="416.85" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::h345c878c042c5169 (120 samples, 0.18%)</title><rect x="809.2" y="149" width="2.1" height="15.0" fill="rgb(243,177,42)" rx="2" ry="2" />
+<text  x="812.24" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..ripemd160..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h5944bfbdb14b67ea (79 samples, 0.12%)</title><rect x="296.8" y="181" width="1.4" height="15.0" fill="rgb(221,75,18)" rx="2" ry="2" />
+<text  x="299.81" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_modinv64_update_de_62 (97 samples, 0.14%)</title><rect x="465.6" y="149" width="1.7" height="15.0" fill="rgb(225,93,22)" rx="2" ry="2" />
+<text  x="468.59" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`bitcoin::crypto::key::PublicKey::pubkey_hash::h9377682ca6f7baea (152 samples, 0.22%)</title><rect x="681.7" y="213" width="2.7" height="15.0" fill="rgb(210,25,6)" rx="2" ry="2" />
+<text  x="684.74" y="223.5" ></text>
+</g>
+<g >
+<title>Thread_3163676 (7,447 samples, 10.96%)</title><rect x="801.9" y="325" width="129.3" height="15.0" fill="rgb(246,191,45)" rx="2" ry="2" />
+<text  x="804.87" y="335.5" >Thread_3163676</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..ripemd160..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::he1c0e4b40451add2 (76 samples, 0.11%)</title><rect x="296.9" y="165" width="1.3" height="15.0" fill="rgb(210,25,6)" rx="2" ry="2" />
+<text  x="299.86" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_modinv64_update_de_62 (60 samples, 0.09%)</title><rect x="719.8" y="149" width="1.0" height="15.0" fill="rgb(225,93,22)" rx="2" ry="2" />
+<text  x="722.75" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sys::backtrace::__rust_begin_short_backtrace::ha7a46a074def3d39 (7,446 samples, 10.96%)</title><rect x="931.2" y="245" width="129.4" height="15.0" fill="rgb(245,187,44)" rx="2" ry="2" />
+<text  x="934.25" y="255.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>libsystem_malloc`szone_malloc_should_clear (16 samples, 0.02%)</title><rect x="162.9" y="133" width="0.3" height="15.0" fill="rgb(245,188,45)" rx="2" ry="2" />
+<text  x="165.90" y="143.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..hash160..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h263d1bc0764fe841 (136 samples, 0.20%)</title><rect x="681.8" y="197" width="2.3" height="15.0" fill="rgb(242,171,40)" rx="2" ry="2" />
+<text  x="684.77" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_modinv64 (975 samples, 1.44%)</title><rect x="577.1" y="165" width="17.0" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="580.12" y="175.5" ></text>
+</g>
+<g >
+<title>libdispatch`_dispatch_sema4_timedwait (7,424 samples, 10.93%)</title><rect x="20.9" y="133" width="129.0" height="15.0" fill="rgb(222,79,18)" rx="2" ry="2" />
+<text  x="23.89" y="143.5" >libdispatch`_dis..</text>
+</g>
+<g >
+<title>libsystem_malloc`_malloc_zone_realloc (57 samples, 0.08%)</title><rect x="807.4" y="117" width="1.0" height="15.0" fill="rgb(205,1,0)" rx="2" ry="2" />
+<text  x="810.43" y="127.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$rand_chacha..chacha..ChaCha12Core$u20$as$u20$rand_core..block..BlockRngCore$GT$::generate::ha6e94346ff32efa3 (8 samples, 0.01%)</title><rect x="811.5" y="213" width="0.1" height="15.0" fill="rgb(239,156,37)" rx="2" ry="2" />
+<text  x="814.46" y="223.5" ></text>
+</g>
+<g >
+<title>Thread_3163669 (7,447 samples, 10.96%)</title><rect x="20.5" y="325" width="129.4" height="15.0" fill="rgb(233,132,31)" rx="2" ry="2" />
+<text  x="23.49" y="335.5" >Thread_3163669</text>
+</g>
+<g >
+<title>btc-vanity`bitcoin::crypto::key::PublicKey::pubkey_hash::h9377682ca6f7baea (180 samples, 0.27%)</title><rect x="554.0" y="213" width="3.1" height="15.0" fill="rgb(210,25,6)" rx="2" ry="2" />
+<text  x="557.01" y="223.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_from_free_list (8 samples, 0.01%)</title><rect x="807.9" y="53" width="0.2" height="15.0" fill="rgb(222,80,19)" rx="2" ry="2" />
+<text  x="810.94" y="63.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_malloc_should_clear (12 samples, 0.02%)</title><rect x="421.5" y="85" width="0.2" height="15.0" fill="rgb(245,188,45)" rx="2" ry="2" />
+<text  x="424.51" y="95.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$core..fmt..Formatter$u20$as$u20$core..fmt..Write$GT$::write_char::h4391dcb71dbda10b (10 samples, 0.01%)</title><rect x="1072.2" y="181" width="0.2" height="15.0" fill="rgb(224,90,21)" rx="2" ry="2" />
+<text  x="1075.21" y="191.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`_pthread_start (7,447 samples, 10.96%)</title><rect x="155.0" y="293" width="129.4" height="15.0" fill="rgb(253,220,52)" rx="2" ry="2" />
+<text  x="157.99" y="303.5" >libsystem_pthrea..</text>
+</g>
+<g >
+<title>libsystem_malloc`_realloc (76 samples, 0.11%)</title><rect x="161.6" y="133" width="1.3" height="15.0" fill="rgb(233,131,31)" rx="2" ry="2" />
+<text  x="164.58" y="143.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_should_clear (14 samples, 0.02%)</title><rect x="292.5" y="69" width="0.2" height="15.0" fill="rgb(237,148,35)" rx="2" ry="2" />
+<text  x="295.50" y="79.5" ></text>
+</g>
+<g >
+<title>Thread_3163678 (7,447 samples, 10.96%)</title><rect x="1060.6" y="325" width="129.4" height="15.0" fill="rgb(233,132,31)" rx="2" ry="2" />
+<text  x="1063.62" y="335.5" >Thread_3163678</text>
+</g>
+<g >
+<title>Metal`-[_MTLCommandQueue._submitAvailableCommandBuffers] (604 samples, 0.89%)</title><rect x="10.0" y="149" width="10.5" height="15.0" fill="rgb(222,82,19)" rx="2" ry="2" />
+<text  x="13.00" y="159.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_should_clear (13 samples, 0.02%)</title><rect x="939.2" y="117" width="0.2" height="15.0" fill="rgb(237,148,35)" rx="2" ry="2" />
+<text  x="942.15" y="127.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`_malloc_zone_realloc (55 samples, 0.08%)</title><rect x="677.6" y="117" width="0.9" height="15.0" fill="rgb(205,1,0)" rx="2" ry="2" />
+<text  x="680.57" y="127.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_seckey_verify (9 samples, 0.01%)</title><rect x="671.9" y="213" width="0.1" height="15.0" fill="rgb(243,179,42)" rx="2" ry="2" />
+<text  x="674.87" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..ripemd160..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h5944bfbdb14b67ea (89 samples, 0.13%)</title><rect x="426.0" y="181" width="1.5" height="15.0" fill="rgb(221,75,18)" rx="2" ry="2" />
+<text  x="428.98" y="191.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`_pthread_start (295 samples, 0.43%)</title><rect x="149.9" y="293" width="5.1" height="15.0" fill="rgb(253,220,52)" rx="2" ry="2" />
+<text  x="152.87" y="303.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h6415b2f09fa49544 (135 samples, 0.20%)</title><rect x="679.0" y="165" width="2.4" height="15.0" fill="rgb(246,191,45)" rx="2" ry="2" />
+<text  x="682.01" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_gej_add_ge (4,621 samples, 6.80%)</title><rect x="720.8" y="197" width="80.3" height="15.0" fill="rgb(227,101,24)" rx="2" ry="2" />
+<text  x="723.79" y="207.5" >btc-vanit..</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::h345c878c042c5169 (134 samples, 0.20%)</title><rect x="679.0" y="149" width="2.4" height="15.0" fill="rgb(243,177,42)" rx="2" ry="2" />
+<text  x="682.03" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$rand_chacha..chacha..ChaCha12Core$u20$as$u20$rand_core..block..BlockRngCore$GT$::generate::ha6e94346ff32efa3 (19 samples, 0.03%)</title><rect x="296.2" y="213" width="0.3" height="15.0" fill="rgb(239,156,37)" rx="2" ry="2" />
+<text  x="299.20" y="223.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_malloc_should_clear (10 samples, 0.01%)</title><rect x="1069.0" y="133" width="0.2" height="15.0" fill="rgb(245,188,45)" rx="2" ry="2" />
+<text  x="1071.98" y="143.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`_malloc_zone_malloc (6 samples, 0.01%)</title><rect x="1067.6" y="133" width="0.1" height="15.0" fill="rgb(240,161,38)" rx="2" ry="2" />
+<text  x="1070.61" y="143.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_malloc_should_clear (18 samples, 0.03%)</title><rect x="292.4" y="85" width="0.3" height="15.0" fill="rgb(245,188,45)" rx="2" ry="2" />
+<text  x="295.43" y="95.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::thread::sleep::h7202106e61d722bb (177 samples, 0.26%)</title><rect x="151.0" y="117" width="3.1" height="15.0" fill="rgb(244,180,43)" rx="2" ry="2" />
+<text  x="153.98" y="127.5" ></text>
+</g>
+<g >
+<title>btc-vanity`btc_vanity::vanity_addr_generator::vanity_addr::SearchEngines::find_vanity_address_cpu_cancelable::he2cbee6b39c29f04 (7,447 samples, 10.96%)</title><rect x="20.5" y="229" width="129.4" height="15.0" fill="rgb(211,28,6)" rx="2" ry="2" />
+<text  x="23.49" y="239.5" >btc-vanity`btc_v..</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::h345c878c042c5169 (72 samples, 0.11%)</title><rect x="944.5" y="165" width="1.2" height="15.0" fill="rgb(243,177,42)" rx="2" ry="2" />
+<text  x="947.47" y="175.5" ></text>
+</g>
+<g >
+<title>libdispatch`_dispatch_root_queue_drain_deferred_wlh (604 samples, 0.89%)</title><rect x="10.0" y="261" width="10.5" height="15.0" fill="rgb(212,35,8)" rx="2" ry="2" />
+<text  x="13.00" y="271.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sync::mpmc::Receiver$LT$T$GT$::recv_timeout::h2607c3b016f76a31 (7,447 samples, 10.96%)</title><rect x="20.5" y="213" width="129.4" height="15.0" fill="rgb(246,192,46)" rx="2" ry="2" />
+<text  x="23.49" y="223.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>libsystem_pthread`_pthread_start (7,447 samples, 10.96%)</title><rect x="801.9" y="293" width="129.3" height="15.0" fill="rgb(253,220,52)" rx="2" ry="2" />
+<text  x="804.87" y="303.5" >libsystem_pthrea..</text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_from_free_list (10 samples, 0.01%)</title><rect x="808.9" y="101" width="0.1" height="15.0" fill="rgb(222,80,19)" rx="2" ry="2" />
+<text  x="811.87" y="111.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_from_free_list (7 samples, 0.01%)</title><rect x="678.2" y="53" width="0.1" height="15.0" fill="rgb(222,80,19)" rx="2" ry="2" />
+<text  x="681.16" y="63.5" ></text>
+</g>
+<g >
+<title>btc-vanity`alloc::raw_vec::RawVecInner$LT$A$GT$::reserve::do_reserve_and_handle::hcf2035797f2735d3 (116 samples, 0.17%)</title><rect x="161.2" y="165" width="2.0" height="15.0" fill="rgb(206,6,1)" rx="2" ry="2" />
+<text  x="164.18" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::thread::local::LocalKey$LT$T$GT$::with::hfc8fde8558e4a2ca (7,420 samples, 10.92%)</title><rect x="543.1" y="229" width="128.9" height="15.0" fill="rgb(207,13,3)" rx="2" ry="2" />
+<text  x="546.14" y="239.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ge_set_gej (998 samples, 1.47%)</title><rect x="966.0" y="197" width="17.3" height="15.0" fill="rgb(251,211,50)" rx="2" ry="2" />
+<text  x="968.99" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_seckey_verify (11 samples, 0.02%)</title><rect x="413.1" y="213" width="0.2" height="15.0" fill="rgb(243,179,42)" rx="2" ry="2" />
+<text  x="416.07" y="223.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`free_tiny (16 samples, 0.02%)</title><rect x="292.1" y="85" width="0.3" height="15.0" fill="rgb(230,119,28)" rx="2" ry="2" />
+<text  x="295.14" y="95.5" ></text>
+</g>
+<g >
+<title>libsystem_platform`_platform_memmove (9 samples, 0.01%)</title><rect x="168.5" y="149" width="0.2" height="15.0" fill="rgb(246,189,45)" rx="2" ry="2" />
+<text  x="171.51" y="159.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`free_tiny (29 samples, 0.04%)</title><rect x="801.4" y="229" width="0.5" height="15.0" fill="rgb(230,119,28)" rx="2" ry="2" />
+<text  x="804.35" y="239.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_realloc (43 samples, 0.06%)</title><rect x="938.2" y="101" width="0.8" height="15.0" fill="rgb(222,80,19)" rx="2" ry="2" />
+<text  x="941.25" y="111.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_fe_impl_inv (1,051 samples, 1.55%)</title><rect x="189.6" y="181" width="18.2" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="192.57" y="191.5" ></text>
+</g>
+<g >
+<title>libsystem_kernel`mach_absolute_time (6 samples, 0.01%)</title><rect x="154.2" y="53" width="0.2" height="15.0" fill="rgb(227,105,25)" rx="2" ry="2" />
+<text  x="157.25" y="63.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_realloc (49 samples, 0.07%)</title><rect x="292.0" y="101" width="0.8" height="15.0" fill="rgb(222,80,19)" rx="2" ry="2" />
+<text  x="295.00" y="111.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sys::backtrace::__rust_begin_short_backtrace::h4d7d1285e64390e1 (7,447 samples, 10.96%)</title><rect x="20.5" y="245" width="129.4" height="15.0" fill="rgb(206,7,1)" rx="2" ry="2" />
+<text  x="23.49" y="255.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_size (9 samples, 0.01%)</title><rect x="162.7" y="101" width="0.2" height="15.0" fill="rgb(219,66,15)" rx="2" ry="2" />
+<text  x="165.74" y="111.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_should_clear (11 samples, 0.02%)</title><rect x="807.9" y="69" width="0.2" height="15.0" fill="rgb(237,148,35)" rx="2" ry="2" />
+<text  x="810.88" y="79.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_realloc (39 samples, 0.06%)</title><rect x="421.3" y="101" width="0.6" height="15.0" fill="rgb(222,80,19)" rx="2" ry="2" />
+<text  x="424.25" y="111.5" ></text>
+</g>
+<g >
+<title>libdispatch`_dispatch_source_latch_and_call (604 samples, 0.89%)</title><rect x="10.0" y="197" width="10.5" height="15.0" fill="rgb(236,143,34)" rx="2" ry="2" />
+<text  x="13.00" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`_realloc (65 samples, 0.10%)</title><rect x="677.5" y="133" width="1.1" height="15.0" fill="rgb(233,131,31)" rx="2" ry="2" />
+<text  x="680.52" y="143.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_modinv64_update_de_62 (74 samples, 0.11%)</title><rect x="982.0" y="149" width="1.3" height="15.0" fill="rgb(225,93,22)" rx="2" ry="2" />
+<text  x="985.05" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`alloc::raw_vec::finish_grow::hac59b676dbd2f39a (94 samples, 0.14%)</title><rect x="1067.5" y="149" width="1.7" height="15.0" fill="rgb(237,151,36)" rx="2" ry="2" />
+<text  x="1070.54" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..hash160..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h263d1bc0764fe841 (159 samples, 0.23%)</title><rect x="296.7" y="197" width="2.8" height="15.0" fill="rgb(242,171,40)" rx="2" ry="2" />
+<text  x="299.70" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ge_set_gej (841 samples, 1.24%)</title><rect x="835.6" y="197" width="14.6" height="15.0" fill="rgb(251,211,50)" rx="2" ry="2" />
+<text  x="838.56" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_pubkey_create (6,522 samples, 9.60%)</title><rect x="299.7" y="213" width="113.3" height="15.0" fill="rgb(229,113,27)" rx="2" ry="2" />
+<text  x="302.73" y="223.5" >btc-vanity`rus..</text>
+</g>
+<g >
+<title>libsystem_kernel`__ulock_wait2 (6 samples, 0.01%)</title><rect x="931.1" y="197" width="0.1" height="15.0" fill="rgb(218,61,14)" rx="2" ry="2" />
+<text  x="934.07" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::thread::local::LocalKey$LT$T$GT$::with::hfc8fde8558e4a2ca (7,411 samples, 10.91%)</title><rect x="155.1" y="229" width="128.8" height="15.0" fill="rgb(207,13,3)" rx="2" ry="2" />
+<text  x="158.13" y="239.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>btc-vanity`wgpu_hal::metal::device::_$LT$impl$u20$wgpu_hal..Device$LT$wgpu_hal..metal..Api$GT$$u20$for$u20$wgpu_hal..metal..Device$GT$::wait::h796b9c0fa98e1d4e (294 samples, 0.43%)</title><rect x="149.9" y="133" width="5.1" height="15.0" fill="rgb(210,25,6)" rx="2" ry="2" />
+<text  x="152.87" y="143.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_pubkey_create (6,562 samples, 9.66%)</title><rect x="946.0" y="213" width="114.0" height="15.0" fill="rgb(229,113,27)" rx="2" ry="2" />
+<text  x="949.03" y="223.5" >btc-vanity`rus..</text>
+</g>
+<g >
+<title>btc-vanity`std::sys::pal::unix::thread::Thread::new::thread_start::haaea9455534b1761 (7,447 samples, 10.96%)</title><rect x="284.4" y="277" width="129.3" height="15.0" fill="rgb(241,168,40)" rx="2" ry="2" />
+<text  x="287.37" y="287.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>btc-vanity`alloc::raw_vec::RawVecInner$LT$A$GT$::reserve::do_reserve_and_handle::hcf2035797f2735d3 (113 samples, 0.17%)</title><rect x="807.1" y="165" width="2.0" height="15.0" fill="rgb(206,6,1)" rx="2" ry="2" />
+<text  x="810.10" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`alloc::raw_vec::RawVecInner$LT$A$GT$::reserve::do_reserve_and_handle::hcf2035797f2735d3 (87 samples, 0.13%)</title><rect x="291.5" y="165" width="1.6" height="15.0" fill="rgb(206,6,1)" rx="2" ry="2" />
+<text  x="294.54" y="175.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`thread_start (7,447 samples, 10.96%)</title><rect x="1060.6" y="309" width="129.4" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="1063.62" y="319.5" >libsystem_pthrea..</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::h345c878c042c5169 (162 samples, 0.24%)</title><rect x="939.7" y="149" width="2.8" height="15.0" fill="rgb(243,177,42)" rx="2" ry="2" />
+<text  x="942.69" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`alloc::raw_vec::RawVecInner$LT$A$GT$::reserve::do_reserve_and_handle::hcf2035797f2735d3 (80 samples, 0.12%)</title><rect x="549.0" y="165" width="1.3" height="15.0" fill="rgb(206,6,1)" rx="2" ry="2" />
+<text  x="551.96" y="175.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_malloc_should_clear (13 samples, 0.02%)</title><rect x="678.1" y="85" width="0.2" height="15.0" fill="rgb(245,188,45)" rx="2" ry="2" />
+<text  x="681.06" y="95.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sync::mpmc::waker::SyncWaker::register::h425b19cdc1fe8575 (20 samples, 0.03%)</title><rect x="20.5" y="165" width="0.4" height="15.0" fill="rgb(220,70,16)" rx="2" ry="2" />
+<text  x="23.53" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_fe_impl_inv (1,074 samples, 1.58%)</title><rect x="318.9" y="181" width="18.7" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="321.91" y="191.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`thread_start (295 samples, 0.43%)</title><rect x="149.9" y="309" width="5.1" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="152.87" y="319.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`_realloc (73 samples, 0.11%)</title><rect x="1067.7" y="133" width="1.3" height="15.0" fill="rgb(233,131,31)" rx="2" ry="2" />
+<text  x="1070.71" y="143.5" ></text>
+</g>
+<g >
+<title>btc-vanity`core::ops::function::FnOnce::call_once$u7b$$u7b$vtable.shim$u7d$$u7d$::h08961978e0ffa25c (7,447 samples, 10.96%)</title><rect x="1060.6" y="261" width="129.4" height="15.0" fill="rgb(252,220,52)" rx="2" ry="2" />
+<text  x="1063.62" y="271.5" >btc-vanity`core:..</text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_pubkey_create (6,604 samples, 9.72%)</title><rect x="557.1" y="213" width="114.8" height="15.0" fill="rgb(229,113,27)" rx="2" ry="2" />
+<text  x="560.14" y="223.5" >btc-vanity`rus..</text>
+</g>
+<g >
+<title>btc-vanity`std::sys::backtrace::__rust_begin_short_backtrace::ha7a46a074def3d39 (7,445 samples, 10.96%)</title><rect x="1060.6" y="245" width="129.4" height="15.0" fill="rgb(245,187,44)" rx="2" ry="2" />
+<text  x="1063.62" y="255.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_should_clear (6 samples, 0.01%)</title><rect x="938.6" y="69" width="0.2" height="15.0" fill="rgb(237,148,35)" rx="2" ry="2" />
+<text  x="941.65" y="79.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`thread_start (7,447 samples, 10.96%)</title><rect x="413.7" y="309" width="129.4" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="416.75" y="319.5" >libsystem_pthrea..</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h6415b2f09fa49544 (73 samples, 0.11%)</title><rect x="944.5" y="181" width="1.2" height="15.0" fill="rgb(246,191,45)" rx="2" ry="2" />
+<text  x="947.45" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sync::mpmc::list::Channel$LT$T$GT$::recv::_$u7b$$u7b$closure$u7d$$u7d$::h01ae6edbb808981d (7,447 samples, 10.96%)</title><rect x="20.5" y="181" width="129.4" height="15.0" fill="rgb(237,151,36)" rx="2" ry="2" />
+<text  x="23.49" y="191.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..ripemd160..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h5944bfbdb14b67ea (97 samples, 0.14%)</title><rect x="167.0" y="181" width="1.7" height="15.0" fill="rgb(221,75,18)" rx="2" ry="2" />
+<text  x="169.98" y="191.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_size (8 samples, 0.01%)</title><rect x="550.0" y="117" width="0.1" height="15.0" fill="rgb(228,106,25)" rx="2" ry="2" />
+<text  x="552.97" y="127.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`free_tiny (17 samples, 0.03%)</title><rect x="677.8" y="85" width="0.3" height="15.0" fill="rgb(230,119,28)" rx="2" ry="2" />
+<text  x="680.76" y="95.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256d..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::hdaef84c97d9b7f7d (177 samples, 0.26%)</title><rect x="939.5" y="181" width="3.0" height="15.0" fill="rgb(233,133,31)" rx="2" ry="2" />
+<text  x="942.47" y="191.5" ></text>
+</g>
+<g >
+<title>IOGPU`-[IOGPUMetalCommandQueue.submitCommandBuffers:count:] (604 samples, 0.89%)</title><rect x="10.0" y="133" width="10.5" height="15.0" fill="rgb(241,166,39)" rx="2" ry="2" />
+<text  x="13.00" y="143.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_fe_impl_inv (976 samples, 1.44%)</title><rect x="966.4" y="181" width="16.9" height="15.0" fill="rgb(249,206,49)" rx="2" ry="2" />
+<text  x="969.38" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`alloc::raw_vec::RawVecInner$LT$A$GT$::reserve::do_reserve_and_handle::hcf2035797f2735d3 (97 samples, 0.14%)</title><rect x="677.2" y="165" width="1.7" height="15.0" fill="rgb(206,6,1)" rx="2" ry="2" />
+<text  x="680.24" y="175.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_free_no_lock (7 samples, 0.01%)</title><rect x="677.9" y="69" width="0.1" height="15.0" fill="rgb(230,117,27)" rx="2" ry="2" />
+<text  x="680.88" y="79.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::h345c878c042c5169 (101 samples, 0.15%)</title><rect x="168.7" y="165" width="1.8" height="15.0" fill="rgb(243,177,42)" rx="2" ry="2" />
+<text  x="171.70" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_eckey_pubkey_serialize (7 samples, 0.01%)</title><rect x="428.9" y="181" width="0.1" height="15.0" fill="rgb(207,13,3)" rx="2" ry="2" />
+<text  x="431.91" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`btc_vanity::vanity_addr_generator::gpu::Secp256k1GpuEngine::run_exact_batches_with_tuning::h341e7aac977ac3de (295 samples, 0.43%)</title><rect x="149.9" y="213" width="5.1" height="15.0" fill="rgb(242,170,40)" rx="2" ry="2" />
+<text  x="152.87" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`base58ck::encode_check_to_fmt::h90a791ed09e15a16 (657 samples, 0.97%)</title><rect x="1061.0" y="197" width="11.4" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="1063.97" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_kernel`mach_msg2_internal (604 samples, 0.89%)</title><rect x="10.0" y="53" width="10.5" height="15.0" fill="rgb(239,159,38)" rx="2" ry="2" />
+<text  x="13.00" y="63.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_free_list_add_ptr (7 samples, 0.01%)</title><rect x="1189.7" y="197" width="0.1" height="15.0" fill="rgb(243,178,42)" rx="2" ry="2" />
+<text  x="1192.72" y="207.5" ></text>
+</g>
+<g >
+<title>IOKit`IOConnectCallMethod (604 samples, 0.89%)</title><rect x="10.0" y="85" width="10.5" height="15.0" fill="rgb(216,51,12)" rx="2" ry="2" />
+<text  x="13.00" y="95.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_size (11 samples, 0.02%)</title><rect x="162.7" y="117" width="0.2" height="15.0" fill="rgb(228,106,25)" rx="2" ry="2" />
+<text  x="165.71" y="127.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_gej_add_ge (4,340 samples, 6.39%)</title><rect x="467.3" y="197" width="75.4" height="15.0" fill="rgb(227,101,24)" rx="2" ry="2" />
+<text  x="470.27" y="207.5" >btc-vani..</text>
+</g>
+<g >
+<title>Thread_3163677 (7,447 samples, 10.96%)</title><rect x="931.2" y="325" width="129.4" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="934.25" y="335.5" >Thread_3163677</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$rand_chacha..chacha..ChaCha12Core$u20$as$u20$rand_core..block..BlockRngCore$GT$::generate::ha6e94346ff32efa3 (24 samples, 0.04%)</title><rect x="1072.5" y="213" width="0.4" height="15.0" fill="rgb(239,156,37)" rx="2" ry="2" />
+<text  x="1075.46" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$alloc..string..String$u20$as$u20$core..fmt..Write$GT$::write_char::ha9c8747d9e7e6ec6 (10 samples, 0.01%)</title><rect x="284.6" y="197" width="0.2" height="15.0" fill="rgb(214,41,9)" rx="2" ry="2" />
+<text  x="287.58" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_from_free_list (7 samples, 0.01%)</title><rect x="678.8" y="101" width="0.1" height="15.0" fill="rgb(222,80,19)" rx="2" ry="2" />
+<text  x="681.75" y="111.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$rand_chacha..chacha..ChaCha12Core$u20$as$u20$rand_core..block..BlockRngCore$GT$::generate::ha6e94346ff32efa3 (14 samples, 0.02%)</title><rect x="681.5" y="213" width="0.2" height="15.0" fill="rgb(239,156,37)" rx="2" ry="2" />
+<text  x="684.50" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sys::pal::unix::thread::Thread::new::thread_start::haaea9455534b1761 (7,447 samples, 10.96%)</title><rect x="672.5" y="277" width="129.4" height="15.0" fill="rgb(241,168,40)" rx="2" ry="2" />
+<text  x="675.50" y="287.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256d..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::hdaef84c97d9b7f7d (138 samples, 0.20%)</title><rect x="679.0" y="181" width="2.4" height="15.0" fill="rgb(233,133,31)" rx="2" ry="2" />
+<text  x="681.99" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`btc_vanity::vanity_addr_generator::vanity_addr::SearchEngines::find_vanity_address_gpu_secp256k1_cancelable::h0d1dd6543fdf0827 (295 samples, 0.43%)</title><rect x="149.9" y="229" width="5.1" height="15.0" fill="rgb(224,89,21)" rx="2" ry="2" />
+<text  x="152.87" y="239.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..ripemd160..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::he1c0e4b40451add2 (88 samples, 0.13%)</title><rect x="426.0" y="165" width="1.5" height="15.0" fill="rgb(210,25,6)" rx="2" ry="2" />
+<text  x="428.99" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h6415b2f09fa49544 (122 samples, 0.18%)</title><rect x="809.2" y="165" width="2.1" height="15.0" fill="rgb(246,191,45)" rx="2" ry="2" />
+<text  x="812.20" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..hash160..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h263d1bc0764fe841 (204 samples, 0.30%)</title><rect x="166.9" y="197" width="3.6" height="15.0" fill="rgb(242,171,40)" rx="2" ry="2" />
+<text  x="169.91" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_kernel`__ulock_wait2 (6 samples, 0.01%)</title><rect x="550.2" y="85" width="0.1" height="15.0" fill="rgb(218,61,14)" rx="2" ry="2" />
+<text  x="553.24" y="95.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`_pthread_start (7,447 samples, 10.96%)</title><rect x="413.7" y="293" width="129.4" height="15.0" fill="rgb(253,220,52)" rx="2" ry="2" />
+<text  x="416.75" y="303.5" >libsystem_pthrea..</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$alloc..string..String$u20$as$u20$core..fmt..Write$GT$::write_char::ha9c8747d9e7e6ec6 (142 samples, 0.21%)</title><rect x="1066.8" y="181" width="2.4" height="15.0" fill="rgb(214,41,9)" rx="2" ry="2" />
+<text  x="1069.77" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`wgpu_core::device::resource::Device$LT$A$GT$::maintain::hef3c4699576820e8 (294 samples, 0.43%)</title><rect x="149.9" y="149" width="5.1" height="15.0" fill="rgb(216,51,12)" rx="2" ry="2" />
+<text  x="152.87" y="159.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`thread_start (7,447 samples, 10.96%)</title><rect x="801.9" y="309" width="129.3" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="804.87" y="319.5" >libsystem_pthrea..</text>
+</g>
+<g >
+<title>libsystem_malloc`_malloc_zone_realloc (66 samples, 0.10%)</title><rect x="1067.8" y="117" width="1.1" height="15.0" fill="rgb(205,1,0)" rx="2" ry="2" />
+<text  x="1070.76" y="127.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::sys::pal::unix::thread::Thread::new::thread_start::haaea9455534b1761 (7,447 samples, 10.96%)</title><rect x="155.0" y="277" width="129.4" height="15.0" fill="rgb(241,168,40)" rx="2" ry="2" />
+<text  x="157.99" y="287.5" >btc-vanity`std::..</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::h345c878c042c5169 (71 samples, 0.10%)</title><rect x="427.6" y="165" width="1.2" height="15.0" fill="rgb(243,177,42)" rx="2" ry="2" />
+<text  x="430.57" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`rustsecp256k1_v0_10_0_ec_pubkey_serialize (9 samples, 0.01%)</title><rect x="299.5" y="197" width="0.2" height="15.0" fill="rgb(233,129,31)" rx="2" ry="2" />
+<text  x="302.52" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_malloc_should_clear (12 samples, 0.02%)</title><rect x="807.9" y="85" width="0.2" height="15.0" fill="rgb(245,188,45)" rx="2" ry="2" />
+<text  x="810.87" y="95.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..ripemd160..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::he1c0e4b40451add2 (72 samples, 0.11%)</title><rect x="681.8" y="165" width="1.2" height="15.0" fill="rgb(210,25,6)" rx="2" ry="2" />
+<text  x="684.79" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..Hash$u20$as$u20$bitcoin_hashes..Hash$GT$::from_engine::h6415b2f09fa49544 (174 samples, 0.26%)</title><rect x="550.5" y="165" width="3.0" height="15.0" fill="rgb(246,191,45)" rx="2" ry="2" />
+<text  x="553.45" y="175.5" ></text>
+</g>
+<g >
+<title>libsystem_platform`_os_unfair_lock_lock_slow (6 samples, 0.01%)</title><rect x="550.2" y="101" width="0.1" height="15.0" fill="rgb(221,75,18)" rx="2" ry="2" />
+<text  x="553.24" y="111.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$bitcoin_hashes..sha256..HashEngine$u20$as$u20$bitcoin_hashes..HashEngine$GT$::input::h345c878c042c5169 (161 samples, 0.24%)</title><rect x="163.4" y="149" width="2.8" height="15.0" fill="rgb(243,177,42)" rx="2" ry="2" />
+<text  x="166.39" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`bitcoin::crypto::key::PublicKey::pubkey_hash::h9377682ca6f7baea (146 samples, 0.21%)</title><rect x="811.6" y="213" width="2.5" height="15.0" fill="rgb(210,25,6)" rx="2" ry="2" />
+<text  x="814.60" y="223.5" ></text>
+</g>
+</g>
+</svg>

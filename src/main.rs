@@ -4,7 +4,7 @@ use btc_vanity::file::{parse_input_file, write_output_file};
 use btc_vanity::flags::{parse_cli, PatternsSource, VanityFlags};
 use btc_vanity::keys_and_address::BitcoinKeyPair;
 use btc_vanity::vanity_addr_generator::chain::Chain;
-use btc_vanity::vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};
+use btc_vanity::vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode, VanitySearchOptions};
 #[cfg(feature = "ethereum")]
 use btc_vanity::EthereumKeyPair;
 #[cfg(any(feature = "ethereum", feature = "solana"))]
@@ -23,6 +23,14 @@ use std::time::Instant;
 /// Returns a `Result<String, String>` where the `Ok(String)` is the final formatted output.
 fn generate_vanity_address(pattern: &str, vanity_flags: &VanityFlags) -> Result<String, String> {
     let start = Instant::now();
+    let options = VanitySearchOptions {
+        threads: vanity_flags.threads,
+        case_sensitive: vanity_flags.is_case_sensitive,
+        fast_mode: !vanity_flags.disable_fast_mode,
+        vanity_mode: vanity_flags.vanity_mode.unwrap_or(VanityMode::Prefix),
+        backend: vanity_flags.backend.unwrap_or_default(),
+        gpu_batch_size: vanity_flags.gpu_batch_size,
+    };
 
     // "Inline" everything in each arm so we get a single `Result<String, String>`
     let out = match vanity_flags.chain.unwrap_or(Chain::Bitcoin) {
@@ -31,15 +39,9 @@ fn generate_vanity_address(pattern: &str, vanity_flags: &VanityFlags) -> Result<
             let result: Result<BitcoinKeyPair, VanityError> =
                 match vanity_flags.vanity_mode.unwrap_or(VanityMode::Prefix) {
                     VanityMode::Regex => {
-                        VanityAddr::generate_regex::<BitcoinKeyPair>(pattern, vanity_flags.threads)
+                        VanityAddr::generate_regex_with_options::<BitcoinKeyPair>(pattern, options)
                     }
-                    _ => VanityAddr::generate::<BitcoinKeyPair>(
-                        pattern,
-                        vanity_flags.threads,
-                        vanity_flags.is_case_sensitive,
-                        !vanity_flags.disable_fast_mode,
-                        vanity_flags.vanity_mode.unwrap_or(VanityMode::Prefix),
-                    ),
+                    _ => VanityAddr::generate_with_options::<BitcoinKeyPair>(pattern, options),
                 };
 
             // 2) Format the result on success
@@ -65,15 +67,9 @@ fn generate_vanity_address(pattern: &str, vanity_flags: &VanityFlags) -> Result<
             let result: Result<EthereumKeyPair, VanityError> =
                 match vanity_flags.vanity_mode.unwrap_or(VanityMode::Prefix) {
                     VanityMode::Regex => {
-                        VanityAddr::generate_regex::<EthereumKeyPair>(pattern, vanity_flags.threads)
+                        VanityAddr::generate_regex_with_options::<EthereumKeyPair>(pattern, options)
                     }
-                    _ => VanityAddr::generate::<EthereumKeyPair>(
-                        pattern,
-                        vanity_flags.threads,
-                        vanity_flags.is_case_sensitive,
-                        !vanity_flags.disable_fast_mode,
-                        vanity_flags.vanity_mode.unwrap_or(VanityMode::Prefix),
-                    ),
+                    _ => VanityAddr::generate_with_options::<EthereumKeyPair>(pattern, options),
                 };
 
             // 2) Format on success
@@ -100,15 +96,9 @@ fn generate_vanity_address(pattern: &str, vanity_flags: &VanityFlags) -> Result<
             let result: Result<SolanaKeyPair, VanityError> =
                 match vanity_flags.vanity_mode.unwrap_or(VanityMode::Prefix) {
                     VanityMode::Regex => {
-                        VanityAddr::generate_regex::<SolanaKeyPair>(pattern, vanity_flags.threads)
+                        VanityAddr::generate_regex_with_options::<SolanaKeyPair>(pattern, options)
                     }
-                    _ => VanityAddr::generate::<SolanaKeyPair>(
-                        pattern,
-                        vanity_flags.threads,
-                        vanity_flags.is_case_sensitive,
-                        !vanity_flags.disable_fast_mode,
-                        vanity_flags.vanity_mode.unwrap_or(VanityMode::Prefix),
-                    ),
+                    _ => VanityAddr::generate_with_options::<SolanaKeyPair>(pattern, options),
                 };
 
             // 2) Format on success
@@ -173,8 +163,13 @@ fn handle_item(pattern: &str, flags: &VanityFlags) {
     // If chain is None, default to Bitcoin, or handle differently:
     let chain = flags.chain.unwrap_or(Chain::Bitcoin);
     println!(
-        "Searching key pair for {:?} chain where the address {}: '{}' {} with {} threads.\n",
-        chain, vanity_mode_str, pattern, case_str, flags.threads
+        "Searching key pair for {:?} chain where the address {}: '{}' {} with {} threads on the '{}' backend.\n",
+        chain,
+        vanity_mode_str,
+        pattern,
+        case_str,
+        flags.threads,
+        flags.backend.unwrap_or_default()
     );
 
     // 3) Build "buffer1"

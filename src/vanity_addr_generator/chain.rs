@@ -11,7 +11,13 @@ use crate::keys_and_address::EthereumKeyPair;
 #[cfg(feature = "solana")]
 use crate::keys_and_address::SolanaKeyPair;
 use crate::keys_and_address::{BitcoinKeyPair, KeyPairGenerator};
+use crate::vanity_addr_generator::vanity_addr::{GpuCurveKind, GpuSearchTarget};
 use crate::VanityMode;
+
+use bitcoin::key::{PrivateKey, PublicKey};
+use bitcoin::secp256k1::{Secp256k1, SecretKey as BitcoinSecretKey};
+use bitcoin::Address;
+use bitcoin::Network::Bitcoin;
 
 /// Maximum length constraints for fast mode and general input.
 const BASE58_FAST_MODE_MAX: usize = 5;
@@ -88,6 +94,28 @@ pub trait VanityChain: KeyPairGenerator + Send {
     /// - A chain-adjusted regex pattern string.
     fn adjust_regex_pattern(regex_str: &str) -> String {
         regex_str.to_string()
+    }
+
+    /// Returns the GPU curve implementation that can derive public keys for this chain.
+    fn gpu_curve() -> Option<GpuCurveKind> {
+        None
+    }
+
+    fn gpu_search_target() -> Option<GpuSearchTarget> {
+        None
+    }
+
+    /// Builds a full keypair object from raw private key bytes.
+    fn from_private_key_bytes(_private_key_bytes: [u8; 32]) -> Result<Self, VanityError>
+    where
+        Self: Sized,
+    {
+        Err(VanityError::GpuBackendUnsupportedForChain)
+    }
+
+    /// Derives an address string from public key bytes emitted by the GPU backend.
+    fn address_from_gpu_public_key(_public_key_bytes: &[u8]) -> Result<String, VanityError> {
+        Err(VanityError::GpuBackendUnsupportedForChain)
     }
 }
 
@@ -241,6 +269,35 @@ impl VanityChain for BitcoinKeyPair {
         }
         pattern_str
     }
+
+    fn gpu_curve() -> Option<GpuCurveKind> {
+        Some(GpuCurveKind::Secp256k1)
+    }
+
+    fn gpu_search_target() -> Option<GpuSearchTarget> {
+        Some(GpuSearchTarget::Bitcoin)
+    }
+
+    fn from_private_key_bytes(private_key_bytes: [u8; 32]) -> Result<Self, VanityError> {
+        let secp = Secp256k1::new();
+        let secret_key = BitcoinSecretKey::from_slice(&private_key_bytes)
+            .map_err(|_| VanityError::KeysAndAddressError("invalid secp256k1 secret key"))?;
+        let private_key = PrivateKey::new(secret_key, Bitcoin);
+        let public_key = PublicKey::from_private_key(&secp, &private_key);
+
+        Ok(BitcoinKeyPair {
+            private_key,
+            public_key,
+            comp_address: Address::p2pkh(public_key, Bitcoin).to_string(),
+        })
+    }
+
+    fn address_from_gpu_public_key(public_key_bytes: &[u8]) -> Result<String, VanityError> {
+        let secp_public_key = bitcoin::secp256k1::PublicKey::from_slice(public_key_bytes)
+            .map_err(|_| VanityError::KeysAndAddressError("invalid GPU-derived public key"))?;
+        let public_key = PublicKey::new(secp_public_key);
+        Ok(Address::p2pkh(public_key, Bitcoin).to_string())
+    }
 }
 
 #[cfg(feature = "ethereum")]
@@ -345,6 +402,48 @@ impl VanityChain for EthereumKeyPair {
         }
         pattern_str
     }
+
+    fn gpu_curve() -> Option<GpuCurveKind> {
+        Some(GpuCurveKind::Secp256k1)
+    }
+
+    fn gpu_search_target() -> Option<GpuSearchTarget> {
+        Some(GpuSearchTarget::Ethereum)
+    }
+
+    fn from_private_key_bytes(private_key_bytes: [u8; 32]) -> Result<Self, VanityError> {
+        use hex::encode;
+        use secp256k1::{PublicKey, Secp256k1, SecretKey};
+        use sha3::{Digest, Keccak256};
+
+        let secp = Secp256k1::new();
+        let secret_key = SecretKey::from_byte_array(&private_key_bytes)
+            .map_err(|_| VanityError::KeysAndAddressError("invalid secp256k1 secret key"))?;
+        let public_key = PublicKey::from_secret_key(&secp, &secret_key);
+        let public_key_bytes = public_key.serialize_uncompressed();
+        let public_key_hash = Keccak256::digest(&public_key_bytes[1..]);
+        let address = encode(&public_key_hash[12..]);
+
+        Ok(EthereumKeyPair {
+            private_key: secret_key,
+            public_key,
+            address,
+        })
+    }
+
+    fn address_from_gpu_public_key(public_key_bytes: &[u8]) -> Result<String, VanityError> {
+        use hex::encode;
+        use sha3::{Digest, Keccak256};
+
+        if public_key_bytes.len() != 65 || public_key_bytes[0] != 0x04 {
+            return Err(VanityError::KeysAndAddressError(
+                "invalid GPU-derived Ethereum public key",
+            ));
+        }
+
+        let public_key_hash = Keccak256::digest(&public_key_bytes[1..]);
+        Ok(encode(&public_key_hash[12..]))
+    }
 }
 
 #[cfg(feature = "solana")]
@@ -393,6 +492,19 @@ impl VanityChain for SolanaKeyPair {
     ///   encapsulates the Base58-specific regex validation logic.
     fn validate_regex_pattern(regex_str: &str) -> Result<(), VanityError> {
         validate_base58_regex_pattern(regex_str)
+    }
+
+    fn from_private_key_bytes(private_key_bytes: [u8; 32]) -> Result<Self, VanityError> {
+        use solana_sdk::signature::{Keypair, SeedDerivable, Signer};
+
+        let keypair = Keypair::from_seed(&private_key_bytes)
+            .map_err(|_| VanityError::KeysAndAddressError("invalid ed25519 private key"))?;
+        let address = keypair.pubkey().to_string();
+        Ok(SolanaKeyPair { keypair, address })
+    }
+
+    fn address_from_gpu_public_key(public_key_bytes: &[u8]) -> Result<String, VanityError> {
+        Ok(solana_sdk::bs58::encode(public_key_bytes).into_string())
     }
 }
 

@@ -1,0 +1,802 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" width="1200" height="534" onload="init(evt)" viewBox="0 0 1200 534" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<!-- Flame graph stack visualization. See https://github.com/brendangregg/FlameGraph for latest version, and http://www.brendangregg.com/flamegraphs.html for examples. -->
+<!-- NOTES:  -->
+<defs>
+	<linearGradient id="background" y1="0" y2="1" x1="0" x2="0" >
+		<stop stop-color="#eeeeee" offset="5%" />
+		<stop stop-color="#eeeeb0" offset="95%" />
+	</linearGradient>
+</defs>
+<style type="text/css">
+	text { font-family:Verdana; font-size:12px; fill:rgb(0,0,0); }
+	#search, #ignorecase { opacity:0.1; cursor:pointer; }
+	#search:hover, #search.show, #ignorecase:hover, #ignorecase.show { opacity:1; }
+	#subtitle { text-anchor:middle; font-color:rgb(160,160,160); }
+	#title { text-anchor:middle; font-size:17px}
+	#unzoom { cursor:pointer; }
+	#frames > *:hover { stroke:black; stroke-width:0.5; cursor:pointer; }
+	.hide { display:none; }
+	.parent { opacity:0.5; }
+</style>
+<script type="text/ecmascript">
+<![CDATA[
+	"use strict";
+	var details, searchbtn, unzoombtn, matchedtxt, svg, searching, currentSearchTerm, ignorecase, ignorecaseBtn;
+	function init(evt) {
+		details = document.getElementById("details").firstChild;
+		searchbtn = document.getElementById("search");
+		ignorecaseBtn = document.getElementById("ignorecase");
+		unzoombtn = document.getElementById("unzoom");
+		matchedtxt = document.getElementById("matched");
+		svg = document.getElementsByTagName("svg")[0];
+		searching = 0;
+		currentSearchTerm = null;
+
+		// use GET parameters to restore a flamegraphs state.
+		var params = get_params();
+		if (params.x && params.y)
+			zoom(find_group(document.querySelector('[x="' + params.x + '"][y="' + params.y + '"]')));
+                if (params.s) search(params.s);
+	}
+
+	// event listeners
+	window.addEventListener("click", function(e) {
+		var target = find_group(e.target);
+		if (target) {
+			if (target.nodeName == "a") {
+				if (e.ctrlKey === false) return;
+				e.preventDefault();
+			}
+			if (target.classList.contains("parent")) unzoom(true);
+			zoom(target);
+			if (!document.querySelector('.parent')) {
+				// we have basically done a clearzoom so clear the url
+				var params = get_params();
+				if (params.x) delete params.x;
+				if (params.y) delete params.y;
+				history.replaceState(null, null, parse_params(params));
+				unzoombtn.classList.add("hide");
+				return;
+			}
+
+			// set parameters for zoom state
+			var el = target.querySelector("rect");
+			if (el && el.attributes && el.attributes.y && el.attributes._orig_x) {
+				var params = get_params()
+				params.x = el.attributes._orig_x.value;
+				params.y = el.attributes.y.value;
+				history.replaceState(null, null, parse_params(params));
+			}
+		}
+		else if (e.target.id == "unzoom") clearzoom();
+		else if (e.target.id == "search") search_prompt();
+		else if (e.target.id == "ignorecase") toggle_ignorecase();
+	}, false)
+
+	// mouse-over for info
+	// show
+	window.addEventListener("mouseover", function(e) {
+		var target = find_group(e.target);
+		if (target) details.nodeValue = "Function: " + g_to_text(target);
+	}, false)
+
+	// clear
+	window.addEventListener("mouseout", function(e) {
+		var target = find_group(e.target);
+		if (target) details.nodeValue = ' ';
+	}, false)
+
+	// ctrl-F for search
+	// ctrl-I to toggle case-sensitive search
+	window.addEventListener("keydown",function (e) {
+		if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+			e.preventDefault();
+			search_prompt();
+		}
+		else if (e.ctrlKey && e.keyCode === 73) {
+			e.preventDefault();
+			toggle_ignorecase();
+		}
+	}, false)
+
+	// functions
+	function get_params() {
+		var params = {};
+		var paramsarr = window.location.search.substr(1).split('&');
+		for (var i = 0; i < paramsarr.length; ++i) {
+			var tmp = paramsarr[i].split("=");
+			if (!tmp[0] || !tmp[1]) continue;
+			params[tmp[0]]  = decodeURIComponent(tmp[1]);
+		}
+		return params;
+	}
+	function parse_params(params) {
+		var uri = "?";
+		for (var key in params) {
+			uri += key + '=' + encodeURIComponent(params[key]) + '&';
+		}
+		if (uri.slice(-1) == "&")
+			uri = uri.substring(0, uri.length - 1);
+		if (uri == '?')
+			uri = window.location.href.split('?')[0];
+		return uri;
+	}
+	function find_child(node, selector) {
+		var children = node.querySelectorAll(selector);
+		if (children.length) return children[0];
+	}
+	function find_group(node) {
+		var parent = node.parentElement;
+		if (!parent) return;
+		if (parent.id == "frames") return node;
+		return find_group(parent);
+	}
+	function orig_save(e, attr, val) {
+		if (e.attributes["_orig_" + attr] != undefined) return;
+		if (e.attributes[attr] == undefined) return;
+		if (val == undefined) val = e.attributes[attr].value;
+		e.setAttribute("_orig_" + attr, val);
+	}
+	function orig_load(e, attr) {
+		if (e.attributes["_orig_"+attr] == undefined) return;
+		e.attributes[attr].value = e.attributes["_orig_" + attr].value;
+		e.removeAttribute("_orig_"+attr);
+	}
+	function g_to_text(e) {
+		var text = find_child(e, "title").firstChild.nodeValue;
+		return (text)
+	}
+	function g_to_func(e) {
+		var func = g_to_text(e);
+		// if there's any manipulation we want to do to the function
+		// name before it's searched, do it here before returning.
+		return (func);
+	}
+	function update_text(e) {
+		var r = find_child(e, "rect");
+		var t = find_child(e, "text");
+		var w = parseFloat(r.attributes.width.value) -3;
+		var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+		t.attributes.x.value = parseFloat(r.attributes.x.value) + 3;
+
+		// Smaller than this size won't fit anything
+		if (w < 2 * 12 * 0.59) {
+			t.textContent = "";
+			return;
+		}
+
+		t.textContent = txt;
+		var sl = t.getSubStringLength(0, txt.length);
+		// check if only whitespace or if we can fit the entire string into width w
+		if (/^ *$/.test(txt) || sl < w)
+			return;
+
+		// this isn't perfect, but gives a good starting point
+		// and avoids calling getSubStringLength too often
+		var start = Math.floor((w/sl) * txt.length);
+		for (var x = start; x > 0; x = x-2) {
+			if (t.getSubStringLength(0, x + 2) <= w) {
+				t.textContent = txt.substring(0, x) + "..";
+				return;
+			}
+		}
+		t.textContent = "";
+	}
+
+	// zoom
+	function zoom_reset(e) {
+		if (e.attributes != undefined) {
+			orig_load(e, "x");
+			orig_load(e, "width");
+		}
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_reset(c[i]);
+		}
+	}
+	function zoom_child(e, x, ratio) {
+		if (e.attributes != undefined) {
+			if (e.attributes.x != undefined) {
+				orig_save(e, "x");
+				e.attributes.x.value = (parseFloat(e.attributes.x.value) - x - 10) * ratio + 10;
+				if (e.tagName == "text")
+					e.attributes.x.value = find_child(e.parentNode, "rect[x]").attributes.x.value + 3;
+			}
+			if (e.attributes.width != undefined) {
+				orig_save(e, "width");
+				e.attributes.width.value = parseFloat(e.attributes.width.value) * ratio;
+			}
+		}
+
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_child(c[i], x - 10, ratio);
+		}
+	}
+	function zoom_parent(e) {
+		if (e.attributes) {
+			if (e.attributes.x != undefined) {
+				orig_save(e, "x");
+				e.attributes.x.value = 10;
+			}
+			if (e.attributes.width != undefined) {
+				orig_save(e, "width");
+				e.attributes.width.value = parseInt(svg.width.baseVal.value) - (10 * 2);
+			}
+		}
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_parent(c[i]);
+		}
+	}
+	function zoom(node) {
+		var attr = find_child(node, "rect").attributes;
+		var width = parseFloat(attr.width.value);
+		var xmin = parseFloat(attr.x.value);
+		var xmax = parseFloat(xmin + width);
+		var ymin = parseFloat(attr.y.value);
+		var ratio = (svg.width.baseVal.value - 2 * 10) / width;
+
+		// XXX: Workaround for JavaScript float issues (fix me)
+		var fudge = 0.0001;
+
+		unzoombtn.classList.remove("hide");
+
+		var el = document.getElementById("frames").children;
+		for (var i = 0; i < el.length; i++) {
+			var e = el[i];
+			var a = find_child(e, "rect").attributes;
+			var ex = parseFloat(a.x.value);
+			var ew = parseFloat(a.width.value);
+			var upstack;
+			// Is it an ancestor
+			if (0 == 0) {
+				upstack = parseFloat(a.y.value) > ymin;
+			} else {
+				upstack = parseFloat(a.y.value) < ymin;
+			}
+			if (upstack) {
+				// Direct ancestor
+				if (ex <= xmin && (ex+ew+fudge) >= xmax) {
+					e.classList.add("parent");
+					zoom_parent(e);
+					update_text(e);
+				}
+				// not in current path
+				else
+					e.classList.add("hide");
+			}
+			// Children maybe
+			else {
+				// no common path
+				if (ex < xmin || ex + fudge >= xmax) {
+					e.classList.add("hide");
+				}
+				else {
+					zoom_child(e, xmin, ratio);
+					update_text(e);
+				}
+			}
+		}
+		search();
+	}
+	function unzoom(dont_update_text) {
+		unzoombtn.classList.add("hide");
+		var el = document.getElementById("frames").children;
+		for(var i = 0; i < el.length; i++) {
+			el[i].classList.remove("parent");
+			el[i].classList.remove("hide");
+			zoom_reset(el[i]);
+			if(!dont_update_text) update_text(el[i]);
+		}
+		search();
+	}
+	function clearzoom() {
+		unzoom();
+
+		// remove zoom state
+		var params = get_params();
+		if (params.x) delete params.x;
+		if (params.y) delete params.y;
+		history.replaceState(null, null, parse_params(params));
+	}
+
+	// search
+	function toggle_ignorecase() {
+		ignorecase = !ignorecase;
+		if (ignorecase) {
+			ignorecaseBtn.classList.add("show");
+		} else {
+			ignorecaseBtn.classList.remove("show");
+		}
+		reset_search();
+		search();
+	}
+	function reset_search() {
+		var el = document.querySelectorAll("#frames rect");
+		for (var i = 0; i < el.length; i++) {
+			orig_load(el[i], "fill")
+		}
+		var params = get_params();
+		delete params.s;
+		history.replaceState(null, null, parse_params(params));
+	}
+	function search_prompt() {
+		if (!searching) {
+			var term = prompt("Enter a search term (regexp " +
+			    "allowed, eg: ^ext4_)"
+			    + (ignorecase ? ", ignoring case" : "")
+			    + "\nPress Ctrl-i to toggle case sensitivity", "");
+			if (term != null) search(term);
+		} else {
+			reset_search();
+			searching = 0;
+			currentSearchTerm = null;
+			searchbtn.classList.remove("show");
+			searchbtn.firstChild.nodeValue = "Search"
+			matchedtxt.classList.add("hide");
+			matchedtxt.firstChild.nodeValue = ""
+		}
+	}
+	function search(term) {
+		if (term) currentSearchTerm = term;
+		if (currentSearchTerm === null) return;
+
+		var re = new RegExp(currentSearchTerm, ignorecase ? 'i' : '');
+		var el = document.getElementById("frames").children;
+		var matches = new Object();
+		var maxwidth = 0;
+		for (var i = 0; i < el.length; i++) {
+			var e = el[i];
+			var func = g_to_func(e);
+			var rect = find_child(e, "rect");
+			if (func == null || rect == null)
+				continue;
+
+			// Save max width. Only works as we have a root frame
+			var w = parseFloat(rect.attributes.width.value);
+			if (w > maxwidth)
+				maxwidth = w;
+
+			if (func.match(re)) {
+				// highlight
+				var x = parseFloat(rect.attributes.x.value);
+				orig_save(rect, "fill");
+				rect.attributes.fill.value = "rgb(230,0,230)";
+
+				// remember matches
+				if (matches[x] == undefined) {
+					matches[x] = w;
+				} else {
+					if (w > matches[x]) {
+						// overwrite with parent
+						matches[x] = w;
+					}
+				}
+				searching = 1;
+			}
+		}
+		if (!searching)
+			return;
+		var params = get_params();
+		params.s = currentSearchTerm;
+		history.replaceState(null, null, parse_params(params));
+
+		searchbtn.classList.add("show");
+		searchbtn.firstChild.nodeValue = "Reset Search";
+
+		// calculate percent matched, excluding vertical overlap
+		var count = 0;
+		var lastx = -1;
+		var lastw = 0;
+		var keys = Array();
+		for (k in matches) {
+			if (matches.hasOwnProperty(k))
+				keys.push(k);
+		}
+		// sort the matched frames by their x location
+		// ascending, then width descending
+		keys.sort(function(a, b){
+			return a - b;
+		});
+		// Step through frames saving only the biggest bottom-up frames
+		// thanks to the sort order. This relies on the tree property
+		// where children are always smaller than their parents.
+		var fudge = 0.0001;	// JavaScript floating point
+		for (var k in keys) {
+			var x = parseFloat(keys[k]);
+			var w = matches[keys[k]];
+			if (x >= lastx + lastw - fudge) {
+				count += w;
+				lastx = x;
+				lastw = w;
+			}
+		}
+		// display matched percent
+		matchedtxt.classList.remove("hide");
+		var pct = 100 * count / maxwidth;
+		if (pct != 100) pct = pct.toFixed(1)
+		matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+	}
+]]>
+</script>
+<rect x="0.0" y="0" width="1200.0" height="534.0" fill="url(#background)"  />
+<text id="title" x="600.00" y="24" >Flame Graph</text>
+<text id="details" x="10.00" y="517" > </text>
+<text id="unzoom" x="10.00" y="24" class="hide">Reset Zoom</text>
+<text id="search" x="1090.00" y="24" >Search</text>
+<text id="ignorecase" x="1174.00" y="24" >ic</text>
+<text id="matched" x="1090.00" y="517" > </text>
+<g id="frames">
+<g >
+<title>IOGPU`IOGPUCommandQueueSubmitCommandBuffers (137 samples, 23.22%)</title><rect x="916.0" y="245" width="274.0" height="15.0" fill="rgb(219,67,16)" rx="2" ry="2" />
+<text  x="919.00" y="255.5" >IOGPU`IOGPUCommandQueueSubmitCommand..</text>
+</g>
+<g >
+<title>btc-vanity`btc_vanity::main::he7eecc2c7683e372 (453 samples, 76.78%)</title><rect x="10.0" y="373" width="906.0" height="15.0" fill="rgb(227,104,25)" rx="2" ry="2" />
+<text  x="13.00" y="383.5" >btc-vanity`btc_vanity::main::he7eecc2c7683e372</text>
+</g>
+<g >
+<title>libdispatch`_dispatch_lane_serial_drain (137 samples, 23.22%)</title><rect x="916.0" y="373" width="274.0" height="15.0" fill="rgb(254,225,54)" rx="2" ry="2" />
+<text  x="919.00" y="383.5" >libdispatch`_dispatch_lane_serial_dr..</text>
+</g>
+<g >
+<title>libobjc.A`objc_msgSend (3 samples, 0.51%)</title><rect x="898.0" y="213" width="6.0" height="15.0" fill="rgb(247,194,46)" rx="2" ry="2" />
+<text  x="901.00" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`wgpu_hal::metal::device::_$LT$impl$u20$wgpu_hal..Device$LT$wgpu_hal..metal..Api$GT$$u20$for$u20$wgpu_hal..metal..Device$GT$::wait::h796b9c0fa98e1d4e (446 samples, 75.59%)</title><rect x="12.0" y="229" width="892.0" height="15.0" fill="rgb(210,25,6)" rx="2" ry="2" />
+<text  x="15.00" y="239.5" >btc-vanity`wgpu_hal::metal::device::_$LT$impl$u20$wgpu_hal..Device$LT$wgpu_hal..metal..Api$GT$$u20$for$u20$wgpu_hal..metal...</text>
+</g>
+<g >
+<title>libsystem_kernel`mach_msg2_trap (137 samples, 23.22%)</title><rect x="916.0" y="181" width="274.0" height="15.0" fill="rgb(215,49,11)" rx="2" ry="2" />
+<text  x="919.00" y="191.5" >libsystem_kernel`mach_msg2_trap</text>
+</g>
+<g >
+<title>AGXMetalG13X`AGX::BlitDispatchContext&lt;AGX::G13::Encoders,.AGX::G13::Classes, (1 samples, 0.17%)</title><rect x="914.0" y="197" width="2.0" height="15.0" fill="rgb(210,27,6)" rx="2" ry="2" />
+<text  x="917.00" y="207.5" ></text>
+</g>
+<g >
+<title>dyld`start (453 samples, 76.78%)</title><rect x="10.0" y="453" width="906.0" height="15.0" fill="rgb(217,57,13)" rx="2" ry="2" />
+<text  x="13.00" y="463.5" >dyld`start</text>
+</g>
+<g >
+<title>btc-vanity`btc_vanity::vanity_addr_generator::vanity_addr::SearchEngines::find_vanity_address_gpu::h0d5b419880280c2a (453 samples, 76.78%)</title><rect x="10.0" y="325" width="906.0" height="15.0" fill="rgb(223,85,20)" rx="2" ry="2" />
+<text  x="13.00" y="335.5" >btc-vanity`btc_vanity::vanity_addr_generator::vanity_addr::SearchEngines::find_vanity_address_gpu::h0d5b419880280c2a</text>
+</g>
+<g >
+<title>btc-vanity`std::rt::lang_start_internal::he07baf3b7218955d (453 samples, 76.78%)</title><rect x="10.0" y="421" width="906.0" height="15.0" fill="rgb(229,112,26)" rx="2" ry="2" />
+<text  x="13.00" y="431.5" >btc-vanity`std::rt::lang_start_internal::he07baf3b7218955d</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$alloc..vec..Vec$LT$T$GT$$u20$as$u20$alloc..vec..spec_from_iter..SpecFromIter$LT$T$C$I$GT$$GT$::from_iter::h1b7b6be1d1b69582 (1 samples, 0.17%)</title><rect x="908.0" y="165" width="2.0" height="15.0" fill="rgb(210,24,5)" rx="2" ry="2" />
+<text  x="911.00" y="175.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_malloc_should_clear (1 samples, 0.17%)</title><rect x="906.0" y="69" width="2.0" height="15.0" fill="rgb(245,188,45)" rx="2" ry="2" />
+<text  x="909.00" y="79.5" ></text>
+</g>
+<g >
+<title>btc-vanity`wgpu::CommandEncoder::copy_buffer_to_buffer::hd3f60db7f4460496 (2 samples, 0.34%)</title><rect x="912.0" y="277" width="4.0" height="15.0" fill="rgb(219,65,15)" rx="2" ry="2" />
+<text  x="915.00" y="287.5" ></text>
+</g>
+<g >
+<title>Metal`-[_MTLCommandBuffer.status] (3 samples, 0.51%)</title><rect x="22.0" y="213" width="6.0" height="15.0" fill="rgb(251,214,51)" rx="2" ry="2" />
+<text  x="25.00" y="223.5" ></text>
+</g>
+<g >
+<title>libsystem_c`DYLD-STUB$$mach_timebase_info (1 samples, 0.17%)</title><rect x="890.0" y="149" width="2.0" height="15.0" fill="rgb(229,114,27)" rx="2" ry="2" />
+<text  x="893.00" y="159.5" ></text>
+</g>
+<g >
+<title>libdispatch`_dispatch_source_latch_and_call (137 samples, 23.22%)</title><rect x="916.0" y="341" width="274.0" height="15.0" fill="rgb(236,143,34)" rx="2" ry="2" />
+<text  x="919.00" y="351.5" >libdispatch`_dispatch_source_latch_a..</text>
+</g>
+<g >
+<title>libsystem_kernel`mach_msg2_internal (393 samples, 66.61%)</title><rect x="86.0" y="165" width="786.0" height="15.0" fill="rgb(239,159,38)" rx="2" ry="2" />
+<text  x="89.00" y="175.5" >libsystem_kernel`mach_msg2_internal</text>
+</g>
+<g >
+<title>libsystem_pthread`_pthread_exit_if_canceled (2 samples, 0.34%)</title><rect x="70.0" y="149" width="4.0" height="15.0" fill="rgb(223,82,19)" rx="2" ry="2" />
+<text  x="73.00" y="159.5" ></text>
+</g>
+<g >
+<title>btc-vanity`btc_vanity::handle_item::hfdba6ba303284623 (453 samples, 76.78%)</title><rect x="10.0" y="357" width="906.0" height="15.0" fill="rgb(240,161,38)" rx="2" ry="2" />
+<text  x="13.00" y="367.5" >btc-vanity`btc_vanity::handle_item::hfdba6ba303284623</text>
+</g>
+<g >
+<title>btc-vanity`std::rt::lang_start::_$u7b$$u7b$closure$u7d$$u7d$::h3fea1447e0497a07 (453 samples, 76.78%)</title><rect x="10.0" y="405" width="906.0" height="15.0" fill="rgb(216,54,12)" rx="2" ry="2" />
+<text  x="13.00" y="415.5" >btc-vanity`std::rt::lang_start::_$u7b$$u7b$closure$u7d$$u7d$::h3fea1447e0497a07</text>
+</g>
+<g >
+<title>btc-vanity`core::ptr::drop_in_place$LT$wgpu_core..track..stateless..StatelessTracker$LT$wgpu_hal..metal..Api$C$wgpu_core..id..Id$LT$wgpu_core..resource..TextureView$LT$wgpu_hal..empty..Api$GT$$GT$$C$wgpu_core..resource..TextureView$LT$wgpu_hal..metal..Api$GT$$GT$$GT$::hf9d23c024fbc91d2 (1 samples, 0.17%)</title><rect x="904.0" y="181" width="2.0" height="15.0" fill="rgb(245,186,44)" rx="2" ry="2" />
+<text  x="907.00" y="191.5" ></text>
+</g>
+<g >
+<title>libdispatch`_dispatch_root_queue_drain_deferred_wlh (137 samples, 23.22%)</title><rect x="916.0" y="405" width="274.0" height="15.0" fill="rgb(212,35,8)" rx="2" ry="2" />
+<text  x="919.00" y="415.5" >libdispatch`_dispatch_root_queue_dra..</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$T$u20$as$u20$wgpu..context..DynContext$GT$::command_encoder_end_compute_pass::hd29fea75a13b8d9f (3 samples, 0.51%)</title><rect x="904.0" y="245" width="6.0" height="15.0" fill="rgb(231,121,29)" rx="2" ry="2" />
+<text  x="907.00" y="255.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$T$u20$as$u20$wgpu..context..DynContext$GT$::device_poll::hf21af9929dbca0cf (447 samples, 75.76%)</title><rect x="10.0" y="293" width="894.0" height="15.0" fill="rgb(242,174,41)" rx="2" ry="2" />
+<text  x="13.00" y="303.5" >btc-vanity`_$LT$T$u20$as$u20$wgpu..context..DynContext$GT$::device_poll::hf21af9929dbca0cf</text>
+</g>
+<g >
+<title>libsystem_kernel`__error (2 samples, 0.34%)</title><rect x="60.0" y="181" width="4.0" height="15.0" fill="rgb(250,208,49)" rx="2" ry="2" />
+<text  x="63.00" y="191.5" ></text>
+</g>
+<g >
+<title>libsystem_c`nanosleep (412 samples, 69.83%)</title><rect x="50.0" y="197" width="824.0" height="15.0" fill="rgb(224,87,20)" rx="2" ry="2" />
+<text  x="53.00" y="207.5" >libsystem_c`nanosleep</text>
+</g>
+<g >
+<title>btc-vanity`_$LT$T$u20$as$u20$wgpu..context..DynContext$GT$::command_encoder_copy_buffer_to_buffer::h7e54319ae37d35ec (2 samples, 0.34%)</title><rect x="912.0" y="261" width="4.0" height="15.0" fill="rgb(224,91,21)" rx="2" ry="2" />
+<text  x="915.00" y="271.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`pthread_testcancel (1 samples, 0.17%)</title><rect x="872.0" y="181" width="2.0" height="15.0" fill="rgb(210,27,6)" rx="2" ry="2" />
+<text  x="875.00" y="191.5" ></text>
+</g>
+<g >
+<title>AGXMetalG13X`-[AGXG13XFamilyCommandQueue.commandBufferWithUnretainedReferences] (1 samples, 0.17%)</title><rect x="906.0" y="149" width="2.0" height="15.0" fill="rgb(243,177,42)" rx="2" ry="2" />
+<text  x="909.00" y="159.5" ></text>
+</g>
+<g >
+<title>libdispatch`_dispatch_continuation_pop (137 samples, 23.22%)</title><rect x="916.0" y="325" width="274.0" height="15.0" fill="rgb(230,115,27)" rx="2" ry="2" />
+<text  x="919.00" y="335.5" >libdispatch`_dispatch_continuation_pop</text>
+</g>
+<g >
+<title>btc-vanity`std::sys::pal::unix::time::Timespec::now::h1a1f915569e7e417 (11 samples, 1.86%)</title><rect x="876.0" y="197" width="22.0" height="15.0" fill="rgb(241,170,40)" rx="2" ry="2" />
+<text  x="879.00" y="207.5" >b..</text>
+</g>
+<g >
+<title>all (590 samples, 100%)</title><rect x="10.0" y="485" width="1180.0" height="15.0" fill="rgb(213,39,9)" rx="2" ry="2" />
+<text  x="13.00" y="495.5" ></text>
+</g>
+<g >
+<title>btc-vanity`DYLD-STUB$$clock_gettime (1 samples, 0.17%)</title><rect x="876.0" y="181" width="2.0" height="15.0" fill="rgb(217,57,13)" rx="2" ry="2" />
+<text  x="879.00" y="191.5" ></text>
+</g>
+<g >
+<title>AGXMetalG13X`AGX::ESLStateLoadEncoderGen1&lt;AGX::G13::Classes,.AGX::G13::Encoders&gt;::emitUscStateLoad&lt;LdShdrTransformCompute&lt;AGX::G13::Encoders&gt;&gt;(unsigned (1 samples, 0.17%)</title><rect x="914.0" y="165" width="2.0" height="15.0" fill="rgb(215,49,11)" rx="2" ry="2" />
+<text  x="917.00" y="175.5" ></text>
+</g>
+<g >
+<title>libsystem_platform`_platform_memset (1 samples, 0.17%)</title><rect x="906.0" y="37" width="2.0" height="15.0" fill="rgb(237,148,35)" rx="2" ry="2" />
+<text  x="909.00" y="47.5" ></text>
+</g>
+<g >
+<title>btc-vanity`btc_vanity::wgpu_sig_ops::gpu::execute_pipeline::hf6e8a973160bba9b (3 samples, 0.51%)</title><rect x="904.0" y="277" width="6.0" height="15.0" fill="rgb(224,88,21)" rx="2" ry="2" />
+<text  x="907.00" y="287.5" ></text>
+</g>
+<g >
+<title>AGXMetalG13X`-[AGXG13XFamilyBlitContext.copyFromBuffer:sourceOffset:toBuffer:destinationOffset:size:] (1 samples, 0.17%)</title><rect x="914.0" y="213" width="2.0" height="15.0" fill="rgb(222,79,19)" rx="2" ry="2" />
+<text  x="917.00" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`wgpu_core::command::transfer::_$LT$impl$u20$wgpu_core..global..Global$LT$G$GT$$GT$::command_encoder_copy_buffer_to_buffer::h1d7055153912e74b (2 samples, 0.34%)</title><rect x="912.0" y="229" width="4.0" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="915.00" y="239.5" ></text>
+</g>
+<g >
+<title>btc-vanity`metal::commandbuffer::CommandBufferRef::status::h25948809d5d08ebf (4 samples, 0.68%)</title><rect x="38.0" y="213" width="8.0" height="15.0" fill="rgb(219,64,15)" rx="2" ry="2" />
+<text  x="41.00" y="223.5" ></text>
+</g>
+<g >
+<title>IOGPU`IOGPUMetalCommandBufferStorageCreateExt (1 samples, 0.17%)</title><rect x="906.0" y="85" width="2.0" height="15.0" fill="rgb(223,83,19)" rx="2" ry="2" />
+<text  x="909.00" y="95.5" ></text>
+</g>
+<g >
+<title>libsystem_kernel`clock_get_time (399 samples, 67.63%)</title><rect x="74.0" y="181" width="798.0" height="15.0" fill="rgb(242,173,41)" rx="2" ry="2" />
+<text  x="77.00" y="191.5" >libsystem_kernel`clock_get_time</text>
+</g>
+<g >
+<title>btc-vanity`multiprecision::bigint::from_biguint_le::he87ecc3dcdbeefd8 (1 samples, 0.17%)</title><rect x="910.0" y="277" width="2.0" height="15.0" fill="rgb(241,168,40)" rx="2" ry="2" />
+<text  x="913.00" y="287.5" ></text>
+</g>
+<g >
+<title>btc-vanity`wgpu_core::command::compute::_$LT$impl$u20$wgpu_core..global..Global$LT$G$GT$$GT$::command_encoder_run_compute_pass::h910b4bce87c9ce98 (3 samples, 0.51%)</title><rect x="904.0" y="213" width="6.0" height="15.0" fill="rgb(228,107,25)" rx="2" ry="2" />
+<text  x="907.00" y="223.5" ></text>
+</g>
+<g >
+<title>IOGPU`-[IOGPUMetalCommandQueue._submitCommandBuffers:count:] (137 samples, 23.22%)</title><rect x="916.0" y="261" width="274.0" height="15.0" fill="rgb(227,103,24)" rx="2" ry="2" />
+<text  x="919.00" y="271.5" >IOGPU`-[IOGPUMetalCommandQueue._subm..</text>
+</g>
+<g >
+<title>libsystem_malloc`small_malloc_should_clear (1 samples, 0.17%)</title><rect x="906.0" y="53" width="2.0" height="15.0" fill="rgb(238,152,36)" rx="2" ry="2" />
+<text  x="909.00" y="63.5" ></text>
+</g>
+<g >
+<title>IOGPU`-[IOGPUMetalCommandQueue.submitCommandBuffers:count:] (137 samples, 23.22%)</title><rect x="916.0" y="277" width="274.0" height="15.0" fill="rgb(241,166,39)" rx="2" ry="2" />
+<text  x="919.00" y="287.5" >IOGPU`-[IOGPUMetalCommandQueue.submi..</text>
+</g>
+<g >
+<title>btc-vanity`wgpu_hal::metal::command::_$LT$impl$u20$wgpu_hal..CommandEncoder$LT$wgpu_hal..metal..Api$GT$$u20$for$u20$wgpu_hal..metal..CommandEncoder$GT$::begin_encoding::h73d60346c1dde625 (1 samples, 0.17%)</title><rect x="906.0" y="181" width="2.0" height="15.0" fill="rgb(237,147,35)" rx="2" ry="2" />
+<text  x="909.00" y="191.5" ></text>
+</g>
+<g >
+<title>Metal`-[_MTLCommandQueue._submitAvailableCommandBuffers] (137 samples, 23.22%)</title><rect x="916.0" y="293" width="274.0" height="15.0" fill="rgb(222,82,19)" rx="2" ry="2" />
+<text  x="919.00" y="303.5" >Metal`-[_MTLCommandQueue._submitAvai..</text>
+</g>
+<g >
+<title>btc-vanity`btc_vanity::vanity_addr_generator::gpu::Secp256k1GpuEngine::submit_exact_slot::hc12b40e8fb7a6a10 (6 samples, 1.02%)</title><rect x="904.0" y="293" width="12.0" height="15.0" fill="rgb(212,35,8)" rx="2" ry="2" />
+<text  x="907.00" y="303.5" ></text>
+</g>
+<g >
+<title>libsystem_c`clock_gettime_nsec_np (10 samples, 1.69%)</title><rect x="878.0" y="165" width="20.0" height="15.0" fill="rgb(250,210,50)" rx="2" ry="2" />
+<text  x="881.00" y="175.5" ></text>
+</g>
+<g >
+<title>Thread_3173124.DispatchQueue_61: (137 samples, 23.22%)</title><rect x="916.0" y="469" width="274.0" height="15.0" fill="rgb(205,3,0)" rx="2" ry="2" />
+<text  x="919.00" y="479.5" >Thread_3173124.DispatchQueue_61:</text>
+</g>
+<g >
+<title>btc-vanity`std::time::Instant::elapsed::hb3c42a0052c57abb (12 samples, 2.03%)</title><rect x="874.0" y="213" width="24.0" height="15.0" fill="rgb(224,91,21)" rx="2" ry="2" />
+<text  x="877.00" y="223.5" >b..</text>
+</g>
+<g >
+<title>btc-vanity`btc_vanity::vanity_addr_generator::vanity_addr::VanityAddr::generate_with_options::h6f150e233be9d338 (453 samples, 76.78%)</title><rect x="10.0" y="341" width="906.0" height="15.0" fill="rgb(232,124,29)" rx="2" ry="2" />
+<text  x="13.00" y="351.5" >btc-vanity`btc_vanity::vanity_addr_generator::vanity_addr::VanityAddr::generate_with_options::h6f150e233be9d338</text>
+</g>
+<g >
+<title>libsystem_c`clock_gettime (10 samples, 1.69%)</title><rect x="878.0" y="181" width="20.0" height="15.0" fill="rgb(207,12,3)" rx="2" ry="2" />
+<text  x="881.00" y="191.5" ></text>
+</g>
+<g >
+<title>IOGPU`-[IOGPUMetalCommandBuffer.initWithQueue:retainedReferences:synchronousDebugMode:] (1 samples, 0.17%)</title><rect x="906.0" y="117" width="2.0" height="15.0" fill="rgb(243,177,42)" rx="2" ry="2" />
+<text  x="909.00" y="127.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$wgpu..backend..wgpu_core..ContextWgpuCore$u20$as$u20$wgpu..context..Context$GT$::device_poll::h988387b6562c5ffd (447 samples, 75.76%)</title><rect x="10.0" y="277" width="894.0" height="15.0" fill="rgb(251,215,51)" rx="2" ry="2" />
+<text  x="13.00" y="287.5" >btc-vanity`_$LT$wgpu..backend..wgpu_core..ContextWgpuCore$u20$as$u20$wgpu..context..Context$GT$::device_poll::h988387b6562c5..</text>
+</g>
+<g >
+<title>libdispatch`_dispatch_workloop_worker_thread (137 samples, 23.22%)</title><rect x="916.0" y="421" width="274.0" height="15.0" fill="rgb(220,69,16)" rx="2" ry="2" />
+<text  x="919.00" y="431.5" >libdispatch`_dispatch_workloop_worke..</text>
+</g>
+<g >
+<title>libsystem_c`DYLD-STUB$$__error (2 samples, 0.34%)</title><rect x="56.0" y="181" width="4.0" height="15.0" fill="rgb(247,194,46)" rx="2" ry="2" />
+<text  x="59.00" y="191.5" ></text>
+</g>
+<g >
+<title>libsystem_pthread`start_wqthread (137 samples, 23.22%)</title><rect x="916.0" y="453" width="274.0" height="15.0" fill="rgb(241,168,40)" rx="2" ry="2" />
+<text  x="919.00" y="463.5" >libsystem_pthread`start_wqthread</text>
+</g>
+<g >
+<title>libsystem_kernel`mach_absolute_time (3 samples, 0.51%)</title><rect x="892.0" y="149" width="6.0" height="15.0" fill="rgb(227,105,25)" rx="2" ry="2" />
+<text  x="895.00" y="159.5" ></text>
+</g>
+<g >
+<title>AGXMetalG13X`-[AGXG13XFamilyCommandBuffer.initWithQueue:retainedReferences:] (1 samples, 0.17%)</title><rect x="906.0" y="133" width="2.0" height="15.0" fill="rgb(235,140,33)" rx="2" ry="2" />
+<text  x="909.00" y="143.5" ></text>
+</g>
+<g >
+<title>btc-vanity`wgpu_core::command::compute::State$LT$A$GT$::flush_states::h0fe5fc2b5daa0208 (1 samples, 0.17%)</title><rect x="908.0" y="197" width="2.0" height="15.0" fill="rgb(223,83,19)" rx="2" ry="2" />
+<text  x="911.00" y="207.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`szone_malloc_should_clear (1 samples, 0.17%)</title><rect x="910.0" y="261" width="2.0" height="15.0" fill="rgb(245,188,45)" rx="2" ry="2" />
+<text  x="913.00" y="271.5" ></text>
+</g>
+<g >
+<title>btc-vanity`core::ptr::drop_in_place$LT$wgpu_core..track..Tracker$LT$wgpu_hal..metal..Api$GT$$GT$::h22db60ad2f5fdfa5 (1 samples, 0.17%)</title><rect x="904.0" y="197" width="2.0" height="15.0" fill="rgb(231,121,29)" rx="2" ry="2" />
+<text  x="907.00" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::thread::sleep::h7202106e61d722bb (414 samples, 70.17%)</title><rect x="46.0" y="213" width="828.0" height="15.0" fill="rgb(244,180,43)" rx="2" ry="2" />
+<text  x="49.00" y="223.5" >btc-vanity`std::thread::sleep::h7202106e61d722bb</text>
+</g>
+<g >
+<title>libsystem_kernel`__semwait_signal (5 samples, 0.85%)</title><rect x="64.0" y="181" width="10.0" height="15.0" fill="rgb(221,76,18)" rx="2" ry="2" />
+<text  x="67.00" y="191.5" ></text>
+</g>
+<g >
+<title>IOGPU`IOGPUMetalCommandBufferStoragePoolCreateStorage (1 samples, 0.17%)</title><rect x="906.0" y="101" width="2.0" height="15.0" fill="rgb(211,29,7)" rx="2" ry="2" />
+<text  x="909.00" y="111.5" ></text>
+</g>
+<g >
+<title>libsystem_kernel`cerror (5 samples, 0.85%)</title><rect x="64.0" y="165" width="10.0" height="15.0" fill="rgb(238,152,36)" rx="2" ry="2" />
+<text  x="67.00" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`wgpu_core::device::resource::Device$LT$A$GT$::maintain::hef3c4699576820e8 (447 samples, 75.76%)</title><rect x="10.0" y="245" width="894.0" height="15.0" fill="rgb(216,51,12)" rx="2" ry="2" />
+<text  x="13.00" y="255.5" >btc-vanity`wgpu_core::device::resource::Device$LT$A$GT$::maintain::hef3c4699576820e8</text>
+</g>
+<g >
+<title>Thread_3173121.DispatchQueue_1: (453 samples, 76.78%)</title><rect x="10.0" y="469" width="906.0" height="15.0" fill="rgb(224,87,20)" rx="2" ry="2" />
+<text  x="13.00" y="479.5" >Thread_3173121.DispatchQueue_1:</text>
+</g>
+<g >
+<title>libsystem_kernel`mach_msg2_trap (393 samples, 66.61%)</title><rect x="86.0" y="149" width="786.0" height="15.0" fill="rgb(215,49,11)" rx="2" ry="2" />
+<text  x="89.00" y="159.5" >libsystem_kernel`mach_msg2_trap</text>
+</g>
+<g >
+<title>IOKit`IOConnectCallMethod (137 samples, 23.22%)</title><rect x="916.0" y="229" width="274.0" height="15.0" fill="rgb(216,51,12)" rx="2" ry="2" />
+<text  x="919.00" y="239.5" >IOKit`IOConnectCallMethod</text>
+</g>
+<g >
+<title>libsystem_pthread`_pthread_wqthread (137 samples, 23.22%)</title><rect x="916.0" y="437" width="274.0" height="15.0" fill="rgb(226,98,23)" rx="2" ry="2" />
+<text  x="919.00" y="447.5" >libsystem_pthread`_pthread_wqthread</text>
+</g>
+<g >
+<title>libdispatch`_dispatch_client_callout (137 samples, 23.22%)</title><rect x="916.0" y="309" width="274.0" height="15.0" fill="rgb(225,95,22)" rx="2" ry="2" />
+<text  x="919.00" y="319.5" >libdispatch`_dispatch_client_callout</text>
+</g>
+<g >
+<title>libdispatch`_dispatch_lane_invoke (137 samples, 23.22%)</title><rect x="916.0" y="389" width="274.0" height="15.0" fill="rgb(238,152,36)" rx="2" ry="2" />
+<text  x="919.00" y="399.5" >libdispatch`_dispatch_lane_invoke</text>
+</g>
+<g >
+<title>btc-vanity`btc_vanity::vanity_addr_generator::gpu::Secp256k1GpuEngine::search_exact_with_tuning::hdb0624f0cb6d1cb9 (453 samples, 76.78%)</title><rect x="10.0" y="309" width="906.0" height="15.0" fill="rgb(219,65,15)" rx="2" ry="2" />
+<text  x="13.00" y="319.5" >btc-vanity`btc_vanity::vanity_addr_generator::gpu::Secp256k1GpuEngine::search_exact_with_tuning::hdb0624f0cb6d1cb9</text>
+</g>
+<g >
+<title>libsystem_kernel`mach_msg2_internal (137 samples, 23.22%)</title><rect x="916.0" y="197" width="274.0" height="15.0" fill="rgb(239,159,38)" rx="2" ry="2" />
+<text  x="919.00" y="207.5" >libsystem_kernel`mach_msg2_internal</text>
+</g>
+<g >
+<title>AGXMetalG13X`AGX::BlitUSCStateLoader&lt;AGX::G13::Encoders,.AGX::G13::Classes&gt;::emitComputeProgramVariantArguments(AGX::G13::DataBufferAllocator&amp;, (1 samples, 0.17%)</title><rect x="914.0" y="181" width="2.0" height="15.0" fill="rgb(239,157,37)" rx="2" ry="2" />
+<text  x="917.00" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`wgpu_core::track::Tracker$LT$A$GT$::set_and_remove_from_usage_scope_sparse::h419f77170660533e (1 samples, 0.17%)</title><rect x="908.0" y="181" width="2.0" height="15.0" fill="rgb(248,201,48)" rx="2" ry="2" />
+<text  x="911.00" y="191.5" ></text>
+</g>
+<g >
+<title>btc-vanity`std::thread::sleep::h7202106e61d722bb (1 samples, 0.17%)</title><rect x="10.0" y="229" width="2.0" height="15.0" fill="rgb(244,180,43)" rx="2" ry="2" />
+<text  x="13.00" y="239.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$wgpu..backend..wgpu_core..ContextWgpuCore$u20$as$u20$wgpu..context..Context$GT$::command_encoder_copy_buffer_to_buffer::hf91c99729c378607 (2 samples, 0.34%)</title><rect x="912.0" y="245" width="4.0" height="15.0" fill="rgb(205,4,0)" rx="2" ry="2" />
+<text  x="915.00" y="255.5" ></text>
+</g>
+<g >
+<title>libsystem_malloc`tiny_malloc_should_clear (1 samples, 0.17%)</title><rect x="910.0" y="245" width="2.0" height="15.0" fill="rgb(237,148,35)" rx="2" ry="2" />
+<text  x="913.00" y="255.5" ></text>
+</g>
+<g >
+<title>btc-vanity`objc::rc::autorelease::autoreleasepool::hf9581daadbd86141 (1 samples, 0.17%)</title><rect x="906.0" y="165" width="2.0" height="15.0" fill="rgb(226,96,23)" rx="2" ry="2" />
+<text  x="909.00" y="175.5" ></text>
+</g>
+<g >
+<title>btc-vanity`wgpu_core::command::CommandEncoder$LT$A$GT$::open::ha7ec81c04d9767d4 (1 samples, 0.17%)</title><rect x="906.0" y="197" width="2.0" height="15.0" fill="rgb(211,29,7)" rx="2" ry="2" />
+<text  x="909.00" y="207.5" ></text>
+</g>
+<g >
+<title>btc-vanity`_$LT$wgpu..backend..wgpu_core..ContextWgpuCore$u20$as$u20$wgpu..context..Context$GT$::command_encoder_end_compute_pass::habd1c67662b002b8 (3 samples, 0.51%)</title><rect x="904.0" y="229" width="6.0" height="15.0" fill="rgb(210,27,6)" rx="2" ry="2" />
+<text  x="907.00" y="239.5" ></text>
+</g>
+<g >
+<title>btc-vanity`core::ptr::drop_in_place$LT$wgpu..ComputePass$GT$::hf03f743550fcd9b7 (3 samples, 0.51%)</title><rect x="904.0" y="261" width="6.0" height="15.0" fill="rgb(207,11,2)" rx="2" ry="2" />
+<text  x="907.00" y="271.5" ></text>
+</g>
+<g >
+<title>btc-vanity`DYLD-STUB$$objc_msgSend (5 samples, 0.85%)</title><rect x="28.0" y="213" width="10.0" height="15.0" fill="rgb(221,77,18)" rx="2" ry="2" />
+<text  x="31.00" y="223.5" ></text>
+</g>
+<g >
+<title>btc-vanity`main (453 samples, 76.78%)</title><rect x="10.0" y="437" width="906.0" height="15.0" fill="rgb(252,218,52)" rx="2" ry="2" />
+<text  x="13.00" y="447.5" >btc-vanity`main</text>
+</g>
+<g >
+<title>IOKit`io_connect_method (137 samples, 23.22%)</title><rect x="916.0" y="213" width="274.0" height="15.0" fill="rgb(216,54,12)" rx="2" ry="2" />
+<text  x="919.00" y="223.5" >IOKit`io_connect_method</text>
+</g>
+<g >
+<title>libdispatch`_dispatch_source_invoke (137 samples, 23.22%)</title><rect x="916.0" y="357" width="274.0" height="15.0" fill="rgb(231,121,28)" rx="2" ry="2" />
+<text  x="919.00" y="367.5" >libdispatch`_dispatch_source_invoke</text>
+</g>
+<g >
+<title>btc-vanity`wgpu_core::device::global::_$LT$impl$u20$wgpu_core..global..Global$LT$G$GT$$GT$::device_poll::h6ab2c89720bc1f2e (447 samples, 75.76%)</title><rect x="10.0" y="261" width="894.0" height="15.0" fill="rgb(229,113,27)" rx="2" ry="2" />
+<text  x="13.00" y="271.5" >btc-vanity`wgpu_core::device::global::_$LT$impl$u20$wgpu_core..global..Global$LT$G$GT$$GT$::device_poll::h6ab2c89720bc1f2e</text>
+</g>
+<g >
+<title>btc-vanity`std::sys::backtrace::__rust_begin_short_backtrace::h30ddc8d863a173d0 (453 samples, 76.78%)</title><rect x="10.0" y="389" width="906.0" height="15.0" fill="rgb(244,182,43)" rx="2" ry="2" />
+<text  x="13.00" y="399.5" >btc-vanity`std::sys::backtrace::__rust_begin_short_backtrace::h30ddc8d863a173d0</text>
+</g>
+</g>
+</svg>

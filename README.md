@@ -1,5 +1,5 @@
 # <img src='images/bitcoin.svg' height='22'> <img src='images/ethereum.png' height='22'> <img src='images/solana.png' height='22'> btc-vanity
-#### v 2.1.1
+#### v 3.0.0
 A blazingly fast vanity address generator written with the Rust programming language.  Supporting Bitcoin (always included), Ethereum, and Solana (via optional features).
 
 With btc-vanity, you can generate wallets that have custom addresses with prefixes, suffixes, substrings, or even regex patterns. It's designed for **speed**, **flexibility**, and **security**.
@@ -15,12 +15,22 @@ You can easily run the btc-vanity terminal application locally or use it as a li
 
 **Advanced Customization**: Match prefixes, suffixes, substrings, or regex-based patterns with optional case insensitivity. <br>
 **Blazingly Fast Performance**: Fully utilize your hardware with customizable thread counts. <br>
+**Hardened Hybrid Architecture**: Production GPU exact-search kernels for Bitcoin, Ethereum, and Solana with CPU fallback in Auto mode where latency is better. <br>
 **Batch File Support**: Bulk generate addresses using input files with desired patterns. <br>
 
-## Installation
+### v3.0 Production Notes
 
-> [!CAUTION]
-> btc-vanity has recently migrated to version 2. Please use it cautiously.
+- Auto backend now strictly falls back to CPU when a configured Auto GPU batch size is `<= 8,192` (M1 Pro latency guardrail).
+- GPU kernels use race-safe single-winner result claims and explicit pattern/table bounds protections.
+- Hybrid mode keeps CPU and GPU workers in lock-step with cancellation semantics for fast first-hit completion.
+
+### GPU Vendoring Attribution
+
+- Parts of the internal GPU implementation are vendored from `wgpu-sigops` and adapted for `btc-vanity`.
+- The old `wgpu-sigops/` dependency directory has been removed; vendored GPU sources now live under `src/wgpu_sig_ops/`.
+- Upstream license texts are retained in `THIRD_PARTY_LICENSES/wgpu-sigops/LICENSE-APACHE` and `THIRD_PARTY_LICENSES/wgpu-sigops/LICENSE-MIT`.
+
+## Installation
 
 ### CLI
 
@@ -41,16 +51,16 @@ Include `btc-vanity` in your `Cargo.toml`:
 
 ```toml
 [dependencies]
-btc-vanity = "2.1.0"  # Bitcoin support only
+btc-vanity = "3.0.0"  # Bitcoin support only
 
 # For Ethereum support:
-# btc-vanity = { version = "2.1.0", features = ["ethereum"] }
+# btc-vanity = { version = "3.0.0", features = ["ethereum"] }
 
 # For Solana support:
-# btc-vanity = { version = "2.1.0", features = ["solana"] }
+# btc-vanity = { version = "3.0.0", features = ["solana"] }
 
 # For all features:
-# btc-vanity = { version = "2.1.0", features = ["all"] }
+# btc-vanity = { version = "3.0.0", features = ["all"] }
 ```
 
 Crate on [crates.io](https://crates.io/crates/btc-vanity) <br>
@@ -77,6 +87,7 @@ $ btc-vanity [OPTIONS] <PATTERN>
 *   `-i, --input-file <FILE>`: Reads patterns and flags from the specified file (one pattern per line).
 *   `-o, --output-file <FILE>`: Saves generated wallet details to the specified file.
 *   `-t, --threads <N>`: Sets the number of threads for address generation.
+*   `-b, --backend <BACKEND>`: Selects execution backend (`auto`, `cpu`, `gpu`, `hybrid`). `both` is accepted as an alias for `hybrid`. Default is `hybrid`.
 *   `-f, --force-flags`: Forces CLI flags to override flags in the input file.
 *   `-d, --disable-fast`: Disables fast mode (allows longer patterns).
 
@@ -87,6 +98,10 @@ $ btc-vanity [OPTIONS] <PATTERN>
 *   `-a, --anywhere`: Matches the pattern anywhere in the address.
 *   `-r, --regex <REGEX>`: Matches addresses using a regular expression.
 *   `-c, --case-sensitive`: Enables case-sensitive matching.
+
+> [!NOTE]
+> GPU and hybrid backends currently support exact matching modes (`prefix`, `suffix`, `anywhere`) for Bitcoin, Ethereum, and Solana.
+> Regex matching is CPU-only. `--backend gpu` with regex returns an error, while `--backend hybrid` and `--backend auto` fall back to CPU for regex.
 
 ### Bitcoin CLI Examples
 

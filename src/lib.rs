@@ -98,10 +98,14 @@ pub mod file;
 pub mod flags;
 pub mod keys_and_address;
 pub mod vanity_addr_generator;
+#[cfg(feature = "gpu")]
+pub mod wgpu_sig_ops;
 
 #[cfg(feature = "ethereum")]
 pub use crate::keys_and_address::EthereumKeyPair;
 #[cfg(feature = "solana")]
 pub use crate::keys_and_address::SolanaKeyPair;
 pub use crate::keys_and_address::{BitcoinKeyPair, KeyPairGenerator};
-pub use vanity_addr_generator::vanity_addr::{VanityAddr, VanityMode};
+pub use vanity_addr_generator::vanity_addr::{
+    GpuCurveKind, VanityAddr, VanityBackend, VanityMode, VanitySearchOptions,
+};

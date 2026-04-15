@@ -6,7 +6,7 @@
 //! - Combine and prioritize CLI-level and file-based flags.
 
 use crate::vanity_addr_generator::chain::Chain;
-use crate::VanityMode;
+use crate::{VanityBackend, VanityMode};
 use clap::ArgMatches;
 
 /// Represents the configuration flags for vanity address generation.
@@ -27,6 +27,10 @@ pub struct VanityFlags {
     pub vanity_mode: Option<VanityMode>,
     /// Specifies the blockchain type (e.g., `Bitcoin`, `Ethereum`, `Solana`).
     pub chain: Option<Chain>,
+    /// Selects the execution backend.
+    pub backend: Option<VanityBackend>,
+    /// Optional fixed GPU batch size override.
+    pub gpu_batch_size: Option<usize>,
 }
 
 /// Enum representing the source of the vanity patterns.
@@ -51,7 +55,7 @@ pub enum PatternsSource {
 /// # Behavior
 /// - Determines the blockchain (`chain`) based on flags (e.g., `ethereum`, `solana`, `bitcoin`).
 /// - Determines the vanity mode (`vanity_mode`) based on flags (e.g., `regex`, `anywhere`, `suffix`, `prefix`).
-/// - Parses the number of threads, defaulting to 16 if not specified.
+/// - Parses the number of threads, defaulting to 8 if not specified.
 /// - Detects whether patterns are provided via a single string or an input file.
 pub fn parse_cli(matches: ArgMatches) -> (VanityFlags, PatternsSource) {
     // 1) Extract chain
@@ -77,9 +81,9 @@ pub fn parse_cli(matches: ArgMatches) -> (VanityFlags, PatternsSource) {
     // 3) Threads
     let threads = matches
         .get_one::<String>("threads")
-        .unwrap_or(&"16".to_owned())
-        .parse::<usize>()
-        .unwrap_or(16);
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(8);
 
     // 4) Build CLI-level `VanityFlags`
     let cli_flags = VanityFlags {
@@ -90,6 +94,14 @@ pub fn parse_cli(matches: ArgMatches) -> (VanityFlags, PatternsSource) {
         vanity_mode,
         chain,
         threads,
+        backend: matches
+            .get_one::<String>("backend")
+            .and_then(|value| value.parse::<VanityBackend>().ok())
+            .or(Some(VanityBackend::Hybrid)),
+        gpu_batch_size: matches
+            .get_one::<String>("gpu-batch-size")
+            .and_then(|value| value.parse::<usize>().ok())
+            .filter(|value| *value > 0),
     };
 
     // 5) Figure out if user gave a single pattern or a file
@@ -140,7 +152,11 @@ impl VanityFlags {
             self.clone()
         } else {
             VanityFlags {
-                threads: self.threads,
+                threads: if file_flags.threads > 0 {
+                    file_flags.threads
+                } else {
+                    self.threads
+                },
                 output_file_name: file_flags
                     .output_file_name
                     .clone()
@@ -153,7 +169,98 @@ impl VanityFlags {
                 vanity_mode: file_flags.vanity_mode.or(self.vanity_mode), // Use `file_flags` if Some, otherwise fall back to `self`.
 
                 chain: file_flags.chain.or(self.chain), // Use `file_flags` if Some, otherwise fall back to `self`.
+                backend: file_flags.backend.or(self.backend),
+                gpu_batch_size: file_flags.gpu_batch_size.or(self.gpu_batch_size),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_cli, PatternsSource, VanityFlags};
+    use crate::cli::cli;
+    use crate::{VanityBackend, VanityMode};
+
+    #[test]
+    fn test_parse_cli_uses_threads_default_from_cli() {
+        let matches = cli()
+            .try_get_matches_from(["btc-vanity", "abc"])
+            .expect("CLI parse should succeed");
+        let (flags, source) = parse_cli(matches);
+
+        assert_eq!(flags.threads, 8);
+        assert!(matches!(source, PatternsSource::SingleString(_)));
+    }
+
+    #[test]
+    fn test_unify_uses_file_threads_when_provided() {
+        let cli_flags = VanityFlags {
+            threads: 8,
+            force_flags: false,
+            vanity_mode: Some(VanityMode::Prefix),
+            backend: Some(VanityBackend::Auto),
+            ..VanityFlags::default()
+        };
+        let file_flags = VanityFlags {
+            threads: 3,
+            vanity_mode: Some(VanityMode::Anywhere),
+            backend: Some(VanityBackend::Gpu),
+            ..VanityFlags::default()
+        };
+
+        let unified = cli_flags.unify(&file_flags);
+        assert_eq!(unified.threads, 3);
+        assert_eq!(unified.vanity_mode, Some(VanityMode::Anywhere));
+        assert_eq!(unified.backend, Some(VanityBackend::Gpu));
+    }
+
+    #[test]
+    fn test_unify_keeps_cli_threads_when_file_threads_not_provided() {
+        let cli_flags = VanityFlags {
+            threads: 8,
+            force_flags: false,
+            ..VanityFlags::default()
+        };
+        let file_flags = VanityFlags {
+            threads: 0,
+            ..VanityFlags::default()
+        };
+
+        let unified = cli_flags.unify(&file_flags);
+        assert_eq!(unified.threads, 8);
+    }
+
+    #[test]
+    fn test_parse_cli_accepts_hybrid_backend_alias() {
+        let matches = cli()
+            .try_get_matches_from(["btc-vanity", "--backend", "both", "abc"])
+            .expect("CLI parse should succeed");
+        let (flags, source) = parse_cli(matches);
+
+        assert_eq!(flags.backend, Some(VanityBackend::Hybrid));
+        assert!(matches!(source, PatternsSource::SingleString(_)));
+    }
+
+    #[test]
+    fn test_parse_cli_reads_gpu_batch_size_override() {
+        let matches = cli()
+            .try_get_matches_from(["btc-vanity", "--gpu-batch-size", "262144", "abc"])
+            .expect("CLI parse should succeed");
+        let (flags, source) = parse_cli(matches);
+
+        assert_eq!(flags.gpu_batch_size, Some(262_144));
+        assert!(matches!(source, PatternsSource::SingleString(_)));
+    }
+
+    #[test]
+    fn test_parse_cli_defaults_backend_to_hybrid() {
+        let matches = cli()
+            .try_get_matches_from(["btc-vanity", "abc"])
+            .expect("CLI parse should succeed");
+        let (flags, source) = parse_cli(matches);
+
+        assert_eq!(flags.backend, Some(VanityBackend::Hybrid));
+        assert!(matches!(source, PatternsSource::SingleString(_)));
     }
 }

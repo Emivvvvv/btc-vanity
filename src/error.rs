@@ -36,6 +36,21 @@ pub enum VanityError {
     #[error("Request too long!")]
     RequestTooLong,
 
+    #[error("GPU backend is not available for this build yet. Use `auto` or `cpu`.")]
+    GpuBackendUnavailable,
+
+    #[error("GPU backend is not supported for this chain yet. Use `auto` or `cpu`.")]
+    GpuBackendUnsupportedForChain,
+
+    #[error("No compatible GPU adapter is available. Use `auto` or `cpu`.")]
+    GpuAdapterUnavailable,
+
+    #[error("Regex matching is not supported by the GPU backend. Use `auto` or `cpu`.")]
+    GpuRegexUnsupported,
+
+    #[error("The GPU backend produced an invalid result: {0}")]
+    GpuInvalidResult(&'static str),
+
     #[cfg(feature = "ethereum")]
     #[error("Case sensitive wallet generation is not supported for Ethereum!")]
     EthereumCaseSensitiveIsNotSupported,

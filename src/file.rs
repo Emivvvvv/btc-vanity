@@ -11,7 +11,7 @@ use std::path::Path;
 use crate::error::VanityError;
 use crate::flags::VanityFlags;
 use crate::vanity_addr_generator::chain::Chain;
-use crate::VanityMode;
+use crate::{VanityBackend, VanityMode};
 
 /// Represents a single line item from an input file,
 /// containing a vanity pattern and associated flags.
@@ -54,7 +54,9 @@ fn parse_line(line: &str) -> Option<FileLineItem> {
                 output_file_name: None,
                 vanity_mode: None,
                 chain: None,
-                threads: 16,
+                threads: 0,
+                backend: None,
+                gpu_batch_size: None,
             },
         });
     }
@@ -88,10 +90,39 @@ fn parse_line(line: &str) -> Option<FileLineItem> {
 
     // output file name: look for `-o` or `--output-file` plus the next token
     let mut output_file_name: Option<String> = None;
+    let mut backend: Option<VanityBackend> = None;
+    let mut threads: usize = 0;
+    let mut gpu_batch_size: Option<usize> = None;
     for (i, &flag) in flags_vec.iter().enumerate() {
         if flag == "-o" || flag == "--output-file" {
             if let Some(next_flag) = flags_vec.get(i + 1) {
                 output_file_name = Some(next_flag.to_string());
+            }
+        }
+
+        if flag == "-b" || flag == "--backend" {
+            if let Some(next_flag) = flags_vec.get(i + 1) {
+                if let Ok(parsed_backend) = next_flag.parse::<VanityBackend>() {
+                    backend = Some(parsed_backend);
+                }
+            }
+        }
+
+        if flag == "-t" || flag == "--threads" {
+            if let Some(next_flag) = flags_vec.get(i + 1) {
+                if let Ok(parsed_threads) = next_flag.parse::<usize>() {
+                    threads = parsed_threads;
+                }
+            }
+        }
+
+        if flag == "--gpu-batch-size" {
+            if let Some(next_flag) = flags_vec.get(i + 1) {
+                if let Ok(parsed_gpu_batch_size) = next_flag.parse::<usize>() {
+                    if parsed_gpu_batch_size > 0 {
+                        gpu_batch_size = Some(parsed_gpu_batch_size);
+                    }
+                }
             }
         }
     }
@@ -105,7 +136,9 @@ fn parse_line(line: &str) -> Option<FileLineItem> {
             output_file_name,
             vanity_mode,
             chain,
-            threads: 0,
+            threads,
+            backend,
+            gpu_batch_size,
         },
     })
 }
@@ -220,6 +253,37 @@ mod tests {
         assert_eq!(item.pattern, "test");
         assert_eq!(item.flags.vanity_mode, Some(VanityMode::Prefix));
         assert_eq!(item.flags.output_file_name, Some("output.txt".to_string()));
+    }
+
+    #[test]
+    fn test_parse_line_with_threads_and_backend_flags() {
+        let line = "test -a -t 12 -b gpu";
+        let item = parse_line(line).expect("Failed to parse line with threads and backend");
+
+        assert_eq!(item.pattern, "test");
+        assert_eq!(item.flags.vanity_mode, Some(VanityMode::Anywhere));
+        assert_eq!(item.flags.threads, 12);
+        assert_eq!(item.flags.backend, Some(crate::VanityBackend::Gpu));
+    }
+
+    #[test]
+    fn test_parse_line_with_hybrid_backend_alias() {
+        let line = "test -p -b both";
+        let item = parse_line(line).expect("Failed to parse line with hybrid backend alias");
+
+        assert_eq!(item.pattern, "test");
+        assert_eq!(item.flags.vanity_mode, Some(VanityMode::Prefix));
+        assert_eq!(item.flags.backend, Some(crate::VanityBackend::Hybrid));
+    }
+
+    #[test]
+    fn test_parse_line_with_gpu_batch_size_flag() {
+        let line = "test -a --gpu-batch-size 524288";
+        let item = parse_line(line).expect("Failed to parse line with gpu batch size");
+
+        assert_eq!(item.pattern, "test");
+        assert_eq!(item.flags.vanity_mode, Some(VanityMode::Anywhere));
+        assert_eq!(item.flags.gpu_batch_size, Some(524_288));
     }
 
     #[test]
