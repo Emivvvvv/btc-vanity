@@ -262,6 +262,10 @@ static GPU_TUNING_CACHE: OnceLock<Mutex<HashMap<String, GpuTuning>>> = OnceLock:
 static GPU_ENGINE_CACHE: OnceLock<Mutex<Option<Arc<Secp256k1GpuEngine>>>> = OnceLock::new();
 #[cfg(feature = "gpu")]
 const AUTO_CPU_BATCH_FALLBACK_THRESHOLD: usize = 8_192;
+#[cfg(feature = "gpu")]
+const HYBRID_GPU_DOMINANT_BATCH_THRESHOLD: usize = 262_144;
+#[cfg(feature = "gpu")]
+const HYBRID_DEFAULT_CPU_THREAD_CAP: usize = 2;
 
 impl SearchEngines {
     #[cfg(feature = "gpu")]
@@ -276,6 +280,26 @@ impl SearchEngines {
                 })
                 .unwrap_or(false)
         })
+    }
+
+    #[cfg(feature = "gpu")]
+    fn hybrid_cpu_threads(threads: usize, gpu_batch_size: Option<usize>) -> usize {
+        let requested = threads.max(1);
+
+        if let Some(override_threads) = std::env::var("BTC_VANITY_HYBRID_CPU_THREADS")
+            .ok()
+            .and_then(|value| value.trim().parse::<usize>().ok())
+            .filter(|value| *value > 0)
+        {
+            return requested.min(override_threads);
+        }
+
+        let effective_batch = gpu_batch_size.unwrap_or(HYBRID_GPU_DOMINANT_BATCH_THRESHOLD);
+        if effective_batch >= HYBRID_GPU_DOMINANT_BATCH_THRESHOLD {
+            requested.min(HYBRID_DEFAULT_CPU_THREAD_CAP)
+        } else {
+            requested
+        }
     }
 
     fn should_fallback_from_gpu_error(error: &VanityError) -> bool {
@@ -412,6 +436,9 @@ impl SearchEngines {
         vanity_mode: VanityMode,
         gpu_batch_size: Option<usize>,
     ) -> Result<T, VanityError> {
+        #[cfg(not(feature = "gpu"))]
+        let _ = gpu_batch_size;
+
         #[cfg(feature = "gpu")]
         {
             if !matches!(vanity_mode, VanityMode::Regex) {
@@ -486,14 +513,16 @@ impl SearchEngines {
         vanity_mode: VanityMode,
         stop: Arc<AtomicBool>,
     ) -> Option<T> {
-        let string_bytes = string.as_bytes();
-        let lower_string_bytes = if !case_sensitive {
-            string_bytes
-                .iter()
-                .map(|b| b.to_ascii_lowercase())
-                .collect::<Vec<u8>>()
+        let string_bytes: Arc<[u8]> = Arc::from(string.into_bytes());
+        let lower_string_bytes: Arc<[u8]> = if !case_sensitive {
+            Arc::from(
+                string_bytes
+                    .iter()
+                    .map(|b| b.to_ascii_lowercase())
+                    .collect::<Vec<u8>>(),
+            )
         } else {
-            vec![]
+            Arc::from(Vec::<u8>::new())
         };
 
         let (sender, receiver) = mpsc::channel();
@@ -502,8 +531,8 @@ impl SearchEngines {
             let sender = sender.clone();
             let stop = Arc::clone(&stop);
 
-            let thread_string_bytes = string_bytes.to_vec();
-            let thread_lower_string_bytes = lower_string_bytes.clone();
+            let thread_string_bytes = Arc::clone(&string_bytes);
+            let thread_lower_string_bytes = Arc::clone(&lower_string_bytes);
 
             thread::spawn(move || {
                 let mut batch: [T; BATCH_SIZE] = T::generate_batch();
@@ -530,8 +559,8 @@ impl SearchEngines {
                             let address_bytes = keys_and_address.get_address_bytes();
                             let matches = Self::matches_pattern(
                                 address_bytes,
-                                &thread_string_bytes,
-                                &thread_lower_string_bytes,
+                                thread_string_bytes.as_ref(),
+                                thread_lower_string_bytes.as_ref(),
                                 case_sensitive,
                                 vanity_mode,
                             );
@@ -579,6 +608,7 @@ impl SearchEngines {
         gpu_batch_size: Option<usize>,
     ) -> Result<T, VanityError> {
         let fallback_string = string.clone();
+        let hybrid_cpu_threads = Self::hybrid_cpu_threads(threads, gpu_batch_size);
 
         if matches!(vanity_mode, VanityMode::Regex) {
             return Ok(Self::find_vanity_address_cpu::<T>(
@@ -612,7 +642,7 @@ impl SearchEngines {
 
         if Self::hybrid_trace_enabled() {
             eprintln!(
-                "[hybrid] starting CPU worker (threads={threads}) and GPU worker for {:?}",
+                "[hybrid] starting CPU worker (threads={hybrid_cpu_threads}, requested={threads}) and GPU worker for {:?}",
                 T::gpu_search_target().unwrap_or(GpuSearchTarget::Bitcoin)
             );
         }
@@ -627,7 +657,7 @@ impl SearchEngines {
                 }
                 if let Some(candidate) = Self::find_vanity_address_cpu_cancelable::<T>(
                     string,
-                    threads,
+                    hybrid_cpu_threads,
                     case_sensitive,
                     vanity_mode,
                     Arc::clone(&stop),

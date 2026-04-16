@@ -19,6 +19,15 @@ use bitcoin::secp256k1::{Secp256k1, SecretKey as BitcoinSecretKey};
 use bitcoin::Address;
 use bitcoin::Network::Bitcoin;
 
+std::thread_local! {
+    static THREAD_LOCAL_BITCOIN_SECP256K1: Secp256k1<bitcoin::secp256k1::All> = Secp256k1::new();
+}
+
+#[cfg(feature = "ethereum")]
+std::thread_local! {
+    static THREAD_LOCAL_ETHEREUM_SECP256K1: secp256k1::Secp256k1<secp256k1::All> = secp256k1::Secp256k1::new();
+}
+
 /// Maximum length constraints for fast mode and general input.
 const BASE58_FAST_MODE_MAX: usize = 5;
 const BASE58_MAX: usize = 25;
@@ -279,16 +288,17 @@ impl VanityChain for BitcoinKeyPair {
     }
 
     fn from_private_key_bytes(private_key_bytes: [u8; 32]) -> Result<Self, VanityError> {
-        let secp = Secp256k1::new();
-        let secret_key = BitcoinSecretKey::from_slice(&private_key_bytes)
-            .map_err(|_| VanityError::KeysAndAddressError("invalid secp256k1 secret key"))?;
-        let private_key = PrivateKey::new(secret_key, Bitcoin);
-        let public_key = PublicKey::from_private_key(&secp, &private_key);
+        THREAD_LOCAL_BITCOIN_SECP256K1.with(|secp| {
+            let secret_key = BitcoinSecretKey::from_slice(&private_key_bytes)
+                .map_err(|_| VanityError::KeysAndAddressError("invalid secp256k1 secret key"))?;
+            let private_key = PrivateKey::new(secret_key, Bitcoin);
+            let public_key = PublicKey::from_private_key(secp, &private_key);
 
-        Ok(BitcoinKeyPair {
-            private_key,
-            public_key,
-            comp_address: Address::p2pkh(public_key, Bitcoin).to_string(),
+            Ok(BitcoinKeyPair {
+                private_key,
+                public_key,
+                comp_address: Address::p2pkh(public_key, Bitcoin).to_string(),
+            })
         })
     }
 
@@ -413,21 +423,22 @@ impl VanityChain for EthereumKeyPair {
 
     fn from_private_key_bytes(private_key_bytes: [u8; 32]) -> Result<Self, VanityError> {
         use hex::encode;
-        use secp256k1::{PublicKey, Secp256k1, SecretKey};
+        use secp256k1::{PublicKey, SecretKey};
         use sha3::{Digest, Keccak256};
 
-        let secp = Secp256k1::new();
-        let secret_key = SecretKey::from_byte_array(&private_key_bytes)
-            .map_err(|_| VanityError::KeysAndAddressError("invalid secp256k1 secret key"))?;
-        let public_key = PublicKey::from_secret_key(&secp, &secret_key);
-        let public_key_bytes = public_key.serialize_uncompressed();
-        let public_key_hash = Keccak256::digest(&public_key_bytes[1..]);
-        let address = encode(&public_key_hash[12..]);
+        THREAD_LOCAL_ETHEREUM_SECP256K1.with(|secp| {
+            let secret_key = SecretKey::from_byte_array(&private_key_bytes)
+                .map_err(|_| VanityError::KeysAndAddressError("invalid secp256k1 secret key"))?;
+            let public_key = PublicKey::from_secret_key(secp, &secret_key);
+            let public_key_bytes = public_key.serialize_uncompressed();
+            let public_key_hash = Keccak256::digest(&public_key_bytes[1..]);
+            let address = encode(&public_key_hash[12..]);
 
-        Ok(EthereumKeyPair {
-            private_key: secret_key,
-            public_key,
-            address,
+            Ok(EthereumKeyPair {
+                private_key: secret_key,
+                public_key,
+                address,
+            })
         })
     }
 

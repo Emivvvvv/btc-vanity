@@ -32,6 +32,7 @@ const MODE_PREFIX: u32 = 0u;
 const MODE_SUFFIX: u32 = 1u;
 const MODE_ANYWHERE: u32 = 2u;
 const TABLE_POINT_STRIDE: u32 = {{ num_limbs * 2 }}u;
+var<workgroup> SECP256K1_TABLE_WG: array<PointAffine, {{ table_size }}>;
 const B58_ALPHABET: array<u32, 58> = array<u32, 58>(
     49u, 50u, 51u, 52u, 53u, 54u, 55u, 56u, 57u,
     65u, 66u, 67u, 68u, 69u, 70u, 71u, 72u, 74u, 75u,
@@ -172,6 +173,60 @@ fn load_table_point(index: u32) -> PointAffine {
         pt.y.limbs[i] = table_limbs[base + {{ num_limbs }}u + i];
     }
     return pt;
+}
+
+fn projective_fixed_mul_workgroup(
+    s: ptr<function, BigInt>,
+    p: ptr<function, BigInt>,
+    r: ptr<function, BigInt>
+) -> Point {
+    var temp = *s;
+    var scalar_bits: array<bool, 256>;
+
+    for (var i = 0u; i < 256u; i ++) {
+        if bigint_is_zero(&temp) {
+            break;
+        }
+
+        scalar_bits[i] = !bigint_is_even(&temp);
+        temp = bigint_div2(&temp);
+    }
+
+    var result: Point;
+    var result_is_inf = true;
+
+    var i = 256u;
+    while (i > 0u) {
+        var bits = 0u;
+        for (var j = 0u; j < {{ log_table_size }}u; j ++){
+            if (i > 0u) {
+                i -= 1u;
+                bits <<= 1u;
+                if (scalar_bits[i]) {
+                    bits |= 1u;
+                }
+            }
+        }
+
+        if (!result_is_inf) {
+            for (var j = 0u; j < {{ log_table_size }}u; j ++){
+                result = projective_dbl_2007_bl_unsafe(&result, p);
+            }
+        }
+
+        if (bits != 0u) {
+            var t_affine = SECP256K1_TABLE_WG[bits - 1u];
+            var t = Point(t_affine.x, t_affine.y, *r);
+            if (result_is_inf) {
+                result = t;
+            } else {
+                result = projective_add_2007_bl_unsafe(&result, &t, p);
+            }
+            result_is_inf = false;
+        }
+    }
+
+    return result;
 }
 
 fn sha256_var(input: ptr<function, array<u32, 64>>, input_len: u32) -> array<u32, 32> {
@@ -540,20 +595,16 @@ fn store_match(
     }
 }
 
-fn derive_btc_address(scalar: ptr<function, BigInt>) -> AddressBuf {
-    var table: array<PointAffine, {{ table_size }}>;
-    for (var i: u32 = 0u; i < {{ table_size }}u; i = i + 1u) {
-        table[i] = load_table_point(i);
-    }
-
-    var p = get_p();
-    var p_wide = get_p_wide();
-    var r = get_r();
-    var rinv = get_rinv();
-    var mu_fp = get_mu_fp();
-
-    var proj = projective_fixed_mul(&table, scalar, &p, &r);
-    var aff = projective_to_affine_non_mont(&proj, &p, &p_wide, &r, &rinv, &mu_fp);
+fn derive_btc_address(
+    p: ptr<function, BigInt>,
+    p_wide: ptr<function, BigIntWide>,
+    r: ptr<function, BigInt>,
+    rinv: ptr<function, BigInt>,
+    mu_fp: ptr<function, BigInt>,
+    scalar: ptr<function, BigInt>,
+) -> AddressBuf {
+    var proj = projective_fixed_mul_workgroup(scalar, p, r);
+    var aff = projective_to_affine_non_mont(&proj, p, p_wide, r, rinv, mu_fp);
 
     var x_bytes = limbs_le_to_bytes_be(&aff.x.limbs, {{ log_limb_size }}u);
     var pubkey: array<u32, 64>;
@@ -595,7 +646,10 @@ fn derive_btc_address(scalar: ptr<function, BigInt>) -> AddressBuf {
 
 @compute
 @workgroup_size(256)
-fn secp256k1_btc_vanity_search(@builtin(global_invocation_id) global_id: vec3<u32>) {
+fn secp256k1_btc_vanity_search(
+    @builtin(global_invocation_id) global_id: vec3<u32>,
+    @builtin(local_invocation_id) local_id: vec3<u32>
+) {
     if (result_words[0] != RESULT_SENTINEL) {
         return;
     }
@@ -613,6 +667,17 @@ fn secp256k1_btc_vanity_search(@builtin(global_invocation_id) global_id: vec3<u3
 
     let attempt_base_lo = params.line1.x;
     let attempt_base_hi = params.line1.y;
+
+    if (local_id.x < {{ table_size }}u) {
+        SECP256K1_TABLE_WG[local_id.x] = load_table_point(local_id.x);
+    }
+    workgroupBarrier();
+
+    var p = get_p();
+    var p_wide = get_p_wide();
+    var r = get_r();
+    var rinv = get_rinv();
+    var mu_fp = get_mu_fp();
 
     for (var lane: u32 = 0u; lane < candidates_per_invocation; lane = lane + 1u) {
         let candidate_index = base_index + lane;
@@ -634,7 +699,14 @@ fn secp256k1_btc_vanity_search(@builtin(global_invocation_id) global_id: vec3<u3
         add_hi = add_hi + attempt_base_hi;
 
         var scalar = derive_secp_scalar(add_lo, add_hi);
-        var address = derive_btc_address(&scalar);
+        var address = derive_btc_address(
+            &p,
+            &p_wide,
+            &r,
+            &rinv,
+            &mu_fp,
+            &scalar,
+        );
         if (!address_matches(&address)) {
             continue;
         }

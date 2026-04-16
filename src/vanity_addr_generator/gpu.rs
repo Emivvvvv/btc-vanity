@@ -84,9 +84,10 @@ impl Default for GpuTuning {
 }
 
 struct DispatchSlot {
-    counter_buf: wgpu::Buffer,
+    _counter_buf: wgpu::Buffer,
     params_buf: wgpu::Buffer,
     result_buf: wgpu::Buffer,
+    status_readback_buf: wgpu::Buffer,
     result_readback_buf: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
     readback_state: Mutex<SlotReadbackState>,
@@ -94,7 +95,8 @@ struct DispatchSlot {
 
 enum SlotReadbackState {
     Idle,
-    Pending(Receiver<Result<(), wgpu::BufferAsyncError>>),
+    PendingStatus(Receiver<Result<(), wgpu::BufferAsyncError>>),
+    PendingResult(Receiver<Result<(), wgpu::BufferAsyncError>>),
 }
 
 enum SlotInspection {
@@ -248,6 +250,12 @@ impl Secp256k1GpuEngine {
             let params_buf = create_ub_with_data(device, &[0u32; 8]);
             let result_buf =
                 create_empty_sb(device, (RESULT_WORDS * std::mem::size_of::<u32>()) as u64);
+            let status_readback_buf = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(&format!("btc-vanity-status-readback-{slot_index}")),
+                size: std::mem::size_of::<u32>() as u64,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
             let result_readback_buf = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(&format!("btc-vanity-result-readback-{slot_index}")),
                 size: (RESULT_WORDS * std::mem::size_of::<u32>()) as u64,
@@ -269,9 +277,10 @@ impl Secp256k1GpuEngine {
             );
 
             slots.push(DispatchSlot {
-                counter_buf,
+                _counter_buf: counter_buf,
                 params_buf,
                 result_buf,
+                status_readback_buf,
                 result_readback_buf,
                 bind_group,
                 readback_state: Mutex::new(SlotReadbackState::Idle),
@@ -382,6 +391,7 @@ impl Secp256k1GpuEngine {
         };
         self.write_seed(&pipeline.seed_buf, &seed);
         self.write_pattern(&pipeline.pattern_buf, pattern, case_sensitive);
+        let pattern_len = pattern.len();
 
         if batches == 0 {
             return Ok(None);
@@ -398,7 +408,7 @@ impl Secp256k1GpuEngine {
             self.submit_exact_slot(
                 pipeline,
                 slot_index,
-                pattern.len(),
+                pattern_len,
                 case_sensitive,
                 vanity_mode,
                 tuning,
@@ -421,7 +431,7 @@ impl Secp256k1GpuEngine {
                             self.submit_exact_slot(
                                 pipeline,
                                 slot_index,
-                                pattern.len(),
+                                pattern_len,
                                 case_sensitive,
                                 vanity_mode,
                                 tuning,
@@ -447,6 +457,7 @@ impl Secp256k1GpuEngine {
                             tuning,
                             batch_index,
                         )? {
+                            self.cleanup_inflight_readbacks(pipeline, &inflight);
                             return Ok(Some(found));
                         }
                     }
@@ -455,7 +466,7 @@ impl Secp256k1GpuEngine {
                         self.submit_exact_slot(
                             pipeline,
                             slot_index,
-                            pattern.len(),
+                            pattern_len,
                             case_sensitive,
                             vanity_mode,
                             tuning,
@@ -493,6 +504,7 @@ impl Secp256k1GpuEngine {
         };
         self.write_seed(&pipeline.seed_buf, &seed);
         self.write_pattern(&pipeline.pattern_buf, pattern, case_sensitive);
+        let pattern_len = pattern.len();
 
         let ring_depth = tuning.ring_depth.min(pipeline.slots.len()).max(1);
         let mut inflight: VecDeque<(usize, usize)> = VecDeque::with_capacity(ring_depth);
@@ -505,7 +517,7 @@ impl Secp256k1GpuEngine {
             self.submit_exact_slot(
                 pipeline,
                 slot_index,
-                pattern.len(),
+                pattern_len,
                 case_sensitive,
                 vanity_mode,
                 tuning,
@@ -533,7 +545,7 @@ impl Secp256k1GpuEngine {
                         self.submit_exact_slot(
                             pipeline,
                             slot_index,
-                            pattern.len(),
+                            pattern_len,
                             case_sensitive,
                             vanity_mode,
                             tuning,
@@ -558,6 +570,7 @@ impl Secp256k1GpuEngine {
                             tuning,
                             batch_index,
                         )? {
+                            self.cleanup_inflight_readbacks(pipeline, &inflight);
                             return Ok(found);
                         }
                     }
@@ -565,7 +578,7 @@ impl Secp256k1GpuEngine {
                     self.submit_exact_slot(
                         pipeline,
                         slot_index,
-                        pattern.len(),
+                        pattern_len,
                         case_sensitive,
                         vanity_mode,
                         tuning,
@@ -645,16 +658,6 @@ impl Secp256k1GpuEngine {
             .write_buffer(seed_buf, 0, bytemuck::cast_slice(&seed_limbs));
     }
 
-    fn write_counter(&self, counter_buf: &wgpu::Buffer, attempt_offset: u64) {
-        let counter_limbs = bigint::from_biguint_le(
-            &BigUint::from(attempt_offset),
-            self.num_limbs,
-            LOG_LIMB_SIZE,
-        );
-        self.queue
-            .write_buffer(counter_buf, 0, bytemuck::cast_slice(&counter_limbs));
-    }
-
     fn write_pattern(&self, pattern_buf: &wgpu::Buffer, pattern: &[u8], case_sensitive: bool) {
         let mut words = [0u32; PATTERN_CAPACITY];
         for (index, byte) in pattern.iter().enumerate() {
@@ -694,10 +697,9 @@ impl Secp256k1GpuEngine {
     }
 
     fn reset_result_buffer(&self, result_buf: &wgpu::Buffer) {
-        let mut zeros = [0u32; RESULT_WORDS];
-        zeros[RESULT_WINNER_INDEX] = u32::MAX;
+        let sentinel = u32::MAX;
         self.queue
-            .write_buffer(result_buf, 0, bytemuck::cast_slice(&zeros));
+            .write_buffer(result_buf, 0, bytemuck::bytes_of(&sentinel));
     }
 
     fn submit_exact_slot(
@@ -712,7 +714,6 @@ impl Secp256k1GpuEngine {
     ) {
         let attempt_offset = batch_index as u64 * tuning.batch_size as u64;
         let slot = &pipeline.slots[slot_index];
-        self.write_counter(&slot.counter_buf, attempt_offset);
         self.reset_result_buffer(&slot.result_buf);
         self.write_params(
             &slot.params_buf,
@@ -741,13 +742,13 @@ impl Secp256k1GpuEngine {
         command_encoder.copy_buffer_to_buffer(
             &slot.result_buf,
             0,
-            &slot.result_readback_buf,
+            &slot.status_readback_buf,
             0,
-            slot.result_readback_buf.size(),
+            std::mem::size_of::<u32>() as u64,
         );
         self.queue.submit(Some(command_encoder.finish()));
 
-        let buffer_slice = slot.result_readback_buf.slice(..);
+        let buffer_slice = slot.status_readback_buf.slice(..);
         let (sender, receiver) = mpsc::channel();
         buffer_slice.map_async(wgpu::MapMode::Read, move |value| {
             let _ = sender.send(value);
@@ -757,7 +758,7 @@ impl Secp256k1GpuEngine {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
-        *state = SlotReadbackState::Pending(receiver);
+        *state = SlotReadbackState::PendingStatus(receiver);
     }
 
     fn inspect_slot(
@@ -772,43 +773,96 @@ impl Secp256k1GpuEngine {
             Err(poisoned) => poisoned.into_inner(),
         };
 
-        let poll_result = match &mut *state {
-            SlotReadbackState::Idle => return Ok(SlotInspection::Pending),
-            SlotReadbackState::Pending(receiver) => receiver.try_recv(),
-        };
+        match &mut *state {
+            SlotReadbackState::Idle => Ok(SlotInspection::Pending),
+            SlotReadbackState::PendingStatus(receiver) => match receiver.try_recv() {
+                Ok(Ok(())) => {
+                    let status_bytes = slot.status_readback_buf.slice(..).get_mapped_range();
+                    let status_words = bytemuck::cast_slice::<u8, u32>(&status_bytes);
+                    if status_words.is_empty() {
+                        drop(status_bytes);
+                        slot.status_readback_buf.unmap();
+                        *state = SlotReadbackState::Idle;
+                        return Err(VanityError::GpuInvalidResult(
+                            "GPU status buffer was smaller than expected",
+                        ));
+                    }
 
-        match poll_result {
-            Ok(Ok(())) => {
-                let bytes = slot.result_readback_buf.slice(..).get_mapped_range();
-                let words = bytemuck::cast_slice::<u8, u32>(&bytes);
-                if words.len() < RESULT_WORDS {
+                    let winner = status_words[RESULT_WINNER_INDEX];
+                    drop(status_bytes);
+                    slot.status_readback_buf.unmap();
+
+                    if winner == u32::MAX {
+                        *state = SlotReadbackState::Idle;
+                        return Ok(SlotInspection::Ready(None));
+                    }
+
+                    let mut command_encoder = create_command_encoder(&self.device);
+                    command_encoder.copy_buffer_to_buffer(
+                        &slot.result_buf,
+                        0,
+                        &slot.result_readback_buf,
+                        0,
+                        slot.result_readback_buf.size(),
+                    );
+                    self.queue.submit(Some(command_encoder.finish()));
+
+                    let buffer_slice = slot.result_readback_buf.slice(..);
+                    let (sender, receiver) = mpsc::channel();
+                    buffer_slice.map_async(wgpu::MapMode::Read, move |value| {
+                        let _ = sender.send(value);
+                    });
+                    *state = SlotReadbackState::PendingResult(receiver);
+                    Ok(SlotInspection::Pending)
+                }
+                Ok(Err(_)) => {
+                    *state = SlotReadbackState::Idle;
+                    Err(VanityError::GpuInvalidResult(
+                        "failed to read GPU status buffer",
+                    ))
+                }
+                Err(TryRecvError::Empty) => Ok(SlotInspection::Pending),
+                Err(TryRecvError::Disconnected) => {
+                    *state = SlotReadbackState::Idle;
+                    Err(VanityError::GpuInvalidResult(
+                        "GPU status readback channel disconnected",
+                    ))
+                }
+            },
+            SlotReadbackState::PendingResult(receiver) => match receiver.try_recv() {
+                Ok(Ok(())) => {
+                    let bytes = slot.result_readback_buf.slice(..).get_mapped_range();
+                    let words = bytemuck::cast_slice::<u8, u32>(&bytes);
+                    if words.len() < RESULT_WORDS {
+                        drop(bytes);
+                        slot.result_readback_buf.unmap();
+                        *state = SlotReadbackState::Idle;
+                        return Err(VanityError::GpuInvalidResult(
+                            "GPU result buffer was smaller than expected",
+                        ));
+                    }
+
+                    let mut result = [0u32; RESULT_WORDS];
+                    result.copy_from_slice(&words[..RESULT_WORDS]);
                     drop(bytes);
                     slot.result_readback_buf.unmap();
                     *state = SlotReadbackState::Idle;
-                    return Err(VanityError::GpuInvalidResult(
-                        "GPU result buffer was smaller than expected",
-                    ));
+                    Ok(SlotInspection::Ready(parse_match_result(&result)))
                 }
-                let mut result = [0u32; RESULT_WORDS];
-                result.copy_from_slice(&words[..RESULT_WORDS]);
-                drop(bytes);
-                slot.result_readback_buf.unmap();
-                *state = SlotReadbackState::Idle;
-                Ok(SlotInspection::Ready(parse_match_result(&result)))
-            }
-            Ok(Err(_)) => {
-                *state = SlotReadbackState::Idle;
-                Err(VanityError::GpuInvalidResult(
-                    "failed to read GPU result buffer",
-                ))
-            }
-            Err(TryRecvError::Empty) => Ok(SlotInspection::Pending),
-            Err(TryRecvError::Disconnected) => {
-                *state = SlotReadbackState::Idle;
-                Err(VanityError::GpuInvalidResult(
-                    "GPU readback channel disconnected",
-                ))
-            }
+                Ok(Err(_)) => {
+                    *state = SlotReadbackState::Idle;
+                    Err(VanityError::GpuInvalidResult(
+                        "failed to read GPU result buffer",
+                    ))
+                }
+                Err(TryRecvError::Empty) => Ok(SlotInspection::Pending),
+                Err(TryRecvError::Disconnected) => {
+                    *state = SlotReadbackState::Idle;
+                    Err(VanityError::GpuInvalidResult(
+                        "GPU result readback channel disconnected",
+                    ))
+                }
+            },
         }
     }
 
@@ -826,10 +880,68 @@ impl Secp256k1GpuEngine {
         for lane in 0..tuning.batch_size {
             let attempts = attempt_offset + lane as u64 + 1;
             let private_key_bytes = secp256k1_scalar_from_seed(seed, attempt_offset + lane as u64);
-            let address = derive_address_for_target(target, private_key_bytes)?;
-            if !matches_pattern(address.as_bytes(), pattern, case_sensitive, vanity_mode) {
-                continue;
-            }
+            let address = match target {
+                GpuSearchTarget::Bitcoin => {
+                    let candidate =
+                        <BitcoinKeyPair as VanityChain>::from_private_key_bytes(private_key_bytes)?;
+                    if !matches_pattern(
+                        candidate.get_address_bytes(),
+                        pattern,
+                        case_sensitive,
+                        vanity_mode,
+                    ) {
+                        continue;
+                    }
+                    candidate.get_address().clone()
+                }
+                GpuSearchTarget::Ethereum => {
+                    #[cfg(feature = "ethereum")]
+                    {
+                        let candidate = <EthereumKeyPair as VanityChain>::from_private_key_bytes(
+                            private_key_bytes,
+                        )?;
+                        if !matches_pattern(
+                            candidate.get_address_bytes(),
+                            pattern,
+                            case_sensitive,
+                            vanity_mode,
+                        ) {
+                            continue;
+                        }
+                        candidate.get_address().clone()
+                    }
+                    #[cfg(not(feature = "ethereum"))]
+                    {
+                        let _ = private_key_bytes;
+                        return Err(VanityError::GpuInvalidResult(
+                            "ethereum address recovery requested without ethereum feature",
+                        ));
+                    }
+                }
+                GpuSearchTarget::Solana => {
+                    #[cfg(feature = "solana")]
+                    {
+                        let candidate =
+                            <SolanaKeyPair as VanityChain>::from_private_key_bytes(private_key_bytes)?;
+                        if !matches_pattern(
+                            candidate.get_address_bytes(),
+                            pattern,
+                            case_sensitive,
+                            vanity_mode,
+                        ) {
+                            continue;
+                        }
+                        candidate.get_address().clone()
+                    }
+                    #[cfg(not(feature = "solana"))]
+                    {
+                        let _ = private_key_bytes;
+                        return Err(VanityError::GpuInvalidResult(
+                            "solana address recovery requested without solana feature",
+                        ));
+                    }
+                }
+            };
 
             return Ok(Some(GpuMatch {
                 private_key_bytes,
@@ -877,7 +989,10 @@ impl Secp256k1GpuEngine {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
-        matches!(*state, SlotReadbackState::Pending(_))
+        matches!(
+            *state,
+            SlotReadbackState::PendingStatus(_) | SlotReadbackState::PendingResult(_)
+        )
     }
 
     fn cleanup_inflight_readbacks(
@@ -898,48 +1013,6 @@ impl Secp256k1GpuEngine {
                     Ok(SlotInspection::Ready(_)) => break,
                     Err(_) => break,
                 }
-            }
-        }
-    }
-}
-
-fn derive_address_for_target(
-    target: GpuSearchTarget,
-    private_key_bytes: [u8; 32],
-) -> Result<String, VanityError> {
-    match target {
-        GpuSearchTarget::Bitcoin => {
-            let candidate = <BitcoinKeyPair as VanityChain>::from_private_key_bytes(private_key_bytes)?;
-            Ok(candidate.get_address().clone())
-        }
-        GpuSearchTarget::Ethereum => {
-            #[cfg(feature = "ethereum")]
-            {
-                let candidate =
-                    <EthereumKeyPair as VanityChain>::from_private_key_bytes(private_key_bytes)?;
-                Ok(candidate.get_address().clone())
-            }
-            #[cfg(not(feature = "ethereum"))]
-            {
-                let _ = private_key_bytes;
-                Err(VanityError::GpuInvalidResult(
-                    "ethereum address recovery requested without ethereum feature",
-                ))
-            }
-        }
-        GpuSearchTarget::Solana => {
-            #[cfg(feature = "solana")]
-            {
-                let candidate =
-                    <SolanaKeyPair as VanityChain>::from_private_key_bytes(private_key_bytes)?;
-                Ok(candidate.get_address().clone())
-            }
-            #[cfg(not(feature = "solana"))]
-            {
-                let _ = private_key_bytes;
-                Err(VanityError::GpuInvalidResult(
-                    "solana address recovery requested without solana feature",
-                ))
             }
         }
     }
