@@ -93,4 +93,3 @@ pub fn create_bind_group(
         entries: &entries,
     })
 }
-

@@ -51,6 +51,12 @@ all = ["solana", "ethereum", "gpu"]
 
 [dev-dependencies]
 tempfile = "3.6"
+criterion = "0.5.1"
+
+[[bench]]
+name = "gpu_end_to_end"
+harness = false
+required-features = ["gpu"]
 
 [profile.test]
 opt-level = 3

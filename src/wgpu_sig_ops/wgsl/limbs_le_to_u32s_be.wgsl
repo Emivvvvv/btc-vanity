@@ -1,28 +1,20 @@
-fn byte_from_limbs_le(
+fn byte_from_limbs_le_le(
     limbs: ptr<function, array<u32, {{ num_limbs }}>>,
     idx: u32,
     log_limb_size: u32,
 ) -> u32 {
-    var i = 31u - idx;
-    // Calculate the bit position of the i-th byte
-    var bit_pos = i * 8u;
-
-    // Determine which limb and bit within that limb the byte starts at
-    var limb_index = bit_pos / log_limb_size;
-    var bit_offset = bit_pos % log_limb_size;
-
-    // Ensure the bit_offset + 8 does not exceed the boundary of the limb
+    let bit_pos = idx * 8u;
+    let limb_index = bit_pos / log_limb_size;
+    let bit_offset = bit_pos % log_limb_size;
     if (bit_offset + 8u <= log_limb_size) {
-        // Extract the byte from within a single limb
         return ((*limbs)[limb_index] >> bit_offset) & 0xffu;
     } else {
-        var lb = log_limb_size - bit_offset;
-        // Extract the byte from across two limbs
-        var first_part = ((*limbs)[limb_index] >> bit_offset) & ((1u << lb) - 1u);
-        var remaining_bits = 8 - (log_limb_size - bit_offset);
-        var second_part = ((*limbs)[limb_index + 1u] & ((1u << remaining_bits) - 1u)) << lb;
+        let lb = log_limb_size - bit_offset;
+        let first_part = ((*limbs)[limb_index] >> bit_offset) & ((1u << lb) - 1u);
+        let remaining_bits = 8u - lb;
+        let second_part = ((*limbs)[limb_index + 1u] & ((1u << remaining_bits) - 1u)) << lb;
         return first_part | second_part;
-    };
+    }
 }
 
 fn bytes_be_to_u32s(bytes: ptr<function, array<u32, 32>>) -> array<u32, 8> {
@@ -38,15 +30,14 @@ fn bytes_be_to_u32s(bytes: ptr<function, array<u32, 32>>) -> array<u32, 8> {
     return result_arr;
 }
 
-fn limbs_le_to_bytes_be(
+fn limbs_le_to_bytes_le(
     limbs: ptr<function, array<u32, {{ num_limbs }}>>,
     log_limb_size: u32,
 ) -> array<u32, 32> {
     var bytes: array<u32, 32>;
     for (var i = 0u; i < 32u; i ++) {
-        bytes[i] = byte_from_limbs_le(limbs, i, log_limb_size);
+        bytes[i] = byte_from_limbs_le_le(limbs, i, log_limb_size);
     }
-
     return bytes;
 }
 
@@ -54,9 +45,49 @@ fn limbs_le_to_u32s_be(
     limbs: ptr<function, array<u32, {{ num_limbs }}>>,
     log_limb_size: u32,
 ) -> array<u32, 8> {
-    // Convert limbs to bytes
-    var bytes = limbs_le_to_bytes_be(limbs, log_limb_size);
-
-    // Convert bytes to u32s
+    var bytes: array<u32, 32>;
+    for (var i = 0u; i < 32u; i ++) {
+        bytes[i] = byte_from_limbs_le_be(limbs, i, log_limb_size);
+    }
     return bytes_be_to_u32s(&bytes);
+}
+
+fn byte_from_limbs_le_be(
+    limbs: ptr<function, array<u32, {{ num_limbs }}>>,
+    idx: u32,
+    log_limb_size: u32,
+) -> u32 {
+    let i = 31u - idx;
+    let bit_pos = i * 8u;
+    let limb_index = bit_pos / log_limb_size;
+    let bit_offset = bit_pos % log_limb_size;
+    if (bit_offset + 8u <= log_limb_size) {
+        return ((*limbs)[limb_index] >> bit_offset) & 0xffu;
+    } else {
+        let lb = log_limb_size - bit_offset;
+        let first_part = ((*limbs)[limb_index] >> bit_offset) & ((1u << lb) - 1u);
+        let remaining_bits = 8u - lb;
+        let second_part = ((*limbs)[limb_index + 1u] & ((1u << remaining_bits) - 1u)) << lb;
+        return first_part | second_part;
+    }
+}
+
+// Backward-compatible helper used by runtime shaders expecting BE byte extraction.
+fn byte_from_limbs_le(
+    limbs: ptr<function, array<u32, {{ num_limbs }}>>,
+    idx: u32,
+    log_limb_size: u32,
+) -> u32 {
+    return byte_from_limbs_le_be(limbs, idx, log_limb_size);
+}
+
+fn limbs_le_to_bytes_be(
+    limbs: ptr<function, array<u32, {{ num_limbs }}>>,
+    log_limb_size: u32,
+) -> array<u32, 32> {
+    var bytes: array<u32, 32>;
+    for (var i = 0u; i < 32u; i ++) {
+        bytes[i] = byte_from_limbs_le_be(limbs, i, log_limb_size);
+    }
+    return bytes;
 }

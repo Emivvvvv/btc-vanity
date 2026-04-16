@@ -17,4 +17,3 @@ pub fn affine_to_projectivexyz(point: &Affine) -> ProjectiveXYZ<Fq> {
         z: Fq::one(),
     }
 }
-

@@ -178,7 +178,7 @@ pub fn contains_case_insensitive(data: &[u8], pattern: &[u8]) -> bool {
                 let data_char = data[pos + j];
                 let pattern_char = pattern[j];
                 let data_lower = ASCII_LOWERCASE[data_char as usize];
-                
+
                 if data_lower != pattern_char {
                     found_mismatch = true;
                     break;
@@ -208,7 +208,7 @@ pub fn contains_case_insensitive(data: &[u8], pattern: &[u8]) -> bool {
             let data_char = data[start + i];
             let pattern_char = pattern[i];
             let data_lower = ASCII_LOWERCASE[data_char as usize];
-            
+
             if data_lower != pattern_char {
                 matches = false;
                 break;
@@ -231,10 +231,10 @@ mod tests {
         let pattern = "abc";
         let address_bytes = address.as_bytes();
         let pattern_bytes = pattern.as_bytes();
-        
+
         let result = contains_case_insensitive(address_bytes, pattern_bytes);
         let contains_result = address.to_lowercase().contains(pattern);
-        
+
         assert_eq!(result, contains_result);
         assert!(result);
     }
@@ -246,10 +246,10 @@ mod tests {
         let pattern = "abc";
         let address_bytes = address.as_bytes();
         let pattern_bytes = pattern.as_bytes();
-        
+
         let result = contains_case_insensitive(address_bytes, pattern_bytes);
         let contains_result = address.to_lowercase().contains(pattern);
-        
+
         assert_eq!(result, contains_result);
         assert!(result);
     }
@@ -260,10 +260,10 @@ mod tests {
         let pattern = "abc";
         let address_bytes = address.as_bytes();
         let pattern_bytes = pattern.as_bytes();
-        
+
         let result = contains_case_insensitive(address_bytes, pattern_bytes);
         let contains_result = address.to_lowercase().contains(pattern);
-        
+
         assert_eq!(result, contains_result);
         assert!(!result);
     }

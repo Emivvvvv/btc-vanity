@@ -86,4 +86,3 @@ pub fn ed25519_bases(log_limb_size: u32) -> Vec<u32> {
     }
     table_limbs
 }
-

@@ -1,3 +1,11 @@
+fn rotr32(x: u32, n: u32) -> u32 {
+    return (x >> n) | (x << (32u - n));
+}
+
+fn rotl32(x: u32, n: u32) -> u32 {
+    return (x << n) | (x >> (32u - n));
+}
+
 fn get_p() -> BigInt {
     {{ p_bigint }}
     return p;
@@ -44,4 +52,14 @@ fn get_mu_fp() -> BigInt {
 fn get_mu_fr() -> BigInt {
     {{ mu_fr_bigint }}
     return mu_fr;
+}
+
+fn get_r2() -> BigInt {
+    {{ r2_bigint }}
+    return r2;
+}
+
+fn get_scalar_r2() -> BigInt {
+    {{ scalar_r2_bigint }}
+    return scalar_r2;
 }

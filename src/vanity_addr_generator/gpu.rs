@@ -1,13 +1,16 @@
 use crate::error::VanityError;
+#[cfg(feature = "gpu")]
 use crate::keys_and_address::BitcoinKeyPair;
-#[cfg(feature = "ethereum")]
-use crate::keys_and_address::EthereumKeyPair;
-use crate::keys_and_address::KeyPairGenerator;
-#[cfg(feature = "solana")]
-use crate::keys_and_address::SolanaKeyPair;
+
 use crate::vanity_addr_generator::chain::VanityChain;
 use crate::vanity_addr_generator::vanity_addr::{GpuSearchTarget, VanityMode};
 
+use crate::wgpu_sig_ops::gpu::{
+    create_bind_group, create_command_encoder, create_compute_pipeline, create_empty_sb,
+    create_sb_with_data, create_ub_with_data, execute_pipeline,
+};
+use crate::wgpu_sig_ops::precompute::{ed25519_bases, secp256k1_bases};
+use crate::wgpu_sig_ops::shader::{render_ed25519_curve_tests, render_secp256k1_curve_tests};
 use bitcoin::hashes::{ripemd160, sha256, Hash};
 use bitcoin::secp256k1::{rand, PublicKey as SecpPublicKey, Secp256k1, SecretKey};
 use bitcoin::{Address, Network, PublicKey};
@@ -17,25 +20,18 @@ use num_bigint::BigUint;
 use pollster::block_on;
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
-use std::sync::Mutex;
-use crate::wgpu_sig_ops::gpu::{
-    create_bind_group, create_command_encoder, create_compute_pipeline, create_empty_sb,
-    create_sb_with_data, create_ub_with_data, execute_pipeline,
-};
-use crate::wgpu_sig_ops::precompute::{ed25519_bases, secp256k1_bases};
-use crate::wgpu_sig_ops::shader::{render_ed25519_curve_tests, render_secp256k1_curve_tests};
+use std::sync::{Arc, Mutex};
 
-pub const GPU_BATCH_SIZE: usize = 262_144;
+pub const GPU_BATCH_SIZE: usize = 1_048_576;
 pub const GPU_MAX_BATCH_SIZE: usize = 2_097_152;
 pub const GPU_RING_DEPTH: usize = 4;
-const CPU_FALLBACK_VERIFY_INTERVAL_BATCHES: usize = 64;
-const CPU_FALLBACK_VERIFY_MAX_BATCH_SIZE: usize = 65_536;
 
 const LOG_LIMB_SIZE: u32 = 13;
 const WORKGROUP_SIZE: u32 = 256;
 const PATTERN_CAPACITY: usize = 40;
-const RESULT_WORDS: usize = 57;
+const RESULT_WORDS: usize = 64;
 
 const RESULT_WINNER_INDEX: usize = 0;
 const RESULT_ATTEMPTS_LO_INDEX: usize = 1;
@@ -43,9 +39,8 @@ const RESULT_ATTEMPTS_HI_INDEX: usize = 2;
 const RESULT_BATCHES_INDEX: usize = 3;
 const RESULT_ADDRESS_LEN_INDEX: usize = 4;
 const RESULT_SCALAR_INDEX: usize = 5;
-const RESULT_ADDRESS_INDEX: usize = RESULT_SCALAR_INDEX + 8;
-const SECP256K1_ORDER_HEX: &[u8] =
-    b"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141";
+const RESULT_DEBUG_HASH_INDEX: usize = 13;
+const RESULT_ADDRESS_INDEX: usize = 21;
 
 #[derive(Clone, Debug)]
 pub struct GpuMatch {
@@ -53,6 +48,7 @@ pub struct GpuMatch {
     pub address: String,
     pub attempts: u64,
     pub batches: u64,
+    pub debug_hash: Option<Vec<u8>>,
 }
 
 #[derive(Clone, Debug)]
@@ -109,7 +105,7 @@ struct ExactSearchPipeline {
     seed_buf: wgpu::Buffer,
     pattern_buf: wgpu::Buffer,
     slots: Vec<DispatchSlot>,
-    execution_lock: Mutex<()>,
+    execution_lock: Arc<Mutex<()>>,
 }
 
 pub struct Secp256k1GpuEngine {
@@ -159,9 +155,10 @@ impl Secp256k1GpuEngine {
         }
         let (device, queue, adapter_info) = block_on(async {
             let instance = wgpu::Instance::default();
-            let adapter = request_supported_adapter(&instance, MIN_STORAGE_BUFFERS_PER_SHADER_STAGE)
-                .await
-                .ok_or(VanityError::GpuAdapterUnavailable)?;
+            let adapter =
+                request_supported_adapter(&instance, MIN_STORAGE_BUFFERS_PER_SHADER_STAGE)
+                    .await
+                    .ok_or(VanityError::GpuAdapterUnavailable)?;
 
             let mut required_limits = wgpu::Limits::downlevel_defaults();
             required_limits.max_storage_buffers_per_shader_stage =
@@ -188,6 +185,7 @@ impl Secp256k1GpuEngine {
         let secp_table_buf = create_sb_with_data(&device, &secp_table_limbs);
         let ed25519_table_limbs = ed25519_bases(LOG_LIMB_SIZE);
         let ed25519_table_buf = create_sb_with_data(&device, &ed25519_table_limbs);
+        let execution_lock = Arc::new(Mutex::new(()));
 
         let ethereum_pipeline = Self::create_exact_pipeline(
             &device,
@@ -196,6 +194,7 @@ impl Secp256k1GpuEngine {
             "secp256k1_eth_vanity_search.wgsl",
             "secp256k1_eth_vanity_search",
             false,
+            Arc::clone(&execution_lock),
         );
         let bitcoin_pipeline = Self::create_exact_pipeline(
             &device,
@@ -204,6 +203,7 @@ impl Secp256k1GpuEngine {
             "secp256k1_btc_vanity_search.wgsl",
             "secp256k1_btc_vanity_search",
             false,
+            Arc::clone(&execution_lock),
         );
         let solana_pipeline = Self::create_exact_pipeline(
             &device,
@@ -212,6 +212,7 @@ impl Secp256k1GpuEngine {
             "ed25519_sol_vanity_search.wgsl",
             "ed25519_sol_vanity_search",
             true,
+            Arc::clone(&execution_lock),
         );
 
         Ok(Self {
@@ -232,10 +233,13 @@ impl Secp256k1GpuEngine {
         shader_name: &str,
         entry_point: &str,
         is_ed25519: bool,
+        execution_lock: Arc<Mutex<()>>,
     ) -> ExactSearchPipeline {
         let seed_buf = create_empty_sb(device, (num_limbs * std::mem::size_of::<u32>()) as u64);
-        let pattern_buf =
-            create_empty_sb(device, (PATTERN_CAPACITY * std::mem::size_of::<u32>()) as u64);
+        let pattern_buf = create_empty_sb(
+            device,
+            (PATTERN_CAPACITY * std::mem::size_of::<u32>()) as u64,
+        );
         let source = if is_ed25519 {
             render_ed25519_curve_tests(shader_name, LOG_LIMB_SIZE)
         } else {
@@ -292,12 +296,15 @@ impl Secp256k1GpuEngine {
             seed_buf,
             pattern_buf,
             slots,
-            execution_lock: Mutex::new(()),
+            execution_lock,
         }
     }
 
     pub fn adapter_name(&self) -> String {
-        format!("{:?}: {}", self.adapter_info.backend, self.adapter_info.name)
+        format!(
+            "{:?}: {}",
+            self.adapter_info.backend, self.adapter_info.name
+        )
     }
 
     pub fn generate_private_keys(&self, count: usize) -> Vec<[u8; 32]> {
@@ -370,7 +377,16 @@ impl Secp256k1GpuEngine {
             batch_size,
             ..GpuTuning::default()
         };
-        self.search_exact_with_tuning(target, seed, pattern, case_sensitive, vanity_mode, tuning)
+        self.search_exact_with_tuning(
+            target,
+            seed,
+            pattern,
+            case_sensitive,
+            vanity_mode,
+            tuning,
+            None,
+        )
+        .map(|opt| opt.expect("pure GPU search should not return None without stop flag"))
     }
 
     pub(crate) fn run_exact_batches_with_tuning(
@@ -447,20 +463,7 @@ impl Secp256k1GpuEngine {
                 }
                 SlotInspection::Ready(None) => {
                     pending_streak = 0;
-                    if self.should_verify_cpu_batch(tuning, batch_index) {
-                        if let Some(found) = self.cpu_scan_exact_batch(
-                            target,
-                            seed,
-                            pattern,
-                            case_sensitive,
-                            vanity_mode,
-                            tuning,
-                            batch_index,
-                        )? {
-                            self.cleanup_inflight_readbacks(pipeline, &inflight);
-                            return Ok(Some(found));
-                        }
-                    }
+
                     if next_batch_index < batches {
                         let new_batch_index = next_batch_index;
                         self.submit_exact_slot(
@@ -495,7 +498,8 @@ impl Secp256k1GpuEngine {
         case_sensitive: bool,
         vanity_mode: VanityMode,
         tuning: GpuTuning,
-    ) -> Result<GpuMatch, VanityError> {
+        stop: Option<&Arc<AtomicBool>>,
+    ) -> Result<Option<GpuMatch>, VanityError> {
         self.validate_exact_request(pattern, vanity_mode, tuning)?;
         let pipeline = self.pipeline_for_target(target)?;
         let _execution_guard = match pipeline.execution_lock.lock() {
@@ -528,6 +532,13 @@ impl Secp256k1GpuEngine {
         }
 
         loop {
+            if let Some(stop_flag) = stop {
+                if stop_flag.load(Ordering::Relaxed) {
+                    self.cleanup_inflight_readbacks(pipeline, &inflight);
+                    return Ok(None);
+                }
+            }
+
             let Some((slot_index, batch_index)) = inflight.pop_front() else {
                 return Err(VanityError::GpuInvalidResult(
                     "GPU dispatch ring unexpectedly empty",
@@ -556,24 +567,11 @@ impl Secp256k1GpuEngine {
                         continue;
                     }
                     self.cleanup_inflight_readbacks(pipeline, &inflight);
-                    return Ok(found);
+                    return Ok(Some(found));
                 }
                 SlotInspection::Ready(None) => {
                     pending_streak = 0;
-                    if self.should_verify_cpu_batch(tuning, batch_index) {
-                        if let Some(found) = self.cpu_scan_exact_batch(
-                            target,
-                            seed,
-                            pattern,
-                            case_sensitive,
-                            vanity_mode,
-                            tuning,
-                            batch_index,
-                        )? {
-                            self.cleanup_inflight_readbacks(pipeline, &inflight);
-                            return Ok(found);
-                        }
-                    }
+
                     let new_batch_index = next_batch_index;
                     self.submit_exact_slot(
                         pipeline,
@@ -626,7 +624,9 @@ impl Secp256k1GpuEngine {
             return Err(VanityError::GpuInvalidResult("invalid GPU batch size"));
         }
         if pattern.len() > PATTERN_CAPACITY {
-            return Err(VanityError::GpuInvalidResult("pattern is too long for GPU search"));
+            return Err(VanityError::GpuInvalidResult(
+                "pattern is too long for GPU search",
+            ));
         }
         if matches!(vanity_mode, VanityMode::Regex) {
             return Err(VanityError::GpuRegexUnsupported);
@@ -725,6 +725,9 @@ impl Secp256k1GpuEngine {
             batch_index,
             tuning.candidates_per_invocation,
         );
+
+        // Reset result sentinel again immediately before dispatch to avoid stale winners.
+        self.reset_result_buffer(&slot.result_buf);
 
         let mut command_encoder = create_command_encoder(&self.device);
         execute_pipeline(
@@ -866,106 +869,6 @@ impl Secp256k1GpuEngine {
         }
     }
 
-    fn cpu_scan_exact_batch(
-        &self,
-        target: GpuSearchTarget,
-        seed: [u8; 32],
-        pattern: &[u8],
-        case_sensitive: bool,
-        vanity_mode: VanityMode,
-        tuning: GpuTuning,
-        batch_index: usize,
-    ) -> Result<Option<GpuMatch>, VanityError> {
-        let attempt_offset = batch_index as u64 * tuning.batch_size as u64;
-        for lane in 0..tuning.batch_size {
-            let attempts = attempt_offset + lane as u64 + 1;
-            let private_key_bytes = secp256k1_scalar_from_seed(seed, attempt_offset + lane as u64);
-            let address = match target {
-                GpuSearchTarget::Bitcoin => {
-                    let candidate =
-                        <BitcoinKeyPair as VanityChain>::from_private_key_bytes(private_key_bytes)?;
-                    if !matches_pattern(
-                        candidate.get_address_bytes(),
-                        pattern,
-                        case_sensitive,
-                        vanity_mode,
-                    ) {
-                        continue;
-                    }
-                    candidate.get_address().clone()
-                }
-                GpuSearchTarget::Ethereum => {
-                    #[cfg(feature = "ethereum")]
-                    {
-                        let candidate = <EthereumKeyPair as VanityChain>::from_private_key_bytes(
-                            private_key_bytes,
-                        )?;
-                        if !matches_pattern(
-                            candidate.get_address_bytes(),
-                            pattern,
-                            case_sensitive,
-                            vanity_mode,
-                        ) {
-                            continue;
-                        }
-                        candidate.get_address().clone()
-                    }
-                    #[cfg(not(feature = "ethereum"))]
-                    {
-                        let _ = private_key_bytes;
-                        return Err(VanityError::GpuInvalidResult(
-                            "ethereum address recovery requested without ethereum feature",
-                        ));
-                    }
-                }
-                GpuSearchTarget::Solana => {
-                    #[cfg(feature = "solana")]
-                    {
-                        let candidate =
-                            <SolanaKeyPair as VanityChain>::from_private_key_bytes(private_key_bytes)?;
-                        if !matches_pattern(
-                            candidate.get_address_bytes(),
-                            pattern,
-                            case_sensitive,
-                            vanity_mode,
-                        ) {
-                            continue;
-                        }
-                        candidate.get_address().clone()
-                    }
-                    #[cfg(not(feature = "solana"))]
-                    {
-                        let _ = private_key_bytes;
-                        return Err(VanityError::GpuInvalidResult(
-                            "solana address recovery requested without solana feature",
-                        ));
-                    }
-                }
-            };
-
-            return Ok(Some(GpuMatch {
-                private_key_bytes,
-                address,
-                attempts,
-                batches: batch_index as u64 + 1,
-            }));
-        }
-
-        Ok(None)
-    }
-
-    fn should_verify_cpu_batch(&self, tuning: GpuTuning, batch_index: usize) -> bool {
-        if tuning.batch_size <= 1_024 {
-            return true;
-        }
-
-        if tuning.batch_size > CPU_FALLBACK_VERIFY_MAX_BATCH_SIZE {
-            return false;
-        }
-
-        batch_index.is_multiple_of(CPU_FALLBACK_VERIFY_INTERVAL_BATCHES)
-    }
-
     fn wait_for_gpu_progress(&self) {
         let _ = self.device.poll(wgpu::Maintain::Wait);
     }
@@ -1018,70 +921,6 @@ impl Secp256k1GpuEngine {
     }
 }
 
-fn matches_pattern(
-    address_bytes: &[u8],
-    pattern_bytes: &[u8],
-    case_sensitive: bool,
-    vanity_mode: VanityMode,
-) -> bool {
-    if pattern_bytes.is_empty() {
-        return true;
-    }
-
-    if case_sensitive {
-        return match vanity_mode {
-            VanityMode::Prefix => address_bytes.starts_with(pattern_bytes),
-            VanityMode::Suffix => address_bytes.ends_with(pattern_bytes),
-            VanityMode::Anywhere => address_bytes
-                .windows(pattern_bytes.len())
-                .any(|window| window == pattern_bytes),
-            VanityMode::Regex => false,
-        };
-    }
-
-    if pattern_bytes.len() > address_bytes.len() {
-        return false;
-    }
-
-    match vanity_mode {
-        VanityMode::Prefix => address_bytes
-            .iter()
-            .zip(pattern_bytes.iter())
-            .all(|(address, pattern)| address.eq_ignore_ascii_case(pattern)),
-        VanityMode::Suffix => {
-            let start = address_bytes.len() - pattern_bytes.len();
-            address_bytes[start..]
-                .iter()
-                .zip(pattern_bytes.iter())
-                .all(|(address, pattern)| address.eq_ignore_ascii_case(pattern))
-        }
-        VanityMode::Anywhere => {
-            let last_offset = address_bytes.len() - pattern_bytes.len();
-            (0..=last_offset).any(|offset| {
-                address_bytes[offset..offset + pattern_bytes.len()]
-                    .iter()
-                    .zip(pattern_bytes.iter())
-                    .all(|(address, pattern)| address.eq_ignore_ascii_case(pattern))
-            })
-        }
-        VanityMode::Regex => false,
-    }
-}
-
-fn secp256k1_scalar_from_seed(seed: [u8; 32], offset: u64) -> [u8; 32] {
-    let order = BigUint::parse_bytes(SECP256K1_ORDER_HEX, 16).expect("valid secp256k1 order");
-    let seed_big = BigUint::from_bytes_be(&seed);
-    let mut scalar = (seed_big + BigUint::from(offset)) % &order;
-    if scalar == BigUint::default() {
-        scalar = BigUint::from(1u8);
-    }
-
-    let bytes = scalar.to_bytes_be();
-    let mut result = [0u8; 32];
-    result[32 - bytes.len()..].copy_from_slice(&bytes);
-    result
-}
-
 fn required_gpu_shader_assets_present() -> bool {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/wgpu_sig_ops/wgsl");
     let required_paths = [
@@ -1104,9 +943,9 @@ fn required_gpu_shader_assets_present() -> bool {
         "ed25519_utils.wgsl",
         "ed25519_constants.wgsl",
         "sha512.wgsl",
-        "tests/secp256k1_eth_vanity_search.wgsl",
-        "tests/secp256k1_btc_vanity_search.wgsl",
-        "tests/ed25519_sol_vanity_search.wgsl",
+        "secp256k1_eth_vanity_search.wgsl",
+        "secp256k1_btc_vanity_search.wgsl",
+        "ed25519_sol_vanity_search.wgsl",
     ];
 
     required_paths.iter().all(|path| root.join(path).exists())
@@ -1136,6 +975,13 @@ fn parse_match_result(result: &[u32]) -> Option<GpuMatch> {
         return None;
     }
 
+    if result.len() < (RESULT_SCALAR_INDEX + 8)
+        || result.len() < (RESULT_DEBUG_HASH_INDEX + 8)
+        || result.len() <= RESULT_ADDRESS_LEN_INDEX
+    {
+        return None;
+    }
+
     let mut private_key_bytes = [0u8; 32];
     for (index, word) in result[RESULT_SCALAR_INDEX..RESULT_SCALAR_INDEX + 8]
         .iter()
@@ -1145,20 +991,30 @@ fn parse_match_result(result: &[u32]) -> Option<GpuMatch> {
     }
 
     let address_len = result.get(RESULT_ADDRESS_LEN_INDEX).copied()? as usize;
-    if address_len > RESULT_WORDS.saturating_sub(RESULT_ADDRESS_INDEX) {
+    if address_len > 44 {
         return None;
     }
-    let address_end = RESULT_ADDRESS_INDEX.checked_add(address_len)?;
+
+    let address_words_needed = (address_len + 3) / 4;
+    let address_end = RESULT_ADDRESS_INDEX.checked_add(address_words_needed)?;
     if address_end > result.len() {
         return None;
     }
-    let address_bytes = result[RESULT_ADDRESS_INDEX..address_end]
+
+    let address_bytes: Vec<u8> = result[RESULT_ADDRESS_INDEX..address_end]
         .iter()
-        .map(|word| *word as u8)
-        .collect::<Vec<_>>();
-    let address = String::from_utf8(address_bytes).ok()?;
-    let attempts = ((result[RESULT_ATTEMPTS_HI_INDEX] as u64) << 32)
-        | result[RESULT_ATTEMPTS_LO_INDEX] as u64;
+        .flat_map(|w| w.to_le_bytes())
+        .take(address_len)
+        .collect();
+
+    let address = String::from_utf8_lossy(&address_bytes).to_string();
+
+    let mut debug_hash = Vec::new();
+    for word in result[RESULT_DEBUG_HASH_INDEX..RESULT_DEBUG_HASH_INDEX + 8].iter() {
+        debug_hash.extend_from_slice(&word.to_le_bytes());
+    }
+    let attempts =
+        ((result[RESULT_ATTEMPTS_HI_INDEX] as u64) << 32) | result[RESULT_ATTEMPTS_LO_INDEX] as u64;
     let batches = result[RESULT_BATCHES_INDEX] as u64;
 
     Some(GpuMatch {
@@ -1166,6 +1022,7 @@ fn parse_match_result(result: &[u32]) -> Option<GpuMatch> {
         address,
         attempts,
         batches,
+        debug_hash: Some(debug_hash),
     })
 }
 

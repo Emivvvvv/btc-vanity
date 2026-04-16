@@ -1,7 +1,3 @@
-/*
- * An optimised variant of the Montgomery product algorithm from
- * https://github.com/mitschabaude/montgomery#13-x-30-bit-multiplication.
- */
 fn mont_mul(
     x: ptr<function, BigInt>,
     y: ptr<function, BigInt>,
@@ -15,6 +11,7 @@ fn mont_mul(
         var tprime = t & {{ mask }}u;
         var qi = ({{ n0 }}u * tprime) & {{ mask }}u;
         var c = (t + qi * (*p).limbs[0]) >> {{ log_limb_size }}u;
+
         s.limbs[0] = s.limbs[1] + (*x).limbs[i] * (*y).limbs[1] + qi * (*p).limbs[1] + c;
 
         // Since nSafe = 32 when num_limbs = 20, we can perform the following
@@ -66,6 +63,7 @@ fn mont_mul(
         s.limbs[i] = v & {{ mask }}u;
     }
     {% endif %}
+
     return conditional_reduce(&s, p);
 }
 

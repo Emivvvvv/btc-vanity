@@ -10,4 +10,3 @@ pub fn affine_to_projective(point: &EdwardsAffine) -> ETEProjective<Fq> {
         z: Fq::one(),
     }
 }
-

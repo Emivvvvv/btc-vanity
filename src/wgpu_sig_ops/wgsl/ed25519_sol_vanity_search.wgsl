@@ -27,6 +27,8 @@ struct AddressBuf {
     len: u32,
 }
 
+var<workgroup> ED25519_TABLE_WG: array<ETEXYT, {{ table_size }}>;
+
 const RESULT_SENTINEL: u32 = 0xffffffffu;
 const RESULT_SCALAR_BASE: u32 = 5u;
 const RESULT_ADDRESS_BASE: u32 = 13u;
@@ -34,15 +36,7 @@ const MODE_PREFIX: u32 = 0u;
 const MODE_SUFFIX: u32 = 1u;
 const MODE_ANYWHERE: u32 = 2u;
 const TABLE_POINT_STRIDE: u32 = {{ num_limbs * 3 }}u;
-const B58_ALPHABET: array<u32, 58> = array<u32, 58>(
-    49u, 50u, 51u, 52u, 53u, 54u, 55u, 56u, 57u,
-    65u, 66u, 67u, 68u, 69u, 70u, 71u, 72u, 74u, 75u,
-    76u, 77u, 78u, 80u, 81u, 82u, 83u, 84u, 85u, 86u,
-    87u, 88u, 89u, 90u,
-    97u, 98u, 99u, 100u, 101u, 102u, 103u, 104u, 105u,
-    106u, 107u, 109u, 110u, 111u, 112u, 113u, 114u, 115u,
-    116u, 117u, 118u, 119u, 120u, 121u, 122u,
-);
+{% include "base58.wgsl" %}
 
 fn ascii_lower(c: u32) -> u32 {
     if (c >= 65u && c <= 90u) {
@@ -112,14 +106,14 @@ fn seed_scalar_to_seed_bytes(seed_scalar: ptr<function, BigInt>) -> array<u32, 3
 }
 
 fn sha512_32(input_bytes: ptr<function, array<u32, 32>>) -> array<u32, 64> {
-    var block: array<u32, 128>;
+    var block: array<u32, 128> = array<u32, 128>();
     for (var i: u32 = 0u; i < 32u; i = i + 1u) {
         block[i] = (*input_bytes)[i] & 0xffu;
     }
     block[32] = 0x80u;
     block[126] = 0x01u;
 
-    var w: array<vec2<u32>, 80>;
+    var w: array<vec2<u32>, 80> = array<vec2<u32>, 80>();
     for (var i: u32 = 0u; i < 16u; i = i + 1u) {
         let b = i * 8u;
         let hi = (block[b] << 24u) | (block[b + 1u] << 16u) | (block[b + 2u] << 8u) | block[b + 3u];
@@ -213,10 +207,12 @@ fn load_table_point(index: u32) -> ETEXYT {
     return pt;
 }
 
-fn base58_encode_var(input: ptr<function, array<u32, 32>>, input_len: u32) -> AddressBuf {
+// Using base58_encode_var from base58.wgsl
+
+fn base58_encode_32(input: ptr<function, array<u32, 32>>, input_len: u32) -> AddressBuf {
     var out: AddressBuf;
     var alphabet = B58_ALPHABET;
-    var digits: array<u32, 64>;
+    var digits: array<u32, 64> = array<u32, 64>();
 
     var zero_count = 0u;
     while (zero_count < input_len && (*input)[zero_count] == 0u) {
@@ -248,6 +244,7 @@ fn base58_encode_var(input: ptr<function, array<u32, 32>>, input_len: u32) -> Ad
         out.data[out_len] = alphabet[digits[idx]];
         out_len = out_len + 1u;
     }
+
     out.len = out_len;
     return out;
 }
@@ -301,6 +298,15 @@ fn address_matches(address: ptr<function, AddressBuf>) -> bool {
     return false;
 }
 
+const RESULT_WINNER_INDEX: u32 = 0u;
+const RESULT_ATTEMPTS_LO_INDEX: u32 = 1u;
+const RESULT_ATTEMPTS_HI_INDEX: u32 = 2u;
+const RESULT_BATCHES_INDEX: u32 = 3u;
+const RESULT_ADDRESS_LEN_INDEX: u32 = 4u;
+const RESULT_SCALAR_INDEX: u32 = 5u;
+const RESULT_DEBUG_HASH_INDEX: u32 = 13u;
+const RESULT_ADDRESS_INDEX: u32 = 21u;
+
 fn store_match(
     winner_index: u32,
     attempts_lo: u32,
@@ -308,32 +314,104 @@ fn store_match(
     batches: u32,
     scalar_words: ptr<function, array<u32, 8>>,
     address: ptr<function, AddressBuf>,
+    debug_hash: ptr<function, array<u32, 64>>,
 ) {
     if (result_words[0] != RESULT_SENTINEL) {
         return;
     }
-    result_words[0] = winner_index;
-
-    result_words[1] = attempts_lo;
-    result_words[2] = attempts_hi;
-    result_words[3] = batches;
-    result_words[4] = (*address).len;
+    result_words[RESULT_WINNER_INDEX] = winner_index;
+    result_words[RESULT_ATTEMPTS_LO_INDEX] = attempts_lo;
+    result_words[RESULT_ATTEMPTS_HI_INDEX] = attempts_hi;
+    result_words[RESULT_BATCHES_INDEX] = batches;
+    result_words[RESULT_ADDRESS_LEN_INDEX] = (*address).len;
 
     for (var i: u32 = 0u; i < 8u; i = i + 1u) {
-        result_words[RESULT_SCALAR_BASE + i] = (*scalar_words)[i];
+        result_words[RESULT_SCALAR_INDEX + i] = (*scalar_words)[i];
     }
-    for (var i: u32 = 0u; i < (*address).len; i = i + 1u) {
-        result_words[RESULT_ADDRESS_BASE + i] = (*address).data[i];
+    
+    // Pack 32-byte hash (first 32 elements of debug_hash) into 8 words
+    for (var i: u32 = 0u; i < 8u; i = i + 1u) {
+        let b = i * 4u;
+        result_words[RESULT_DEBUG_HASH_INDEX + i] = (*debug_hash)[b] |
+                                                  ((*debug_hash)[b + 1u] << 8u) |
+                                                  ((*debug_hash)[b + 2u] << 16u) |
+                                                  ((*debug_hash)[b + 3u] << 24u);
+    }
+    
+    // Pack address characters 4-to-1
+    let addr_words = ((*address).len + 3u) / 4u;
+    for (var i: u32 = 0u; i < addr_words; i = i + 1u) {
+        let b = i * 4u;
+        var w = 0u;
+        if (b < (*address).len) { w = (*address).data[b]; }
+        if (b + 1u < (*address).len) { w |= ((*address).data[b + 1u] << 8u); }
+        if (b + 2u < (*address).len) { w |= ((*address).data[b + 2u] << 16u); }
+        if (b + 3u < (*address).len) { w |= ((*address).data[b + 3u] << 24u); }
+        result_words[RESULT_ADDRESS_INDEX + i] = w;
     }
 }
 
-fn derive_solana_address(seed_scalar: ptr<function, BigInt>) -> AddressBuf {
+fn ete_fixed_mul_workgroup(
+    s: ptr<function, BigInt>,
+    p: ptr<function, BigInt>,
+    r: ptr<function, BigInt>,
+) -> ETEPoint {
+    var temp = *s;
+    var scalar_bits: array<bool, 256> = array<bool, 256>();
+
+    for (var i = 0u; i < 256u; i ++) {
+        if bigint_is_zero(&temp) {
+            break;
+        }
+        scalar_bits[i] = !bigint_is_even(&temp);
+        temp = bigint_div2(&temp);
+    }
+
+    var result: ETEPoint;
+    var result_is_inf = true;
+
+    var i = 256u;
+    while (i > 0u) {
+        var bits = 0u;
+        for (var j = 0u; j < {{ log_table_size }}u; j ++){
+            if (i > 0u) {
+                i -= 1u;
+                bits <<= 1u;
+                if (scalar_bits[i]) {
+                    bits |= 1u;
+                }
+            }
+        }
+
+        if (!result_is_inf) {
+            for (var j = 0u; j < {{ log_table_size }}u; j ++){
+                result = ete_dbl_2008_hwcd(&result, p);
+            }
+        }
+
+        if (bits != 0u) {
+            var table_pt = ED25519_TABLE_WG[bits - 1u];
+            var t = ETEPoint(table_pt.x, table_pt.y, table_pt.t, *r);
+            if (result_is_inf) {
+                result = t;
+            } else {
+                result = ete_add_2008_hwcd_3(&result, &t, p);
+            }
+            result_is_inf = false;
+        }
+    }
+
+    return result;
+}
+
+fn derive_solana_address(seed_scalar: ptr<function, BigInt>, debug_out: ptr<function, array<u32, 64>>) -> AddressBuf {
     var seed_bytes = seed_scalar_to_seed_bytes(seed_scalar);
     var ed_scalar = derive_ed25519_scalar_from_seed(&seed_bytes);
-
-    var table: array<ETEXYT, {{ table_size }}>;
-    for (var i: u32 = 0u; i < {{ table_size }}u; i = i + 1u) {
-        table[i] = load_table_point(i);
+    
+    // Write first 64 bytes of SHA-512 into debug_out for verification
+    var digest_full = sha512_32(&seed_bytes);
+    for(var i: u32 = 0u; i < 64u; i = i + 1u) {
+        (*debug_out)[i] = digest_full[i];
     }
 
     var p = get_p();
@@ -342,11 +420,11 @@ fn derive_solana_address(seed_scalar: ptr<function, BigInt>) -> AddressBuf {
     var rinv = get_rinv();
     var mu_fp = get_mu_fp();
 
-    var ext = ete_fixed_mul(&table, &ed_scalar, &p, &r);
+    var ext = ete_fixed_mul_workgroup(&ed_scalar, &p, &r);
     var aff = ete_to_affine_non_mont(&ext, &p, &p_wide, &r, &rinv, &mu_fp);
     var compressed_words = compress_eteaffine(&aff, {{ log_limb_size }}u);
 
-    var compressed_bytes: array<u32, 32>;
+    var compressed_bytes: array<u32, 32> = array<u32, 32>();
     for (var i: u32 = 0u; i < 8u; i = i + 1u) {
         let w = compressed_words[i];
         let j = i * 4u;
@@ -356,15 +434,19 @@ fn derive_solana_address(seed_scalar: ptr<function, BigInt>) -> AddressBuf {
         compressed_bytes[j + 3u] = (w >> 24u) & 0xffu;
     }
 
-    return base58_encode_var(&compressed_bytes, 32u);
+    return base58_encode_32(&compressed_bytes, 32u);
 }
 
 @compute
 @workgroup_size(256)
-fn ed25519_sol_vanity_search(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    if (result_words[0] != RESULT_SENTINEL) {
-        return;
+fn ed25519_sol_vanity_search(
+    @builtin(global_invocation_id) global_id: vec3<u32>,
+    @builtin(local_invocation_id) local_id: vec3<u32>
+) {
+    if (local_id.x < {{ table_size }}u) {
+        ED25519_TABLE_WG[local_id.x] = load_table_point(local_id.x);
     }
+    workgroupBarrier();
 
     if (global_id.x == 0u) {
         counter_limbs[0] = params.line1.z;
@@ -400,7 +482,8 @@ fn ed25519_sol_vanity_search(@builtin(global_invocation_id) global_id: vec3<u32>
         add_hi = add_hi + attempt_base_hi;
 
         var seed_scalar = derive_seed_scalar(add_lo, add_hi);
-        var address = derive_solana_address(&seed_scalar);
+        var digest: array<u32, 64> = array<u32, 64>();
+        var address = derive_solana_address(&seed_scalar, &digest);
         if (!address_matches(&address)) {
             continue;
         }
@@ -419,6 +502,7 @@ fn ed25519_sol_vanity_search(@builtin(global_invocation_id) global_id: vec3<u32>
             params.line1.z + 1u,
             &scalar_words,
             &address,
+            &digest,
         );
         return;
     }

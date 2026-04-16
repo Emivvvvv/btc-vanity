@@ -21,14 +21,19 @@ fn compress_eteaffine(
     log_limb_size: u32,
 ) -> array<u32, 8> {
     var y_limbs = (*pt).y.limbs;
-    var y_bytes = limbs_le_to_bytes_be(&y_limbs, {{ log_limb_size }}u);
+    var y_bytes = limbs_le_to_bytes_le(&y_limbs, {{ log_limb_size }}u);
 
     var pt_x = (*pt).x;
     if (is_negative(&pt_x)) {
-        y_bytes[0] ^= 0x80u;
+        y_bytes[31] |= 0x80u;
     }
 
-    return bytes_be_to_u32s(&y_bytes);
+    var out: array<u32, 8>;
+    for (var i: u32 = 0u; i < 8u; i = i + 1u) {
+        let j = i * 4u;
+        out[i] = y_bytes[j] | (y_bytes[j + 1u] << 8u) | (y_bytes[j + 2u] << 16u) | (y_bytes[j + 3u] << 24u);
+    }
+    return out;
 }
 
 /// https://www.hyperelliptic.org/EFD/g1p/auto-twisted-extended-1.html#addition-add-2008-hwcd-3
@@ -215,6 +220,7 @@ fn ete_to_affine_non_mont(
 
     var x = ff_mul(&xr, rinv, p, p_wide, mu_fp);
     var y = ff_mul(&yr, rinv, p, p_wide, mu_fp);
+
     var exponent = *p;
     exponent.limbs[0] -= 2u;
     var z_inv_r = modpow(&zr, r, &exponent, p);

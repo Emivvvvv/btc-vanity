@@ -16,4 +16,3 @@ pub fn ed25519_fq_modulus_biguint() -> BigUint {
 pub fn ed25519_fr_modulus_biguint() -> BigUint {
     BigUint::from_bytes_be(&ark_ed25519::Fr::MODULUS.to_bytes_be())
 }
-

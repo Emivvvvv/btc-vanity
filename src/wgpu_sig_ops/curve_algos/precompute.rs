@@ -10,4 +10,3 @@ pub fn precompute_table<P: CurveGroup>(pt: P, w: u32) -> Vec<P::Affine> {
     }
     table
 }
-

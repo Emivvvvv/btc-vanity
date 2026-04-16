@@ -19,8 +19,6 @@ fn projective_to_affine_non_mont(
 
     var z_inv = ff_mul(&z_inv_r, rinv, p, p_wide, mu_fp);
 
-    //var z_inv = ff_inverse(&z, p);
-
     var affine_x = ff_mul(&x, &z_inv, p, p_wide, mu_fp);
     var affine_y = ff_mul(&y, &z_inv, p, p_wide, mu_fp);
 

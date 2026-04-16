@@ -12,7 +12,7 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 
 const WGSL_TEMPLATE_PATH: &str = "src/wgpu_sig_ops/wgsl/";
-const WGSL_TESTS_PATH: &str = "src/wgpu_sig_ops/wgsl/tests";
+const WGSL_TESTS_PATH: &str = "src/wgpu_sig_ops/wgsl/";
 
 fn get_secp256k1_b() -> BigUint {
     BigUint::from(7u32)
@@ -30,8 +30,12 @@ fn read_from_file(path: &str, file: &str) -> String {
     let input_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join(path)
         .join(file);
-    std::fs::read_to_string(&input_path)
-        .unwrap_or_else(|err| panic!("failed to read shader template {}: {err}", input_path.display()))
+    std::fs::read_to_string(&input_path).unwrap_or_else(|err| {
+        panic!(
+            "failed to read shader template {}: {err}",
+            input_path.display()
+        )
+    })
 }
 
 fn add_source_to_env(template_path: &str, template_file: &str, env: &mut Environment) {
@@ -42,9 +46,17 @@ fn add_source_to_env(template_path: &str, template_file: &str, env: &mut Environ
         .unwrap();
 }
 
-fn gen_constant_bigint(var_name: &str, val: &BigUint, num_limbs: usize, log_limb_size: u32) -> String {
+fn gen_constant_bigint(
+    var_name: &str,
+    val: &BigUint,
+    num_limbs: usize,
+    log_limb_size: u32,
+) -> String {
     let r_limbs = bigint::from_biguint_le(val, num_limbs, log_limb_size);
-    let mut result = format!("var {}: BigInt = BigInt(array<u32, {}>(", var_name, num_limbs);
+    let mut result = format!(
+        "var {}: BigInt = BigInt(array<u32, {}>(",
+        var_name, num_limbs
+    );
     for (i, limb) in r_limbs.iter().enumerate() {
         result.push_str(format!("{limb}u").as_str());
         if i < num_limbs - 1 {
@@ -71,36 +83,67 @@ fn do_render(
     let p_bitlength = calc_bitwidth(p);
     let slack = num_limbs * log_limb_size as usize - p_bitlength;
 
+    let r2 = (&r * &r) % p;
+    let scalar_r2 = (&r * &r) % scalar_p;
+
     let r_bigint = gen_constant_bigint("r", &(&r % p), num_limbs, log_limb_size);
+    let r2_bigint = gen_constant_bigint("r2", &r2, num_limbs, log_limb_size);
     let rinv_bigint = gen_constant_bigint("rinv", &(&rinv % p), num_limbs, log_limb_size);
     let p_bigint = gen_constant_bigint("p", p, num_limbs, log_limb_size);
     let scalar_p_bigint = gen_constant_bigint("scalar_p", scalar_p, num_limbs, log_limb_size);
+    let scalar_r2_bigint = gen_constant_bigint("scalar_r2", &scalar_r2, num_limbs, log_limb_size);
     let br_bigint = gen_constant_bigint("br", &(b * &r % p), num_limbs, log_limb_size);
-    let br3_bigint = gen_constant_bigint("br3", &((BigUint::from(3u32) * b * &r) % p), num_limbs, log_limb_size);
+    let br3_bigint = gen_constant_bigint(
+        "br3",
+        &((BigUint::from(3u32) * b * &r) % p),
+        num_limbs,
+        log_limb_size,
+    );
     let mu_fp_bigint = gen_constant_bigint("mu_fp", &ff::gen_mu(p), num_limbs, log_limb_size);
-    let mu_fr_bigint = gen_constant_bigint("mu_fr", &ff::gen_mu(scalar_p), num_limbs, log_limb_size);
+    let mu_fr_bigint =
+        gen_constant_bigint("mu_fr", &ff::gen_mu(scalar_p), num_limbs, log_limb_size);
 
     let secp256k1_generator_x =
         BigUint::from_bytes_be(&ark_secp256k1::G_GENERATOR_X.into_bigint().to_bytes_be());
     let secp256k1_generator_y =
         BigUint::from_bytes_be(&ark_secp256k1::G_GENERATOR_Y.into_bigint().to_bytes_be());
-    let secp256k1_generator_xr_bigint =
-        gen_constant_bigint("secp256k1_generator_xr", &(secp256k1_generator_x * &r % p), num_limbs, log_limb_size);
-    let secp256k1_generator_yr_bigint =
-        gen_constant_bigint("secp256k1_generator_yr", &(secp256k1_generator_y * &r % p), num_limbs, log_limb_size);
+    let secp256k1_generator_xr_bigint = gen_constant_bigint(
+        "secp256k1_generator_xr",
+        &(secp256k1_generator_x * &r % p),
+        num_limbs,
+        log_limb_size,
+    );
+    let secp256k1_generator_yr_bigint = gen_constant_bigint(
+        "secp256k1_generator_yr",
+        &(secp256k1_generator_y * &r % p),
+        num_limbs,
+        log_limb_size,
+    );
 
     let secp256r1_generator_x =
         BigUint::from_bytes_be(&ark_secp256r1::G_GENERATOR_X.into_bigint().to_bytes_be());
     let secp256r1_generator_y =
         BigUint::from_bytes_be(&ark_secp256r1::G_GENERATOR_Y.into_bigint().to_bytes_be());
-    let secp256r1_generator_xr_bigint =
-        gen_constant_bigint("secp256r1_generator_xr", &(secp256r1_generator_x * &r % p), num_limbs, log_limb_size);
-    let secp256r1_generator_yr_bigint =
-        gen_constant_bigint("secp256r1_generator_yr", &(secp256r1_generator_y * &r % p), num_limbs, log_limb_size);
+    let secp256r1_generator_xr_bigint = gen_constant_bigint(
+        "secp256r1_generator_xr",
+        &(secp256r1_generator_x * &r % p),
+        num_limbs,
+        log_limb_size,
+    );
+    let secp256r1_generator_yr_bigint = gen_constant_bigint(
+        "secp256r1_generator_yr",
+        &(secp256r1_generator_y * &r % p),
+        num_limbs,
+        log_limb_size,
+    );
 
     let sqrt_case3mod4_exponent = (p + BigUint::from(1u32)) / BigUint::from(4u32);
-    let sqrt_case3mod4_exponent_bigint =
-        gen_constant_bigint("sqrt_case3mod4_exponent", &sqrt_case3mod4_exponent, num_limbs, log_limb_size);
+    let sqrt_case3mod4_exponent_bigint = gen_constant_bigint(
+        "sqrt_case3mod4_exponent",
+        &sqrt_case3mod4_exponent,
+        num_limbs,
+        log_limb_size,
+    );
 
     let log_table_size = WINDOW_SIZE;
     let table_size = 2u32.pow(log_table_size);
@@ -117,9 +160,11 @@ fn do_render(
             n0 => n0,
             slack => slack,
             r_bigint => r_bigint,
+            r2_bigint => r2_bigint,
             rinv_bigint => rinv_bigint,
             p_bigint => p_bigint,
             scalar_p_bigint => scalar_p_bigint,
+            scalar_r2_bigint => scalar_r2_bigint,
             br_bigint => br_bigint,
             br3_bigint => br3_bigint,
             mu_fp_bigint => mu_fp_bigint,
@@ -149,35 +194,60 @@ fn do_render_ed25519(
     let p_bitlength = calc_bitwidth(p);
     let slack = num_limbs * log_limb_size as usize - p_bitlength;
 
+    let r2 = (&r * &r) % p;
+    let scalar_r2 = (&r * &r) % scalar_p;
+
     let r_bigint = gen_constant_bigint("r", &(&r % p), num_limbs, log_limb_size);
+    let r2_bigint = gen_constant_bigint("r2", &r2, num_limbs, log_limb_size);
     let rinv_bigint = gen_constant_bigint("rinv", &(&rinv % p), num_limbs, log_limb_size);
     let p_bigint = gen_constant_bigint("p", p, num_limbs, log_limb_size);
     let scalar_p_bigint = gen_constant_bigint("scalar_p", scalar_p, num_limbs, log_limb_size);
+    let scalar_r2_bigint = gen_constant_bigint("scalar_r2", &scalar_r2, num_limbs, log_limb_size);
     let d2r_bigint = gen_constant_bigint("d2r", &(d2 * &r % p), num_limbs, log_limb_size);
     let mu_fp_bigint = gen_constant_bigint("mu_fp", &ff::gen_mu(p), num_limbs, log_limb_size);
-    let mu_fr_bigint = gen_constant_bigint("mu_fr", &ff::gen_mu(scalar_p), num_limbs, log_limb_size);
+    let mu_fr_bigint =
+        gen_constant_bigint("mu_fr", &ff::gen_mu(scalar_p), num_limbs, log_limb_size);
 
-    let p58_exponent =
-        BigUint::parse_bytes(b"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffd", 16)
-            .unwrap();
-    let p58_exponent_bigint = gen_constant_bigint("p58_exponent", &p58_exponent, num_limbs, log_limb_size);
+    let p58_exponent = BigUint::parse_bytes(
+        b"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffd",
+        16,
+    )
+    .unwrap();
+    let p58_exponent_bigint =
+        gen_constant_bigint("p58_exponent", &p58_exponent, num_limbs, log_limb_size);
 
     let sqrt_m1 = ark_ed25519::Fq::from(-1i32).sqrt().unwrap();
     let sqrt_m1_bigint: BigUint = sqrt_m1.into_bigint().into();
-    let sqrt_m1r_bigint =
-        gen_constant_bigint("sqrt_m1r", &(sqrt_m1_bigint * &r % p), num_limbs, log_limb_size);
+    let sqrt_m1r_bigint = gen_constant_bigint(
+        "sqrt_m1r",
+        &(sqrt_m1_bigint * &r % p),
+        num_limbs,
+        log_limb_size,
+    );
 
     let edwards_dr: BigUint = ark_ed25519::EdwardsConfig::COEFF_D.into_bigint().into();
-    let edwards_dr_bigint =
-        gen_constant_bigint("edwards_dr", &(edwards_dr * &r % p), num_limbs, log_limb_size);
+    let edwards_dr_bigint = gen_constant_bigint(
+        "edwards_dr",
+        &(edwards_dr * &r % p),
+        num_limbs,
+        log_limb_size,
+    );
 
     let generator = EdwardsAffine::generator();
     let ed25519_generator_x = BigUint::from_bytes_be(&generator.x.into_bigint().to_bytes_be());
     let ed25519_generator_y = BigUint::from_bytes_be(&generator.y.into_bigint().to_bytes_be());
-    let ed25519_generator_xr_bigint =
-        gen_constant_bigint("ed25519_generator_xr", &(&ed25519_generator_x * &r % p), num_limbs, log_limb_size);
-    let ed25519_generator_yr_bigint =
-        gen_constant_bigint("ed25519_generator_yr", &(&ed25519_generator_y * &r % p), num_limbs, log_limb_size);
+    let ed25519_generator_xr_bigint = gen_constant_bigint(
+        "ed25519_generator_xr",
+        &(&ed25519_generator_x * &r % p),
+        num_limbs,
+        log_limb_size,
+    );
+    let ed25519_generator_yr_bigint = gen_constant_bigint(
+        "ed25519_generator_yr",
+        &(&ed25519_generator_y * &r % p),
+        num_limbs,
+        log_limb_size,
+    );
     let ed25519_generator_tr_bigint = gen_constant_bigint(
         "ed25519_generator_tr",
         &((&ed25519_generator_x * &ed25519_generator_y) * &r % p),
@@ -201,9 +271,11 @@ fn do_render_ed25519(
             n0 => n0,
             slack => slack,
             r_bigint => r_bigint,
+            r2_bigint => r2_bigint,
             rinv_bigint => rinv_bigint,
             p_bigint => p_bigint,
             scalar_p_bigint => scalar_p_bigint,
+            scalar_r2_bigint => scalar_r2_bigint,
             d2r_bigint => d2r_bigint,
             mu_fp_bigint => mu_fp_bigint,
             mu_fr_bigint => mu_fr_bigint,
@@ -306,4 +378,3 @@ pub fn render_ed25519_curve_tests(template_file: &str, log_limb_size: u32) -> St
     let template = env.get_template(template_file).unwrap();
     do_render_ed25519(&p, &scalar_p, &d2, log_limb_size, &template)
 }
-

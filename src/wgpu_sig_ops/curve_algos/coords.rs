@@ -12,4 +12,3 @@ pub struct ETEProjective<F> {
     pub t: F,
     pub z: F,
 }
-
