@@ -1,259 +1,244 @@
-# <img src='images/bitcoin.svg' height='22'> <img src='images/ethereum.png' height='22'> <img src='images/solana.png' height='22'> btc-vanity
-#### v 2.1.2
-A blazingly fast vanity address generator written with the Rust programming language.  Supporting Bitcoin (always included), Ethereum, and Solana (via optional features).
+<!-- PROJECT LOGO -->
+<br />
+<div align="center">
+  <p>
+    <img src="images/bitcoin.svg" alt="Bitcoin" height="54">
+    &nbsp;&nbsp;
+    <img src="images/ethereum.png" alt="Ethereum" height="54">
+    &nbsp;&nbsp;
+    <img src="images/solana.png" alt="Solana" height="54">
+  </p>
 
-With btc-vanity, you can generate wallets that have custom addresses with prefixes, suffixes, substrings, or even regex patterns. It's designed for **speed**, **flexibility**, and **security**.
+  <h1 align="center">btc-vanity</h1>
 
-You can easily run the btc-vanity terminal application locally or use it as a library to create your vanity keypairs securely.
+  <p align="center">
+    Local vanity-address search for Bitcoin, Ethereum, and Solana.<br />
+    Multithreaded CPU search, adaptive Auto selection, and experimental GPU acceleration in Hybrid or GPU mode.
+  </p>
 
-## Key Features
+  <p align="center">
+    <a href="https://crates.io/crates/btc-vanity"><img src="https://img.shields.io/crates/v/btc-vanity.svg" alt="crates.io release"></a>
+    <a href="https://docs.rs/btc-vanity/latest/btc_vanity/"><img src="https://docs.rs/btc-vanity/badge.svg" alt="docs.rs"></a>
+    <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.89%2B-black.svg" alt="Rust 1.89+"></a>
+    <a href="https://github.com/Emivvvvv/btc-vanity/actions/workflows/rust.yml"><img src="https://github.com/Emivvvvv/btc-vanity/actions/workflows/rust.yml/badge.svg" alt="CI"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-green.svg" alt="Apache-2.0"></a>
+  </p>
 
-**Multi-Chain Support**:
-*   **Bitcoin:** Always included.
-*   **Ethereum:**  Enabled via the `ethereum` feature.
-*   **Solana:** Enabled via the `solana` feature.
+  <p align="center">
+    <a href="https://emivvvvv.github.io/btc-vanity/"><strong>Read the user manual »</strong></a>
+    <br />
+    <a href="https://docs.rs/btc-vanity/latest/btc_vanity/">API reference</a>
+    ·
+    <a href="https://github.com/Emivvvvv/btc-vanity/issues/new?labels=bug">Report a bug</a>
+    ·
+    <a href="https://github.com/Emivvvvv/btc-vanity/issues/new?labels=enhancement">Request a feature</a>
+  </p>
+</div>
 
-**Advanced Customization**: Match prefixes, suffixes, substrings, or regex-based patterns with optional case insensitivity. <br>
-**Blazingly Fast Performance**: Fully utilize your hardware with customizable thread counts. <br>
-**Batch File Support**: Bulk generate addresses using input files with desired patterns. <br>
+---
 
-## Installation
+Generate vanity wallet addresses on hardware you control. btc-vanity searches
+locally for a prefix, suffix, substring, or regular expression; no remote
+generation service receives the candidate keys.
 
-### CLI
+## Why btc-vanity?
 
-Install the binary using `cargo`:
+- **One search interface, three chains.** Search Bitcoin, Ethereum, and Solana
+  addresses from the CLI or the Rust library.
+- **Local key generation.** Candidate key material stays within the local
+  process and, when experimental GPU acceleration is enabled, the local
+  graphics stack.
+- **Backends for different workloads.** Choose predictable CPU execution,
+  adaptive Auto selection, concurrent Hybrid search, or the experimental GPU
+  backend explicitly.
+- **Matching without workflow changes.** Prefix, suffix, and anywhere searches
+  share the same options; regex routes to the CPU.
+- **Resource-aware acceleration.** Best-effort GPU duty-cycle control trades
+  throughput for a more responsive desktop.
+
+## Quick start
+
+Install Bitcoin CPU support:
 
 ```bash
-cargo install btc-vanity  # Installs Bitcoin support only (default)
-cargo install btc-vanity --features ethereum  # Installs with Ethereum support
-cargo install btc-vanity --features solana    # Installs with Solana support
-cargo install btc-vanity --features all       # Installs with all features (Bitcoin, Ethereum, Solana)
+cargo install btc-vanity
 ```
 
-**Important:**  You *must* use the `--features` flag to enable Ethereum and/or Solana support.  If you omit the flag, you'll only get Bitcoin functionality.
+Install every chain plus experimental GPU support:
 
-### Library
+```bash
+cargo install btc-vanity --features all
+```
 
-Include `btc-vanity` in your `Cargo.toml`:
+Bitcoin and prefix matching are the defaults:
+
+```bash
+btc-vanity emiv
+```
+
+Select another chain or match mode:
+
+```bash
+btc-vanity --eth --suffix dead
+btc-vanity --sol --anywhere --case-sensitive Sun
+btc-vanity --backend cpu --regex '^1E.*T$'
+```
+
+Use Auto when the program should select a backend from the pattern and
+available hardware:
+
+```bash
+btc-vanity --backend auto --anywhere test
+```
+
+Run `btc-vanity --help` for the complete option list. Ethereum, Solana, and
+experimental GPU commands require the corresponding Cargo features.
+
+## Capability matrix
+
+| Capability | Bitcoin | Ethereum | Solana |
+| --- | --- | --- | --- |
+| Address form searched | Mainnet P2PKH, Base58 | Hexadecimal | Base58 |
+| Prefix | Yes | Yes | Yes |
+| Suffix | Yes | Yes | Yes |
+| Anywhere | Yes | Yes | Yes |
+| Regex | Yes, CPU | Yes, CPU | Yes, CPU |
+| Case-sensitive exact matching | Yes | No | Yes |
+| CPU | Built in | `ethereum` feature | `solana` feature |
+| Experimental GPU exact matching | `gpu` feature | `ethereum` + `gpu` | `solana` + `gpu` |
+
+The `all` feature enables `ethereum`, `solana`, and the experimental `gpu`
+feature. Bitcoin CPU search needs no optional feature.
+
+## Execution backends
+
+| Backend | Behavior | Best fit |
+| --- | --- | --- |
+| `cpu` | Multithreaded CPU search for every match mode | Regex, short patterns, compatibility, or CPU-only operation |
+| `auto` | Selects CPU, Hybrid, or experimental GPU for exact matching; uses CPU for regex and falls back to CPU when acceleration is unavailable | Let the search shape and available adapter drive selection |
+| `hybrid` | Runs CPU and experimental GPU workers together for exact matching; uses CPU for regex | Keep CPU search active while using a compatible adapter |
+| `gpu` | Uses only the experimental GPU path and rejects regex or an unavailable GPU build/adapter | Explicit accelerator-only exact matching |
+
+The CLI defaults to Hybrid; `VanitySearchOptions::default()` uses Auto for
+library calls. Without the `gpu` feature, Hybrid runs on CPU.
+
+Hybrid defaults to 70% GPU usage. Explicit GPU defaults to 100%:
+
+```bash
+btc-vanity --backend hybrid --gpu-usage-limit 50 emiv
+btc-vanity --backend gpu --gpu-usage-limit 90 emiv
+```
+
+`--gpu-usage-limit` accepts values from 1 through 100. It is a best-effort
+dispatch duty-cycle limit, not a hardware power cap. Drivers, operating-system
+scheduling, and competing workloads still determine responsiveness. Lower the
+value when the display or another GPU workload needs more headroom.
+
+`--gpu-batch-size` is an advanced override for experimental GPU and Hybrid
+search. Larger work submissions can favor throughput while increasing the time
+before other graphics work is scheduled.
+
+## Library use
 
 ```toml
 [dependencies]
-btc-vanity = "2.1.0"  # Bitcoin support only
-
-# For Ethereum support:
-# btc-vanity = { version = "2.1.0", features = ["ethereum"] }
-
-# For Solana support:
-# btc-vanity = { version = "2.1.0", features = ["solana"] }
-
-# For all features:
-# btc-vanity = { version = "2.1.0", features = ["all"] }
+btc-vanity = { version = "3.0.0", features = ["all"] }
 ```
-
-Crate on [crates.io](https://crates.io/crates/btc-vanity) <br>
-Documentation on [docs.rs](https://docs.rs/btc-vanity/latest/btc_vanity/index.html)
-
-## CLI Usage
-
-### Basic CLI Syntax
-
-The CLI tool provides several options to customize your address generation:
-
-```shell
-$ btc-vanity [OPTIONS] <PATTERN>
-```
-
-#### Blockchain Selection
-
-*   `--btc`: Generates Bitcoin keypairs and addresses. (Always available)
-*   `--eth`: Generates Ethereum keypairs and addresses. (**Requires the `ethereum` feature**)
-*   `--sol`: Generates Solana keypairs and addresses. (**Requires the `solana` feature**)
-
-#### General Options
-
-*   `-i, --input-file <FILE>`: Reads patterns and flags from the specified file (one pattern per line).
-*   `-o, --output-file <FILE>`: Saves generated wallet details to the specified file.
-*   `-t, --threads <N>`: Sets the number of threads for address generation.
-*   `-f, --force-flags`: Forces CLI flags to override flags in the input file.
-*   `-d, --disable-fast`: Disables fast mode (allows longer patterns).
-
-#### Matching Options
-
-*   `-p, --prefix`: Matches the pattern as a prefix (default).
-*   `-s, --suffix`: Matches the pattern as a suffix.
-*   `-a, --anywhere`: Matches the pattern anywhere in the address.
-*   `-r, --regex <REGEX>`: Matches addresses using a regular expression.
-*   `-c, --case-sensitive`: Enables case-sensitive matching.
-
-### Bitcoin CLI Examples
-
-These examples *always* work, as Bitcoin support is always included.
-
-Generate a Bitcoin address with prefix `1Emiv` (case-insensitive):
-
-```shell
-$ btc-vanity Emiv
-```
-
-Generate a Bitcoin address containing the substring `test` (case-sensitive):
-
-```shell
-$ btc-vanity -a -c test
-```
-
-Generate a Bitcoin address using a regex pattern `^1E.*T$`:
-
-```shell
-$ btc-vanity -r "^1E.*T$"
-```
-
-Generate multiple Bitcoin addresses and save to `wallets.txt`:
-
-> [!NOTE]
-> -f flag will override any pattern flags inside the `input-file.txt`.
-> For example if there line `emiv -s --eth` will become `emiv -p --btc -c`.
-> The resulting wallet will be printed in `wallets.txt`.
-
-```shell
-$ btc-vanity -f --btc -p -c -i input-file.txt -o wallets.txt
-```
-### Ethereum and Solana CLI Examples
-**Important:** These commands *require* that you installed `btc-vanity` with the appropriate features (see Installation section above).
-Generate an Ethereum address starting with 0xdead with 8 threads:
-```shell
-# Ensure you installed with: cargo install btc-vanity --features ethereum
-$ btc-vanity --eth -t 8 dead
-```
-
-Generate a Solana address ending with 123:
-```shell
-# Ensure you installed with: cargo install btc-vanity --features solana
-$ btc-vanity --sol -s 123
-```
-
-## Library Usage
-
-Here are some usage examples of `btc-vanity` as a library.
-
-### Generate a Bitcoin Vanity Address
-Find a Bitcoin address that contains the substring `emiv` (case-insensitive) using 16 threads:
-```rust
-use btc_vanity::{BitcoinKeyPair, VanityAddr, VanityMode};
-
-let vanity_address: BitcoinKeyPair = VanityAddr::generate(
-            "emiv", // Desired substring
-            16,     // Number of threads
-            false,  // Case-insensitive
-            true,   // Enable fast mode
-            VanityMode::Anywhere // Match substring anywhere in the address
-            ).unwrap();
-
-println!("Vanity address:\n\
-          private_key (WIF): {}\n\
-          public_key (compressed): {}\n\
-          address (compressed): {}\n",
-          vanity_address.get_wif_private_key(),
-          vanity_address.get_comp_public_key(),
-          vanity_address.get_comp_address());
-```
-
-#### Generate an Ethereum Vanity Address
-**Requires the `ethereum` feature.**
-Match an Ethereum address with the prefix `0xdead` using 8 threads:
-```rust
-# #[cfg(feature = "ethereum")] // Important: Only compile this example with the feature!
-# {
-use btc_vanity::{EthereumKeyPair, VanityAddr, VanityMode};
-
-let vanity_address: EthereumKeyPair = VanityAddr::generate(
-            "dead", // Desired prefix
-            8,      // Number of threads
-            false,  // Case-insensitive (Case sensitivity not supported on ETH generation)
-            true,   // Enable fast mode
-            VanityMode::Prefix // Match substring at the start
-            ).unwrap();
-
-println!("Ethereum vanity address:\n\
-          private_key (hex): {}\n\
-          public_key (hex): {}\n\
-          address (hex): {}\n",
-          vanity_address.get_private_key_as_hex(),
-          vanity_address.get_public_key_as_hex(),
-          vanity_address.get_address_with_prefix());
-# }
-```
-
-#### Generate a Solana Vanity Address
-**Requires the `solana` feature.**
-
-Create a Solana address with `meow` anywhere in the address (case-sensitive) using 4 threads:
 
 ```rust
-# #[cfg(feature = "solana")] // Important: Only compile this example with the feature!
-# {
-use btc_vanity::{SolanaKeyPair, VanityAddr, VanityMode}; // Removed KeyPairGenerator
+use btc_vanity::{
+    BitcoinKeyPair, VanityAddr, VanityBackend, VanityMode, VanitySearchOptions,
+};
 
-let vanity_address: SolanaKeyPair = VanityAddr::generate(
-            "meow",  // Desired substring
-            4,      // Number of threads
-            true,   // Case-sensitive
-            true,   // Enable fast mode
-            VanityMode::Anywhere // Match substring anywhere in the address
-            ).unwrap();
+fn main() -> Result<(), btc_vanity::error::VanityError> {
+    let wallet = VanityAddr::generate_with_options::<BitcoinKeyPair>(
+        "emiv",
+        VanitySearchOptions {
+            threads: 4,
+            case_sensitive: false,
+            vanity_mode: VanityMode::Prefix,
+            backend: VanityBackend::Hybrid,
+            gpu_usage_limit: Some(70),
+            ..VanitySearchOptions::default()
+        },
+    )?;
 
-println!("Solana vanity address:\n\
-          private_key (Base58): {}\n\
-          public_key (Base58): {}\n\
-          address (Base58): {}\n",
-          vanity_address.get_private_key_as_base58(),
-          vanity_address.get_public_key_as_base58(),
-          vanity_address.get_address());
-
-# }
-
-```
-#### Regex Matching for Bitcoin Addresses
-Find a Bitcoin address that matches a regex pattern `^1E.ET.*T$` with using 12 threads:
-
-```rust
-use btc_vanity::{BitcoinKeyPair, VanityAddr};
-
-let vanity_address = VanityAddr::generate_regex::<BitcoinKeyPair>(
-            "^1E.*ET.*T$", // The regex pattern
-            12            // Number of threads
-            ).unwrap();
-
-println!("Bitcoin regex-matched vanity address:\n\
-          private_key (WIF): {}\n\
-          public_key (compressed): {}\n\
-          address (compressed): {}\n",
-          vanity_address.get_wif_private_key(),
-          vanity_address.get_comp_public_key(),
-          vanity_address.get_comp_address());
+    println!("address: {}", wallet.get_comp_address());
+    Ok(())
+}
 ```
 
-## Contributing
+This example prints only the public address. Generated wallet objects also
+contain private key material; keep them out of logs and diagnostics.
 
-Contributions are welcome! If you'd like to improve btc-vanity or add support for additional chains, feel free to open an issue or submit a pull request on GitHub.
+## Performance principles
 
-## Disclaimer
+Vanity search is probabilistic, and expected work grows exponentially with the
+number of constrained characters. Pattern length and alphabet therefore matter
+more than a backend label.
 
-**USE WITH CAUTION AND UNDERSTANDING**
+- CPU avoids accelerator setup and is the only regex engine, making it the
+  predictable choice for regex and many short searches.
+- Auto keeps short or unsupported work on CPU, can combine CPU with the
+  experimental GPU path for medium exact patterns, and can select experimental
+  GPU-only execution for longer exact patterns when a compatible adapter is
+  available.
+- Hybrid searches concurrently. Either worker may find the result first, and a
+  GPU initialization failure does not prevent its CPU path from continuing.
+- Experimental GPU throughput depends on chain, pattern shape, adapter, driver,
+  and system load. A GPU is not inherently faster for every search.
+- Lower GPU usage limits and smaller batches favor interactive responsiveness;
+  higher values favor sustained throughput.
 
-btc-vanity is a tool designed to assist users in generating customized vanity Bitcoin, Solana, and Ethereum addresses using the Rust programming language. While btc-vanity aims to provide a secure and efficient method for generating vanity addresses, it is essential to exercise caution and follow the best security practices.
+Measure on the target machine with representative patterns before choosing a
+backend for long-running work.
 
-1.  **Security Awareness**: Generating and using vanity addresses involves the creation of private keys and public addresses. Private keys grant control over the associated funds. It is crucial to understand the risks involved in managing private keys and to never share them with anyone. Keep your private keys stored securely and never expose them to potential threats.
+## Security and limitations
 
-2.  **Risk of Loss**: Improper use of btc-vanity, mishandling of private keys, or failure to follow security guidelines may result in the loss of Bitcoin, Solana, or Ethereum funds. Always double-check the addresses generated and verify their accuracy before using them for transactions.
+btc-vanity creates spend-authorizing private keys. Treat the process, terminal,
+graphics stack, output files, backups, and wallet import path as one security
+boundary.
 
-3.  **Verification**: Before utilizing any vanity address generated by btc-vanity, thoroughly verify the integrity of the software and the generated addresses. Only use versions of btc-vanity obtained from reputable sources, such as the official crates.io page.
+- Run a reviewed build on a machine you control. Experimental GPU search sends
+  seed and candidate state to the local graphics device and driver; use CPU if
+  that stack is outside your trust boundary.
+- The CLI prints wallet details unless `--output-file` is used. Terminal
+  scrollback, session recording, existing file permissions, and backups can
+  retain private keys.
+- Newly created output files request owner-only permissions on Unix. Existing,
+  shared, network, and removable filesystems may behave differently; verify
+  permissions yourself.
+- Independently derive and verify the returned address before funding it. Never
+  place a real private key in a website, issue, test fixture, log, or chat.
+- A vanity pattern changes an address's appearance, not the security of its
+  private key. Search duration is not guaranteed.
+- Regex is CPU-only. Explicit experimental GPU regex requests fail; Auto and
+  Hybrid route regex to CPU.
+- Ethereum exact matching is case-insensitive. Bitcoin output is mainnet P2PKH.
+- Experimental GPU support requires the `gpu` feature, a compatible wgpu
+  adapter, and a working platform graphics stack.
 
-4.  **Backup and Recovery**: Maintain proper backups of your private keys and any relevant data. In the event of device failure, loss, or corruption, having secure backups will help prevent irreversible loss of funds.
+Read the [security guide](docs/src/security.md) before using a generated wallet
+with funds.
 
-5.  **Use at Your Own Risk**: The btc-vanity software is provided "as is," without any warranties or guarantees. The author(s) and contributors of btc-vanity shall not be held responsible for any direct or indirect damages, losses, or liabilities resulting from the use or misuse of this software.
+## Explore
 
-6.  **Educational Purposes**: btc-vanity is intended for educational and personal use. It is your responsibility to ensure compliance with any legal, regulatory, or tax requirements in your jurisdiction related to Bitcoin, Solana, Ethereum, and cryptocurrency usage.
+- [User manual](https://emivvvvv.github.io/btc-vanity/) - guided installation
+  and usage
+- [CLI reference](docs/src/cli.md) - chains, match modes, files, and backend
+  controls
+- [Experimental GPU and Hybrid search](docs/src/gpu-search.md) - adapter
+  behavior, resource limits, and tuning
+- [Library guide](docs/src/library.md) - typed search APIs and chain-specific
+  examples
+- [API reference](https://docs.rs/btc-vanity/latest/btc_vanity/) - public Rust
+  interface
+- [Security guide](docs/src/security.md) - key handling and trust boundaries
+- [Contributing](CONTRIBUTING.md) - development workflow and verification
+  requirements
 
-By using btc-vanity, you acknowledge and accept the risks associated with generating vanity addresses and handling private keys. It is your responsibility to exercise diligence, follow security best practices, and be aware of potential risks.
+## License
 
-Remember, the security of your cryptocurrency holdings is paramount. Always prioritize the safety and security of your assets.
+btc-vanity is licensed under the [Apache License 2.0](LICENSE). Adapted portions
+of the experimental GPU implementation retain the
+[wgpu-sigops MIT license](THIRD_PARTY_LICENSES/wgpu-sigops/LICENSE-MIT).

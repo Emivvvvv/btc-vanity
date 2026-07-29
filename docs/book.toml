@@ -1,0 +1,11 @@
+[book]
+authors = ["Emirhan Tala"]
+language = "en"
+src = "src"
+title = "btc-vanity User Manual"
+
+[preprocessor.links]
+
+[output.html]
+git-repository-url = "https://github.com/Emivvvvv/btc-vanity"
+edit-url-template = "https://github.com/Emivvvvv/btc-vanity/edit/main/docs/{path}"
