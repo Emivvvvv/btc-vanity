@@ -32,7 +32,7 @@ const LOG_LIMB_SIZE: u32 = 13;
 const WORKGROUP_SIZE: u32 = 256;
 const PATTERN_CAPACITY: usize = 40;
 const RESULT_WORDS: usize = 64;
-const THROTTLED_GPU_BATCH_SIZE: usize = 16_384;
+const THROTTLED_GPU_BATCH_SIZE: usize = 4_096;
 
 const RESULT_WINNER_INDEX: usize = 0;
 const RESULT_ATTEMPTS_LO_INDEX: usize = 1;
@@ -1074,7 +1074,7 @@ mod tests {
         );
 
         let throttled = GpuDutyCycle::responsive_tuning(tuning, 90);
-        assert_eq!(throttled.batch_size, 16_384);
+        assert_eq!(throttled.batch_size, 4_096);
         assert_eq!(throttled.ring_depth, 1);
         assert_eq!(throttled.workgroup_size, tuning.workgroup_size);
         assert_eq!(
