@@ -1,5 +1,7 @@
 use memx::{memeq, memmem};
 
+use crate::VanityMode;
+
 /// Lookup table for ASCII case conversion
 static ASCII_LOWERCASE: [u8; 256] = [
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
@@ -16,6 +18,67 @@ static ASCII_LOWERCASE: [u8; 256] = [
     226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244,
     245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255,
 ];
+
+/// Matching state prepared once and shared by all CPU workers in a search.
+pub struct CompiledPattern {
+    pattern: Box<[u8]>,
+    case_sensitive: bool,
+    mode: VanityMode,
+    bad_char: Option<Box<[usize; 256]>>,
+}
+
+impl CompiledPattern {
+    pub fn new(pattern: &[u8], case_sensitive: bool, mode: VanityMode) -> Self {
+        let pattern: Box<[u8]> = if case_sensitive {
+            pattern.into()
+        } else {
+            pattern
+                .iter()
+                .map(|byte| ASCII_LOWERCASE[*byte as usize])
+                .collect::<Vec<_>>()
+                .into_boxed_slice()
+        };
+        let bad_char = if !case_sensitive
+            && matches!(mode, VanityMode::Anywhere)
+            && (5..=16).contains(&pattern.len())
+        {
+            Some(Box::new(build_bad_char_table(&pattern)))
+        } else {
+            None
+        };
+
+        Self {
+            pattern,
+            case_sensitive,
+            mode,
+            bad_char,
+        }
+    }
+
+    #[inline(always)]
+    pub fn matches(&self, address: &[u8]) -> bool {
+        if self.case_sensitive {
+            return match self.mode {
+                VanityMode::Prefix => eq_prefix_memx(address, &self.pattern),
+                VanityMode::Suffix => eq_suffix_memx(address, &self.pattern),
+                VanityMode::Anywhere => contains_memx(address, &self.pattern),
+                VanityMode::Regex => false,
+            };
+        }
+
+        match self.mode {
+            VanityMode::Prefix => eq_prefix_case_insensitive(address, &self.pattern),
+            VanityMode::Suffix => eq_suffix_case_insensitive(address, &self.pattern),
+            VanityMode::Anywhere => match self.bad_char.as_deref() {
+                Some(bad_char) => {
+                    contains_case_insensitive_with_table(address, &self.pattern, bad_char)
+                }
+                None => contains_case_insensitive_simple(address, &self.pattern),
+            },
+            VanityMode::Regex => false,
+        }
+    }
+}
 
 /// Performs a case-sensitive prefix match using the `memx` crate.
 ///
@@ -139,6 +202,7 @@ pub fn eq_suffix_case_insensitive(data: &[u8], pattern: &[u8]) -> bool {
 /// - `true` if `pattern` is found anywhere within `data` (case-insensitively).
 /// - `false` otherwise.
 #[inline(always)]
+#[cfg(test)]
 pub fn contains_case_insensitive(data: &[u8], pattern: &[u8]) -> bool {
     let data_len = data.len();
     let pattern_len = pattern.len();
@@ -159,56 +223,83 @@ pub fn contains_case_insensitive(data: &[u8], pattern: &[u8]) -> bool {
             .any(|&byte| ASCII_LOWERCASE[byte as usize] == target);
     }
 
-    // For medium patterns (5-16 bytes), use optimized Boyer-Moore
+    // For medium patterns (5-16 bytes), use optimized Boyer-Moore.
     if pattern_len <= 16 {
-        // Create bad character table
-        let mut bad_char = [pattern_len; 256];
-        for (i, &byte) in pattern.iter().enumerate() {
-            bad_char[byte as usize] = pattern_len - 1 - i;
-        }
-
-        let mut pos = 0;
-        while pos <= data_len - pattern_len {
-            let mut j = pattern_len;
-            let mut found_mismatch = false;
-
-            // Check from the end of the pattern
-            while j > 0 {
-                j -= 1;
-                let data_char = data[pos + j];
-                let pattern_char = pattern[j];
-                let data_lower = ASCII_LOWERCASE[data_char as usize];
-                
-                if data_lower != pattern_char {
-                    found_mismatch = true;
-                    break;
-                }
-            }
-
-            if j == 0 && !found_mismatch {
-                return true; // Match found
-            }
-
-            // Use bad character heuristic to skip positions
-            let bad_char_skip = if pos + pattern_len - 1 < data_len {
-                bad_char[ASCII_LOWERCASE[data[pos + pattern_len - 1] as usize] as usize]
-            } else {
-                1
-            };
-            pos += bad_char_skip.max(1);
-        }
-
-        return false;
+        let bad_char = build_bad_char_table(pattern);
+        return contains_case_insensitive_with_table(data, pattern, &bad_char);
     }
 
-    // For very small (2-4 bytes) or very large (more than 16 bytes) patterns, use simple scan
+    contains_case_insensitive_simple(data, pattern)
+}
+
+fn build_bad_char_table(pattern: &[u8]) -> [usize; 256] {
+    let pattern_len = pattern.len();
+    let mut bad_char = [pattern_len; 256];
+    for (index, byte) in pattern.iter().copied().enumerate() {
+        bad_char[byte as usize] = pattern_len - 1 - index;
+    }
+    bad_char
+}
+
+#[inline(always)]
+fn contains_case_insensitive_with_table(
+    data: &[u8],
+    pattern: &[u8],
+    bad_char: &[usize; 256],
+) -> bool {
+    let data_len = data.len();
+    let pattern_len = pattern.len();
+    let mut pos = 0;
+
+    while pos <= data_len - pattern_len {
+        let mut index = pattern_len;
+        let mut found_mismatch = false;
+
+        while index > 0 {
+            index -= 1;
+            if ASCII_LOWERCASE[data[pos + index] as usize] != pattern[index] {
+                found_mismatch = true;
+                break;
+            }
+        }
+
+        if index == 0 && !found_mismatch {
+            return true;
+        }
+
+        let trailing_byte = ASCII_LOWERCASE[data[pos + pattern_len - 1] as usize];
+        pos += bad_char[trailing_byte as usize].max(1);
+    }
+
+    false
+}
+
+#[inline(always)]
+fn contains_case_insensitive_simple(data: &[u8], pattern: &[u8]) -> bool {
+    let data_len = data.len();
+    let pattern_len = pattern.len();
+
+    if data_len < pattern_len {
+        return false;
+    }
+    if pattern_len == 0 {
+        return true;
+    }
+    if pattern_len == 1 {
+        let target = pattern[0];
+        return data
+            .iter()
+            .any(|byte| ASCII_LOWERCASE[*byte as usize] == target);
+    }
+
+    // For very small (2-4 bytes) or very large patterns, use a simple scan.
     for start in 0..=(data_len - pattern_len) {
         let mut matches = true;
         for i in 0..pattern_len {
             let data_char = data[start + i];
             let pattern_char = pattern[i];
             let data_lower = ASCII_LOWERCASE[data_char as usize];
-            
+
             if data_lower != pattern_char {
                 matches = false;
                 break;
@@ -224,6 +315,7 @@ pub fn contains_case_insensitive(data: &[u8], pattern: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::VanityMode;
 
     #[test]
     fn test_case_insensitive_contains() {
@@ -231,10 +323,10 @@ mod tests {
         let pattern = "abc";
         let address_bytes = address.as_bytes();
         let pattern_bytes = pattern.as_bytes();
-        
+
         let result = contains_case_insensitive(address_bytes, pattern_bytes);
         let contains_result = address.to_lowercase().contains(pattern);
-        
+
         assert_eq!(result, contains_result);
         assert!(result);
     }
@@ -246,10 +338,10 @@ mod tests {
         let pattern = "abc";
         let address_bytes = address.as_bytes();
         let pattern_bytes = pattern.as_bytes();
-        
+
         let result = contains_case_insensitive(address_bytes, pattern_bytes);
         let contains_result = address.to_lowercase().contains(pattern);
-        
+
         assert_eq!(result, contains_result);
         assert!(result);
     }
@@ -260,11 +352,76 @@ mod tests {
         let pattern = "abc";
         let address_bytes = address.as_bytes();
         let pattern_bytes = pattern.as_bytes();
-        
+
         let result = contains_case_insensitive(address_bytes, pattern_bytes);
         let contains_result = address.to_lowercase().contains(pattern);
-        
+
         assert_eq!(result, contains_result);
         assert!(!result);
+    }
+
+    #[test]
+    fn compiled_pattern_matches_existing_matchers() {
+        let addresses: [&[u8]; 3] = [
+            b"1Emiv7YwS2dQx9KpR4nT6uV8zA3cF5gH",
+            b"aB12cD34eF56aB78cD90eF12aB34cD56eF78aB90",
+            b"7YwS2dQx9KpR4nT6uV8zA3cF5gH1Emiv",
+        ];
+
+        for address in addresses {
+            let mut patterns = vec![
+                Vec::new(),
+                address[..1].to_vec(),
+                address[..2].to_vec(),
+                address[..4].to_vec(),
+                address[..5].to_vec(),
+                address[..16].to_vec(),
+                address[..20].to_vec(),
+                b"not-present-pattern".to_vec(),
+            ];
+            patterns.push(address[address.len() - 5..].to_vec());
+
+            for pattern in patterns {
+                for case_sensitive in [true, false] {
+                    let lower_pattern = pattern
+                        .iter()
+                        .map(|byte| byte.to_ascii_lowercase())
+                        .collect::<Vec<_>>();
+
+                    for mode in [VanityMode::Prefix, VanityMode::Suffix, VanityMode::Anywhere] {
+                        let expected = if case_sensitive {
+                            match mode {
+                                VanityMode::Prefix => eq_prefix_memx(address, &pattern),
+                                VanityMode::Suffix => eq_suffix_memx(address, &pattern),
+                                VanityMode::Anywhere => contains_memx(address, &pattern),
+                                VanityMode::Regex => unreachable!(),
+                            }
+                        } else {
+                            match mode {
+                                VanityMode::Prefix => {
+                                    eq_prefix_case_insensitive(address, &lower_pattern)
+                                }
+                                VanityMode::Suffix => {
+                                    eq_suffix_case_insensitive(address, &lower_pattern)
+                                }
+                                VanityMode::Anywhere => {
+                                    contains_case_insensitive(address, &lower_pattern)
+                                }
+                                VanityMode::Regex => unreachable!(),
+                            }
+                        };
+
+                        let compiled = CompiledPattern::new(&pattern, case_sensitive, mode);
+                        assert_eq!(
+                            compiled.matches(address),
+                            expected,
+                            "address={}, pattern={}, case_sensitive={case_sensitive}, mode={mode:?}",
+                            String::from_utf8_lossy(address),
+                            String::from_utf8_lossy(&pattern),
+                        );
+                    }
+                }
+            }
+        }
     }
 }
