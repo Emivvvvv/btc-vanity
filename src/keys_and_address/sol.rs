@@ -5,8 +5,7 @@
 use crate::keys_and_address::{KeyPairGenerator, SolanaKeyPair};
 
 use rand::{rngs::ThreadRng, RngCore};
-use solana_sdk::bs58;
-use solana_sdk::signature::{Keypair, SeedDerivable, Signer};
+use solana_keypair::{Keypair, Signer};
 use std::cell::RefCell;
 
 thread_local! {
@@ -23,7 +22,7 @@ impl KeyPairGenerator for SolanaKeyPair {
         THREAD_LOCAL_RNG.with(|rng| {
             let mut seed = [0u8; 32];
             rng.borrow_mut().fill_bytes(&mut seed); // Fill the seed with random bytes
-            let keypair = Keypair::from_seed(&seed).expect("Valid seed");
+            let keypair = Keypair::new_from_array(seed);
             let address = keypair.pubkey().to_string();
 
             SolanaKeyPair { keypair, address }
@@ -44,7 +43,7 @@ impl KeyPairGenerator for SolanaKeyPair {
 }
 
 impl SolanaKeyPair {
-    /// Retrieves the key pair as a `solana_sdk::signature::Keypair` reference.
+    /// Retrieves the key pair as a `solana_keypair::Keypair` reference.
     pub fn keypair(&self) -> &Keypair {
         &self.keypair
     }
@@ -65,8 +64,6 @@ mod tests {
     use super::*;
 
     use bs58;
-    use solana_sdk::signature::Signer;
-
     #[test]
     fn test_generate_random() {
         // Generate a random Solana key pair

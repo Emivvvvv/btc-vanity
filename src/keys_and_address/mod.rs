@@ -17,7 +17,7 @@ use bitcoin::{PrivateKey, PublicKey};
 #[cfg(feature = "ethereum")]
 use secp256k1::{PublicKey as SecpPublicKey, SecretKey};
 #[cfg(feature = "solana")]
-use solana_sdk::signature::Keypair;
+use solana_keypair::Keypair;
 
 /// A trait to handle generic key pair and address creation.
 /// Used in vanity address generation.
@@ -63,13 +63,15 @@ pub trait KeyPairGenerator {
 /// Implements `KeyPairGenerator` and `Send` traits.
 pub struct BitcoinKeyPair {
     /// A Bitcoin private key. `bitcoin::PrivateKey`
-    private_key: PrivateKey,
+    pub(crate) private_key: PrivateKey,
     /// A Bitcoin public key. `bitcoin::PublicKey`
-    public_key: PublicKey,
+    pub(crate) public_key: PublicKey,
     /// The compressed Bitcoin address as a `String`.
-    comp_address: String,
+    pub(crate) comp_address: String,
 }
 
+// SAFETY: `BitcoinKeyPair` contains owned key/address value types with no
+// interior thread-affine state; moving ownership across threads is sound.
 unsafe impl Send for BitcoinKeyPair {}
 
 /// A struct representing an Ethereum key pair and its associated address.
@@ -77,25 +79,29 @@ unsafe impl Send for BitcoinKeyPair {}
 #[cfg(feature = "ethereum")]
 pub struct EthereumKeyPair {
     /// An Ethereum private key. `secp256k1::SecretKey`
-    private_key: SecretKey,
+    pub(crate) private_key: SecretKey,
     /// An Ethereum public key. `secp256k1::PublicKey`
-    public_key: SecpPublicKey,
+    pub(crate) public_key: SecpPublicKey,
     /// The Ethereum address as a `String`.
-    address: String,
+    pub(crate) address: String,
 }
 
 #[cfg(feature = "ethereum")]
+// SAFETY: `EthereumKeyPair` stores owned secp256k1 key values and a `String`.
+// It has no shared mutable aliasing or thread-affine resources.
 unsafe impl Send for EthereumKeyPair {}
 
 /// A struct representing a Solana key pair and its associated address.
 /// Implements `KeyPairGenerator` and `Send` traits.
 #[cfg(feature = "solana")]
 pub struct SolanaKeyPair {
-    /// A Solana `solana_sdk::signer::Keypair` struct.
-    keypair: Keypair,
+    /// A Solana `solana_keypair::Keypair` value.
+    pub(crate) keypair: Keypair,
     /// The Solana address as a `String`.
-    address: String,
+    pub(crate) address: String,
 }
 
 #[cfg(feature = "solana")]
+// SAFETY: `SolanaKeyPair` owns its key material and address string and does
+// not rely on thread-local state; moving it between threads is safe.
 unsafe impl Send for SolanaKeyPair {}

@@ -7,18 +7,113 @@
 //! - Pattern matching using prefix, suffix, anywhere, and regex modes.
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{mpsc, Arc};
+#[cfg(feature = "gpu")]
+use std::sync::{Mutex, OnceLock};
 use std::thread;
+use std::time::Duration;
 
 use crate::error::VanityError;
 use crate::vanity_addr_generator::chain::VanityChain;
-use crate::vanity_addr_generator::comp::{
-    contains_case_insensitive, contains_memx, eq_prefix_case_insensitive, eq_prefix_memx,
-    eq_suffix_case_insensitive, eq_suffix_memx,
-};
+use crate::vanity_addr_generator::comp::CompiledPattern;
+#[cfg(feature = "gpu")]
+use crate::vanity_addr_generator::gpu::{GpuMatch, GpuTuning, Secp256k1GpuEngine};
 use crate::BATCH_SIZE;
 
 use regex::Regex;
+
+pub(crate) fn default_thread_count() -> usize {
+    std::thread::available_parallelism()
+        .map(usize::from)
+        .unwrap_or(1)
+}
+
+/// Selects the execution backend for a vanity search.
+///
+/// `Auto` is designed for future-proofing: it lets the library choose the
+/// best available backend and currently falls back to the CPU path.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
+pub enum VanityBackend {
+    #[default]
+    Auto,
+    Cpu,
+    Gpu,
+    Hybrid,
+}
+
+impl std::str::FromStr for VanityBackend {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.to_ascii_lowercase().as_str() {
+            "auto" => Ok(Self::Auto),
+            "cpu" => Ok(Self::Cpu),
+            "gpu" => Ok(Self::Gpu),
+            "hybrid" | "both" => Ok(Self::Hybrid),
+            _ => Err(format!("Unsupported backend: {value}")),
+        }
+    }
+}
+
+impl std::fmt::Display for VanityBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Auto => "auto",
+                Self::Cpu => "cpu",
+                Self::Gpu => "gpu",
+                Self::Hybrid => "hybrid",
+            }
+        )
+    }
+}
+
+/// Bundles all search-time configuration in one place.
+///
+/// This gives the public API a stable extension point for future backends
+/// without forcing more positional parameters into `generate`.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct VanitySearchOptions {
+    pub threads: usize,
+    pub case_sensitive: bool,
+    pub fast_mode: bool,
+    pub vanity_mode: VanityMode,
+    pub backend: VanityBackend,
+    pub gpu_batch_size: Option<usize>,
+    /// Optional best-effort GPU dispatch duty cycle from 1 to 100 percent.
+    pub gpu_usage_limit: Option<u8>,
+}
+
+impl Default for VanitySearchOptions {
+    fn default() -> Self {
+        Self {
+            threads: default_thread_count(),
+            case_sensitive: false,
+            fast_mode: true,
+            vanity_mode: VanityMode::Prefix,
+            backend: VanityBackend::Auto,
+            gpu_batch_size: None,
+            gpu_usage_limit: None,
+        }
+    }
+}
+
+/// Identifies the elliptic-curve primitive a chain can use in the GPU backend.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum GpuCurveKind {
+    Secp256k1,
+    Ed25519,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum GpuSearchTarget {
+    Bitcoin,
+    Ethereum,
+    Solana,
+}
 
 /// An empty struct that provides functionality for generating vanity addresses.
 ///
@@ -27,7 +122,7 @@ use regex::Regex;
 pub struct VanityAddr;
 
 /// Enum to define the matching mode for vanity address generation.
-#[derive(Copy, Clone, Debug, PartialEq, Default)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub enum VanityMode {
     /// Matches addresses that start with the pattern.
     #[default]
@@ -65,19 +160,50 @@ impl VanityAddr {
         fast_mode: bool,
         vanity_mode: VanityMode,
     ) -> Result<T, VanityError> {
-        T::validate_input(string, fast_mode, case_sensitive)?;
-        let adjusted_string = T::adjust_input(string, vanity_mode);
+        Self::generate_with_options::<T>(
+            string,
+            VanitySearchOptions {
+                threads,
+                case_sensitive,
+                fast_mode,
+                vanity_mode,
+                backend: VanityBackend::Auto,
+                gpu_batch_size: None,
+                gpu_usage_limit: None,
+            },
+        )
+    }
+
+    /// Generates a vanity address for a given pattern with explicit backend
+    /// and search options.
+    pub fn generate_with_options<T: VanityChain + 'static>(
+        string: &str,
+        options: VanitySearchOptions,
+    ) -> Result<T, VanityError> {
+        T::validate_input(string, options.fast_mode, options.case_sensitive)?;
+        let adjusted_string = T::adjust_input(string, options.vanity_mode);
 
         if string.is_empty() {
             return Ok(T::generate_random());
         }
+        if options.threads == 0 {
+            return Err(VanityError::InvalidThreadCount);
+        }
+        if let Some(limit) = options.gpu_usage_limit {
+            if !(1..=100).contains(&limit) {
+                return Err(VanityError::InvalidGpuUsageLimit);
+            }
+        }
 
-        Ok(SearchEngines::find_vanity_address::<T>(
+        SearchEngines::find_vanity_address::<T>(
             adjusted_string,
-            threads,
-            case_sensitive,
-            vanity_mode,
-        ))
+            options.threads,
+            options.case_sensitive,
+            options.vanity_mode,
+            options.backend,
+            options.gpu_batch_size,
+            options.gpu_usage_limit,
+        )
     }
 
     /// Generates a vanity address based on a regular expression.
@@ -98,14 +224,38 @@ impl VanityAddr {
         regex_str: &str,
         threads: usize,
     ) -> Result<T, VanityError> {
+        Self::generate_regex_with_options::<T>(
+            regex_str,
+            VanitySearchOptions {
+                threads,
+                vanity_mode: VanityMode::Regex,
+                backend: VanityBackend::Auto,
+                ..VanitySearchOptions::default()
+            },
+        )
+    }
+
+    /// Generates a vanity address based on a regular expression with explicit
+    /// backend and search options.
+    pub fn generate_regex_with_options<T: VanityChain + 'static>(
+        regex_str: &str,
+        options: VanitySearchOptions,
+    ) -> Result<T, VanityError> {
         T::validate_regex_pattern(regex_str)?;
         let adjusted_regex = T::adjust_regex_pattern(regex_str);
 
         if regex_str.is_empty() {
             return Ok(T::generate_random());
         }
+        if options.threads == 0 {
+            return Err(VanityError::InvalidThreadCount);
+        }
 
-        SearchEngines::find_vanity_address_regex::<T>(adjusted_regex, threads)
+        SearchEngines::find_vanity_address_regex::<T>(
+            adjusted_regex,
+            options.threads,
+            options.backend,
+        )
     }
 }
 
@@ -115,7 +265,52 @@ impl VanityAddr {
 /// and regular expressions.
 pub struct SearchEngines;
 
+#[cfg(feature = "gpu")]
+static GPU_ENGINE_CACHE: OnceLock<Mutex<Option<Arc<Secp256k1GpuEngine>>>> = OnceLock::new();
+#[cfg(feature = "gpu")]
+const HYBRID_GPU_DOMINANT_BATCH_THRESHOLD: usize = 262_144;
+#[cfg(feature = "gpu")]
+const HYBRID_DEFAULT_CPU_THREAD_CAP: usize = 4;
+#[cfg(feature = "gpu")]
+const GPU_SHORT_PATTERN_MAX_LEN: usize = 2;
+#[cfg(feature = "gpu")]
+const GPU_SHORT_PATTERN_BATCH_SIZE: usize = 65_536;
+
 impl SearchEngines {
+    #[cfg(feature = "gpu")]
+    fn hybrid_trace_enabled() -> bool {
+        static TRACE_ENABLED: OnceLock<bool> = OnceLock::new();
+        *TRACE_ENABLED.get_or_init(|| {
+            std::env::var("BTC_VANITY_HYBRID_TRACE")
+                .ok()
+                .map(|value| {
+                    let normalized = value.trim().to_ascii_lowercase();
+                    matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
+                })
+                .unwrap_or(false)
+        })
+    }
+
+    #[cfg(feature = "gpu")]
+    fn hybrid_cpu_threads(threads: usize, gpu_batch_size: Option<usize>) -> usize {
+        let requested = threads.max(1);
+
+        if let Some(override_threads) = std::env::var("BTC_VANITY_HYBRID_CPU_THREADS")
+            .ok()
+            .and_then(|value| value.trim().parse::<usize>().ok())
+            .filter(|value| *value > 0)
+        {
+            return requested.min(override_threads);
+        }
+
+        let effective_batch = gpu_batch_size.unwrap_or(HYBRID_GPU_DOMINANT_BATCH_THRESHOLD);
+        if effective_batch >= HYBRID_GPU_DOMINANT_BATCH_THRESHOLD {
+            requested.min(HYBRID_DEFAULT_CPU_THREAD_CAP)
+        } else {
+            requested
+        }
+    }
+
     /// Searches for a vanity address matching the given string pattern.
     ///
     /// # Arguments
@@ -136,42 +331,154 @@ impl SearchEngines {
         threads: usize,
         case_sensitive: bool,
         vanity_mode: VanityMode,
+        backend: VanityBackend,
+        gpu_batch_size: Option<usize>,
+        gpu_usage_limit: Option<u8>,
+    ) -> Result<T, VanityError> {
+        match backend {
+            VanityBackend::Cpu => Ok(Self::find_vanity_address_cpu::<T>(
+                string,
+                threads,
+                case_sensitive,
+                vanity_mode,
+            )),
+            VanityBackend::Gpu => Self::find_vanity_address_gpu::<T>(
+                string,
+                case_sensitive,
+                vanity_mode,
+                gpu_batch_size,
+                gpu_usage_limit,
+            ),
+            VanityBackend::Hybrid => {
+                #[cfg(feature = "gpu")]
+                {
+                    Self::find_vanity_address_hybrid::<T>(
+                        string,
+                        threads,
+                        case_sensitive,
+                        vanity_mode,
+                        gpu_batch_size,
+                        gpu_usage_limit,
+                    )
+                }
+                #[cfg(not(feature = "gpu"))]
+                {
+                    Ok(Self::find_vanity_address_cpu::<T>(
+                        string,
+                        threads,
+                        case_sensitive,
+                        vanity_mode,
+                    ))
+                }
+            }
+            VanityBackend::Auto => Self::find_vanity_address_auto::<T>(
+                string,
+                threads,
+                case_sensitive,
+                vanity_mode,
+                gpu_batch_size,
+                gpu_usage_limit,
+            ),
+        }
+    }
+
+    fn find_vanity_address_auto<T: VanityChain + 'static>(
+        string: String,
+        threads: usize,
+        case_sensitive: bool,
+        vanity_mode: VanityMode,
+        gpu_batch_size: Option<usize>,
+        gpu_usage_limit: Option<u8>,
+    ) -> Result<T, VanityError> {
+        #[cfg(not(feature = "gpu"))]
+        let _ = (gpu_batch_size, gpu_usage_limit);
+
+        #[cfg(feature = "gpu")]
+        {
+            if !matches!(vanity_mode, VanityMode::Regex) {
+                match Self::recommended_backend::<T>(string.len(), vanity_mode) {
+                    VanityBackend::Gpu => {
+                        if let Ok(candidate) = Self::find_vanity_address_gpu::<T>(
+                            string.clone(),
+                            case_sensitive,
+                            vanity_mode,
+                            gpu_batch_size,
+                            gpu_usage_limit,
+                        ) {
+                            return Ok(candidate);
+                        }
+                    }
+                    VanityBackend::Hybrid => {
+                        if let Ok(candidate) = Self::find_vanity_address_hybrid::<T>(
+                            string.clone(),
+                            threads,
+                            case_sensitive,
+                            vanity_mode,
+                            gpu_batch_size,
+                            gpu_usage_limit,
+                        ) {
+                            return Ok(candidate);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        Ok(Self::find_vanity_address_cpu::<T>(
+            string,
+            threads,
+            case_sensitive,
+            vanity_mode,
+        ))
+    }
+
+    fn find_vanity_address_cpu<T: VanityChain + 'static>(
+        string: String,
+        threads: usize,
+        case_sensitive: bool,
+        vanity_mode: VanityMode,
     ) -> T {
-        let string_bytes = string.as_bytes();
-        let lower_string_bytes = if !case_sensitive {
-            string_bytes
-                .iter()
-                .map(|b| b.to_ascii_lowercase())
-                .collect::<Vec<u8>>()
-        } else {
-            vec![]
-        };
+        let stop = Arc::new(AtomicBool::new(false));
+        loop {
+            if let Some(result) = Self::find_vanity_address_cpu_cancelable::<T>(
+                string.clone(),
+                threads,
+                case_sensitive,
+                vanity_mode,
+                Arc::clone(&stop),
+            ) {
+                return result;
+            }
+        }
+    }
+
+    fn find_vanity_address_cpu_cancelable<T: VanityChain + 'static>(
+        string: String,
+        threads: usize,
+        case_sensitive: bool,
+        vanity_mode: VanityMode,
+        stop: Arc<AtomicBool>,
+    ) -> Option<T> {
+        let matcher = Arc::new(CompiledPattern::new(
+            string.as_bytes(),
+            case_sensitive,
+            vanity_mode,
+        ));
 
         let (sender, receiver) = mpsc::channel();
-        let found_any = Arc::new(AtomicBool::new(false));
 
         for _ in 0..threads {
             let sender = sender.clone();
-            let found_any = found_any.clone();
+            let stop = Arc::clone(&stop);
 
-            let thread_string_bytes = string_bytes.to_vec();
-            let thread_lower_string_bytes = lower_string_bytes.clone();
+            let matcher = Arc::clone(&matcher);
 
             thread::spawn(move || {
                 let mut batch: [T; BATCH_SIZE] = T::generate_batch();
                 let mut dummy = T::generate_random();
 
-                // Pre-compute pattern length for efficiency
-                let pattern_len = if case_sensitive {
-                    thread_string_bytes.len()
-                } else {
-                    thread_lower_string_bytes.len()
-                };
-
-                while !found_any.load(Ordering::Relaxed) {
-                    // Generate a batch of addresses
-                    T::fill_batch(&mut batch);
-
+                while !stop.load(Ordering::Relaxed) {
                     // Check each address in the batch with loop unrolling for better performance
                     let mut i = 0;
                     while i < BATCH_SIZE {
@@ -181,59 +488,18 @@ impl SearchEngines {
                         #[allow(clippy::needless_range_loop)]
                         for j in i..end {
                             // Early exit check every few iterations to minimize atomic load overhead
-                            if j.is_multiple_of(4) && found_any.load(Ordering::Relaxed) {
+                            if j.is_multiple_of(4) && stop.load(Ordering::Relaxed) {
                                 return;
                             }
 
                             let keys_and_address = &batch[j];
                             let address_bytes = keys_and_address.get_address_bytes();
-
-                            // Early length check to avoid expensive pattern matching
-                            if address_bytes.len() < pattern_len {
-                                continue;
-                            }
-
-                            let matches = if case_sensitive {
-                                // Uses memx (good for case-sensitive)
-                                match vanity_mode {
-                                    VanityMode::Prefix => {
-                                        eq_prefix_memx(address_bytes, &thread_string_bytes)
-                                    }
-                                    VanityMode::Suffix => {
-                                        eq_suffix_memx(address_bytes, &thread_string_bytes)
-                                    }
-                                    VanityMode::Anywhere => {
-                                        contains_memx(address_bytes, &thread_string_bytes)
-                                    }
-                                    VanityMode::Regex => {
-                                        unreachable!("Regex mode should not be handled here")
-                                    }
-                                }
-                            } else {
-                                // Uses optimized case-insensitive functions
-                                match vanity_mode {
-                                    VanityMode::Prefix => eq_prefix_case_insensitive(
-                                        address_bytes,
-                                        &thread_lower_string_bytes,
-                                    ),
-                                    VanityMode::Suffix => eq_suffix_case_insensitive(
-                                        address_bytes,
-                                        &thread_lower_string_bytes,
-                                    ),
-                                    VanityMode::Anywhere => contains_case_insensitive(
-                                        address_bytes,
-                                        &thread_lower_string_bytes,
-                                    ),
-                                    VanityMode::Regex => {
-                                        unreachable!("Regex mode should not be handled here")
-                                    }
-                                }
-                            };
+                            let matches = matcher.matches(address_bytes);
 
                             // If match found...
                             if matches {
                                 // Mark as found (and check if we are the first)
-                                if !found_any.swap(true, Ordering::Relaxed) {
+                                if !stop.swap(true, Ordering::Relaxed) {
                                     // We're the first thread to set found_any = true
                                     // Attempt to send the result
                                     std::mem::swap(&mut batch[j], &mut dummy);
@@ -246,15 +512,330 @@ impl SearchEngines {
 
                         i = end;
                     }
+
+                    if !stop.load(Ordering::Relaxed) {
+                        T::fill_batch(&mut batch);
+                    }
+                }
+            });
+        }
+        drop(sender);
+
+        loop {
+            match receiver.recv_timeout(Duration::from_millis(25)) {
+                Ok(result) => return Some(result),
+                Err(RecvTimeoutError::Timeout) => {
+                    if stop.load(Ordering::Relaxed) {
+                        return receiver.try_recv().ok();
+                    }
+                }
+                Err(RecvTimeoutError::Disconnected) => return None,
+            }
+        }
+    }
+
+    #[cfg(feature = "gpu")]
+    fn find_vanity_address_hybrid<T: VanityChain + 'static>(
+        string: String,
+        threads: usize,
+        case_sensitive: bool,
+        vanity_mode: VanityMode,
+        gpu_batch_size: Option<usize>,
+        gpu_usage_limit: Option<u8>,
+    ) -> Result<T, VanityError> {
+        let fallback_string = string.clone();
+        let hybrid_cpu_threads = Self::hybrid_cpu_threads(threads, gpu_batch_size);
+        let gpu_usage_limit =
+            Self::effective_gpu_usage_limit(gpu_usage_limit, VanityBackend::Hybrid);
+
+        if matches!(vanity_mode, VanityMode::Regex) {
+            return Ok(Self::find_vanity_address_cpu::<T>(
+                string,
+                threads,
+                case_sensitive,
+                vanity_mode,
+            ));
+        }
+
+        if T::gpu_search_target().is_none() {
+            return Ok(Self::find_vanity_address_cpu::<T>(
+                string,
+                threads,
+                case_sensitive,
+                vanity_mode,
+            ));
+        }
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let (sender, receiver) = mpsc::channel::<Result<T, VanityError>>();
+
+        if Self::hybrid_trace_enabled() {
+            eprintln!(
+                "[hybrid] starting CPU worker (threads={hybrid_cpu_threads}, requested={threads}) and GPU worker for {:?}",
+                T::gpu_search_target().unwrap_or(GpuSearchTarget::Bitcoin)
+            );
+        }
+
+        {
+            let sender = sender.clone();
+            let stop = Arc::clone(&stop);
+            let string = string.clone();
+            thread::spawn(move || {
+                if Self::hybrid_trace_enabled() {
+                    eprintln!("[hybrid] CPU worker active");
+                }
+                if let Some(candidate) = Self::find_vanity_address_cpu_cancelable::<T>(
+                    string,
+                    hybrid_cpu_threads,
+                    case_sensitive,
+                    vanity_mode,
+                    Arc::clone(&stop),
+                ) {
+                    stop.store(true, Ordering::Relaxed);
+                    let _ = sender.send(Ok(candidate));
                 }
             });
         }
 
-        // The main thread just waits for the first successful result.
-        // As soon as one thread sends over the channel, we have our vanity address.
-        receiver
-            .recv()
-            .expect("Receiver closed before a vanity address was found")
+        {
+            let sender = sender.clone();
+            let stop = Arc::clone(&stop);
+            thread::spawn(move || {
+                if Self::hybrid_trace_enabled() {
+                    eprintln!("[hybrid] GPU worker active");
+                }
+                match Self::find_vanity_address_gpu_optimized::<T>(
+                    string,
+                    case_sensitive,
+                    vanity_mode,
+                    gpu_batch_size,
+                    gpu_usage_limit,
+                    Some(Arc::clone(&stop)),
+                ) {
+                    Ok(Some(candidate)) => {
+                        stop.store(true, Ordering::Relaxed);
+                        let _ = sender.send(Ok(candidate));
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        if Self::hybrid_trace_enabled() {
+                            eprintln!("[hybrid] GPU worker unavailable: {error}");
+                        }
+                        let _ = sender.send(Err(error));
+                    }
+                }
+            });
+        }
+
+        drop(sender);
+
+        let mut last_error: Option<VanityError> = None;
+        while let Ok(message) = receiver.recv() {
+            match message {
+                Ok(candidate) => {
+                    stop.store(true, Ordering::Relaxed);
+                    if Self::hybrid_trace_enabled() {
+                        eprintln!("[hybrid] winner selected");
+                    }
+                    return Ok(candidate);
+                }
+                Err(error) => {
+                    last_error = Some(error);
+                }
+            }
+        }
+
+        if let Some(error) = last_error {
+            if Self::hybrid_trace_enabled() {
+                eprintln!("[hybrid] falling back to CPU after worker error: {error}");
+            }
+        }
+
+        Ok(Self::find_vanity_address_cpu::<T>(
+            fallback_string,
+            threads,
+            case_sensitive,
+            vanity_mode,
+        ))
+    }
+
+    #[cfg(feature = "gpu")]
+    fn find_vanity_address_gpu<T: VanityChain + 'static>(
+        string: String,
+        case_sensitive: bool,
+        vanity_mode: VanityMode,
+        gpu_batch_size: Option<usize>,
+        gpu_usage_limit: Option<u8>,
+    ) -> Result<T, VanityError> {
+        if matches!(vanity_mode, VanityMode::Regex) {
+            return Err(VanityError::GpuRegexUnsupported);
+        }
+
+        match T::gpu_search_target() {
+            Some(GpuSearchTarget::Bitcoin)
+            | Some(GpuSearchTarget::Ethereum)
+            | Some(GpuSearchTarget::Solana) => Self::find_vanity_address_gpu_optimized::<T>(
+                string,
+                case_sensitive,
+                vanity_mode,
+                gpu_batch_size,
+                Self::effective_gpu_usage_limit(gpu_usage_limit, VanityBackend::Gpu),
+                None,
+            )
+            .map(|opt| opt.unwrap()),
+            _ => Err(VanityError::GpuBackendUnsupportedForChain),
+        }
+    }
+
+    #[cfg(not(feature = "gpu"))]
+    fn find_vanity_address_gpu<T: VanityChain + 'static>(
+        _string: String,
+        _case_sensitive: bool,
+        _vanity_mode: VanityMode,
+        _gpu_batch_size: Option<usize>,
+        _gpu_usage_limit: Option<u8>,
+    ) -> Result<T, VanityError> {
+        Err(VanityError::GpuBackendUnavailable)
+    }
+
+    #[cfg(feature = "gpu")]
+    fn find_vanity_address_gpu_optimized<T: VanityChain + 'static>(
+        string: String,
+        case_sensitive: bool,
+        vanity_mode: VanityMode,
+        gpu_batch_size: Option<usize>,
+        gpu_usage_limit: u8,
+        stop: Option<Arc<AtomicBool>>,
+    ) -> Result<Option<T>, VanityError> {
+        let engine = Self::shared_gpu_engine()?;
+        let target = T::gpu_search_target().ok_or(VanityError::GpuBackendUnsupportedForChain)?;
+        let pattern_len = string.len();
+        let tuning = Self::resolve_gpu_tuning(pattern_len, gpu_batch_size)?;
+        let seed = engine
+            .generate_private_keys(1)
+            .into_iter()
+            .next()
+            .ok_or(VanityError::GpuInvalidResult("failed to generate GPU seed"))?;
+
+        engine
+            .search_exact_with_tuning(
+                target,
+                seed,
+                string.as_bytes(),
+                case_sensitive,
+                vanity_mode,
+                tuning,
+                gpu_usage_limit,
+                stop.as_ref(),
+            )?
+            .map(Self::reconstruct_gpu_match::<T>)
+            .transpose()
+    }
+
+    #[cfg(feature = "gpu")]
+    fn shared_gpu_engine() -> Result<Arc<Secp256k1GpuEngine>, VanityError> {
+        let cache = GPU_ENGINE_CACHE.get_or_init(|| Mutex::new(None));
+        {
+            let guard = cache
+                .lock()
+                .map_err(|_| VanityError::GpuInvalidResult("GPU engine cache lock poisoned"))?;
+            if let Some(engine) = &*guard {
+                return Ok(Arc::clone(engine));
+            }
+        }
+
+        let engine = Arc::new(Secp256k1GpuEngine::new()?);
+        let mut guard = cache
+            .lock()
+            .map_err(|_| VanityError::GpuInvalidResult("GPU engine cache lock poisoned"))?;
+        if let Some(existing) = &*guard {
+            return Ok(Arc::clone(existing));
+        }
+        *guard = Some(Arc::clone(&engine));
+        Ok(engine)
+    }
+
+    #[cfg(feature = "gpu")]
+    fn reconstruct_gpu_match<T: VanityChain + 'static>(
+        gpu_match: GpuMatch,
+    ) -> Result<T, VanityError> {
+        let candidate = T::from_private_key_bytes(gpu_match.private_key_bytes)?;
+        if candidate.get_address() != &gpu_match.address {
+            return Err(VanityError::GpuInvalidResult(
+                "GPU-reported address does not match reconstructed keypair",
+            ));
+        }
+        Ok(candidate)
+    }
+
+    #[cfg(feature = "gpu")]
+    fn recommended_backend<T: VanityChain + 'static>(
+        pattern_len: usize,
+        vanity_mode: VanityMode,
+    ) -> VanityBackend {
+        let policy_with_gpu = Self::auto_backend_policy(pattern_len, vanity_mode, true);
+        if matches!(policy_with_gpu, VanityBackend::Cpu) {
+            return VanityBackend::Cpu;
+        }
+
+        let gpu_available = T::gpu_search_target().is_some() && Self::shared_gpu_engine().is_ok();
+        Self::auto_backend_policy(pattern_len, vanity_mode, gpu_available)
+    }
+
+    #[cfg(feature = "gpu")]
+    fn auto_backend_policy(
+        pattern_len: usize,
+        vanity_mode: VanityMode,
+        gpu_available: bool,
+    ) -> VanityBackend {
+        if !gpu_available
+            || matches!(vanity_mode, VanityMode::Regex)
+            || pattern_len <= GPU_SHORT_PATTERN_MAX_LEN
+        {
+            return VanityBackend::Cpu;
+        }
+
+        if pattern_len <= 4 {
+            VanityBackend::Hybrid
+        } else {
+            VanityBackend::Gpu
+        }
+    }
+
+    #[cfg(feature = "gpu")]
+    fn effective_gpu_usage_limit(requested: Option<u8>, backend: VanityBackend) -> u8 {
+        requested.unwrap_or({
+            if matches!(backend, VanityBackend::Hybrid) {
+                70
+            } else {
+                100
+            }
+        })
+    }
+
+    #[cfg(feature = "gpu")]
+    fn resolve_gpu_tuning(
+        pattern_len: usize,
+        gpu_batch_size: Option<usize>,
+    ) -> Result<GpuTuning, VanityError> {
+        let mut tuning = GpuTuning::default();
+        if let Some(batch_size) = gpu_batch_size {
+            if batch_size == 0 {
+                return Err(VanityError::GpuInvalidResult("invalid GPU batch size"));
+            }
+            tuning.batch_size =
+                batch_size.min(crate::vanity_addr_generator::gpu::GPU_MAX_BATCH_SIZE);
+        }
+
+        // Short patterns have high hit probability, so reduce queue depth and batch size
+        // to optimize time-to-first-hit rather than peak throughput.
+        if pattern_len <= GPU_SHORT_PATTERN_MAX_LEN {
+            tuning.batch_size = tuning.batch_size.min(GPU_SHORT_PATTERN_BATCH_SIZE);
+            tuning.ring_depth = 1;
+            tuning.candidates_per_invocation = tuning.candidates_per_invocation.clamp(1, 4);
+        }
+
+        Ok(tuning)
     }
 
     /// Searches for a vanity address matching the given regex pattern.
@@ -274,6 +855,19 @@ impl SearchEngines {
     pub fn find_vanity_address_regex<T: VanityChain + 'static>(
         regex_str: String,
         threads: usize,
+        backend: VanityBackend,
+    ) -> Result<T, VanityError> {
+        match backend {
+            VanityBackend::Cpu => Self::find_vanity_address_regex_cpu::<T>(regex_str, threads),
+            VanityBackend::Gpu => Err(VanityError::GpuRegexUnsupported),
+            VanityBackend::Hybrid => Self::find_vanity_address_regex_cpu::<T>(regex_str, threads),
+            VanityBackend::Auto => Self::find_vanity_address_regex_cpu::<T>(regex_str, threads),
+        }
+    }
+
+    fn find_vanity_address_regex_cpu<T: VanityChain + 'static>(
+        regex_str: String,
+        threads: usize,
     ) -> Result<T, VanityError> {
         // Validate the regex syntax
         let _test_regex = Regex::new(&regex_str).map_err(|_e| VanityError::InvalidRegex)?;
@@ -284,18 +878,13 @@ impl SearchEngines {
         for _ in 0..threads {
             let sender = sender.clone();
             let found_any = Arc::clone(&found_any);
-            let regex_clone = regex_str.clone();
+            let regex = Regex::new(&regex_str).map_err(|_e| VanityError::InvalidRegex)?;
 
             thread::spawn(move || {
-                // Compile regex once per thread
-                let regex = Regex::new(&regex_clone).unwrap();
                 let mut batch: [T; BATCH_SIZE] = T::generate_batch();
                 let mut dummy = T::generate_random();
 
                 while !found_any.load(Ordering::Relaxed) {
-                    // Generate a batch of addresses
-                    T::fill_batch(&mut batch);
-
                     // Check each address in the batch
                     for (i, keys_and_address) in batch.iter().enumerate() {
                         let address = keys_and_address.get_address();
@@ -308,21 +897,95 @@ impl SearchEngines {
                             }
                         }
                     }
+
+                    if !found_any.load(Ordering::Relaxed) {
+                        T::fill_batch(&mut batch);
+                    }
                 }
             });
         }
 
         // The main thread just waits for the first successful result.
         // As soon as one thread sends over the channel, we have our vanity address.
-        Ok(receiver
-            .recv()
-            .expect("Receiver closed before a matching address was found"))
+        receiver.recv().map_err(|_| {
+            VanityError::VanityGeneratorError(
+                "regex workers exited before finding a matching address",
+            )
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{VanityAddr, VanityMode};
+    #[cfg(feature = "gpu")]
+    use super::SearchEngines;
+    use super::{VanityAddr, VanityBackend, VanityMode};
+
+    #[test]
+    fn test_parse_vanity_backend() {
+        assert_eq!(
+            "auto".parse::<VanityBackend>().unwrap(),
+            VanityBackend::Auto
+        );
+        assert_eq!("cpu".parse::<VanityBackend>().unwrap(), VanityBackend::Cpu);
+        assert_eq!("gpu".parse::<VanityBackend>().unwrap(), VanityBackend::Gpu);
+        assert_eq!(
+            "hybrid".parse::<VanityBackend>().unwrap(),
+            VanityBackend::Hybrid
+        );
+        assert_eq!(
+            "both".parse::<VanityBackend>().unwrap(),
+            VanityBackend::Hybrid
+        );
+        assert!("metal".parse::<VanityBackend>().is_err());
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn test_auto_backend_policy_is_deterministic() {
+        assert_eq!(
+            SearchEngines::auto_backend_policy(8, VanityMode::Regex, true),
+            VanityBackend::Cpu
+        );
+        assert_eq!(
+            SearchEngines::auto_backend_policy(8, VanityMode::Prefix, false),
+            VanityBackend::Cpu
+        );
+
+        for pattern_len in 0..=2 {
+            assert_eq!(
+                SearchEngines::auto_backend_policy(pattern_len, VanityMode::Prefix, true),
+                VanityBackend::Cpu
+            );
+        }
+        for pattern_len in 3..=4 {
+            assert_eq!(
+                SearchEngines::auto_backend_policy(pattern_len, VanityMode::Prefix, true),
+                VanityBackend::Hybrid
+            );
+        }
+        assert_eq!(
+            SearchEngines::auto_backend_policy(5, VanityMode::Prefix, true),
+            VanityBackend::Gpu
+        );
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn test_hybrid_defaults_to_reduced_gpu_usage() {
+        assert_eq!(
+            SearchEngines::effective_gpu_usage_limit(None, VanityBackend::Hybrid),
+            70
+        );
+        assert_eq!(
+            SearchEngines::effective_gpu_usage_limit(None, VanityBackend::Gpu),
+            100
+        );
+        assert_eq!(
+            SearchEngines::effective_gpu_usage_limit(Some(100), VanityBackend::Hybrid),
+            100
+        );
+    }
 
     mod bitcoin_vanity_tests {
         use super::*;
@@ -414,8 +1077,7 @@ mod tests {
             // The final pattern is "ET$" => ends with "ET"
             assert!(
                 address.ends_with("ET"),
-                "Address should end with 'ET': {}",
-                address
+                "Address should end with 'ET': {address}"
             );
         }
 
@@ -430,8 +1092,7 @@ mod tests {
             // Now that we know it's '^1E', check the first two characters:
             assert!(
                 address.starts_with("1E"),
-                "Address should start with '1E': {}",
-                address
+                "Address should start with '1E': {address}"
             );
         }
 
@@ -447,14 +1108,12 @@ mod tests {
             // 1) Check it starts with "1E"
             assert!(
                 address.starts_with("1E"),
-                "Address should start with '1E': {}",
-                address
+                "Address should start with '1E': {address}"
             );
             // 2) Check it ends with 'T'
             assert!(
                 address.ends_with('T'),
-                "Address should end with 'T': {}",
-                address
+                "Address should end with 'T': {address}"
             );
         }
 
@@ -470,18 +1129,15 @@ mod tests {
             // After rewriting: '^1E.*69.*T$'
             assert!(
                 address.starts_with("1E"),
-                "Address should start with '1E': {}",
-                address
+                "Address should start with '1E': {address}"
             );
             assert!(
                 address.contains("69"),
-                "Address should contain '69': {}",
-                address
+                "Address should contain '69': {address}"
             );
             assert!(
                 address.ends_with('T'),
-                "Address should end with 'T': {}",
-                address
+                "Address should end with 'T': {address}"
             );
         }
 
@@ -511,6 +1167,28 @@ mod tests {
         fn test_generate_regex_forbidden_char_i() {
             let pattern = "^I";
             let _ = VanityAddr::generate_regex::<BitcoinKeyPair>(pattern, 4).unwrap();
+        }
+
+        #[cfg(not(feature = "gpu"))]
+        #[test]
+        fn test_generate_with_gpu_backend_is_unavailable() {
+            let result = VanityAddr::generate_with_options::<BitcoinKeyPair>(
+                "et",
+                super::super::VanitySearchOptions {
+                    threads: 1,
+                    case_sensitive: true,
+                    fast_mode: true,
+                    vanity_mode: VanityMode::Prefix,
+                    backend: VanityBackend::Gpu,
+                    gpu_batch_size: None,
+                    gpu_usage_limit: Some(100),
+                },
+            );
+
+            assert!(matches!(
+                result,
+                Err(crate::error::VanityError::GpuBackendUnavailable)
+            ));
         }
     }
 
@@ -619,8 +1297,7 @@ mod tests {
 
             assert!(
                 address.starts_with("ab"),
-                "Address should start with 'ab': {}",
-                address
+                "Address should start with 'ab': {address}"
             );
         }
 
@@ -633,8 +1310,7 @@ mod tests {
 
             assert!(
                 address.ends_with("cd"),
-                "Address should end with 'cd': {}",
-                address
+                "Address should end with 'cd': {address}"
             );
         }
 
@@ -647,8 +1323,7 @@ mod tests {
 
             assert!(
                 address.contains("abc"),
-                "Address should contain 'abc': {}",
-                address
+                "Address should contain 'abc': {address}"
             );
         }
 
@@ -682,13 +1357,11 @@ mod tests {
 
             assert!(
                 address.starts_with("ab"),
-                "Address should start with 'ab': {}",
-                address
+                "Address should start with 'ab': {address}"
             );
             assert!(
                 address.ends_with("12"),
-                "Address should end with '12': {}",
-                address
+                "Address should end with '12': {address}"
             );
         }
     }
@@ -782,8 +1455,7 @@ mod tests {
 
             assert!(
                 address.starts_with("et"),
-                "Address should start with 'et': {}",
-                address
+                "Address should start with 'et': {address}"
             );
         }
 
@@ -795,8 +1467,7 @@ mod tests {
 
             assert!(
                 address.ends_with("cd"),
-                "Address should end with 'cd': {}",
-                address
+                "Address should end with 'cd': {address}"
             );
         }
 
@@ -808,8 +1479,7 @@ mod tests {
 
             assert!(
                 address.contains("ab"),
-                "Address should contain 'ab': {}",
-                address
+                "Address should contain 'ab': {address}"
             );
         }
 
@@ -835,8 +1505,7 @@ mod tests {
 
             assert!(
                 address.starts_with("e"),
-                "Address should start with 'e': {}",
-                address
+                "Address should start with 'e': {address}"
             );
         }
 
@@ -848,8 +1517,7 @@ mod tests {
 
             assert!(
                 address.contains("11"),
-                "Address should contain '11': {}",
-                address
+                "Address should contain '11': {address}"
             );
         }
 
@@ -861,8 +1529,7 @@ mod tests {
 
             assert!(
                 address.contains("22"),
-                "Address should contain '22': {}",
-                address
+                "Address should contain '22': {address}"
             );
         }
 
@@ -874,8 +1541,7 @@ mod tests {
 
             assert!(
                 address.ends_with("t"),
-                "Address should end with 't': {}",
-                address
+                "Address should end with 't': {address}"
             );
         }
 
@@ -887,8 +1553,7 @@ mod tests {
 
             assert!(
                 address.contains("11") && address.contains("22"),
-                "Address should contain '11' followed by '22': {}",
-                address
+                "Address should contain '11' followed by '22': {address}"
             );
         }
 
@@ -900,18 +1565,15 @@ mod tests {
 
             assert!(
                 address.starts_with("e"),
-                "Address should start with 'e': {}",
-                address
+                "Address should start with 'e': {address}"
             );
             assert!(
                 address.contains("9"),
-                "Address should contain '9': {}",
-                address
+                "Address should contain '9': {address}"
             );
             assert!(
                 address.ends_with("t"),
-                "Address should end with 't': {}",
-                address
+                "Address should end with 't': {address}"
             );
         }
     }
