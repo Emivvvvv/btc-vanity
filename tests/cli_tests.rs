@@ -5,6 +5,27 @@ use std::process::Command;
 use tempfile::NamedTempFile;
 
 #[test]
+fn test_cli_help_and_version_exit_successfully() {
+    for argument in ["--help", "--version"] {
+        let result = Command::new("./target/debug/btc-vanity")
+            .arg(argument)
+            .output()
+            .expect("Failed to execute CLI command");
+
+        assert!(
+            result.status.success(),
+            "{argument} exited with {}: {}",
+            result.status,
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(
+            !result.stdout.is_empty(),
+            "{argument} did not print its output"
+        );
+    }
+}
+
+#[test]
 fn test_cli_with_prefix() {
     // Run the CLI with a prefix
     let result = Command::new("./target/debug/btc-vanity")
@@ -25,8 +46,7 @@ fn test_cli_with_prefix() {
         stdout
             .to_ascii_lowercase()
             .contains("address (compressed): 1tst"),
-        "CLI output does not contain expected prefix: {}",
-        stdout
+        "CLI output does not contain expected prefix: {stdout}"
     );
 }
 
@@ -73,8 +93,7 @@ fn test_cli_with_output_file() {
         output
             .to_ascii_lowercase()
             .contains("address (compressed): 1tst"),
-        "Output file does not contain expected data: {}",
-        output
+        "Output file does not contain expected data: {output}"
     );
 
     // Clean up the temporary file
@@ -100,8 +119,7 @@ fn test_cli_with_case_sensitivity() {
     let stdout = String::from_utf8_lossy(&result.stdout);
     assert!(
         stdout.contains("TST"),
-        "CLI output does not match expected case-sensitive pattern: {}",
-        stdout
+        "CLI output does not match expected case-sensitive pattern: {stdout}"
     );
 }
 
@@ -119,8 +137,25 @@ fn test_cli_missing_required_arguments() {
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(
         stderr.contains("the following required arguments were not provided"),
-        "CLI error message is incorrect: {}",
-        stderr
+        "CLI error message is incorrect: {stderr}"
+    );
+}
+
+#[test]
+fn test_cli_generation_error_returns_failure_status() {
+    let result = Command::new("./target/debug/btc-vanity")
+        .args(["--regex", "["])
+        .output()
+        .expect("Failed to execute CLI command");
+
+    assert!(
+        !result.status.success(),
+        "generation error returned success"
+    );
+    assert!(
+        String::from_utf8_lossy(&result.stderr).contains("Invalid Regex"),
+        "generation error was not reported: {}",
+        String::from_utf8_lossy(&result.stderr)
     );
 }
 
@@ -151,7 +186,6 @@ fn test_cli_with_input_file_tempfile() {
     assert!(
         stdout.to_lowercase().contains("address (compressed): 1t1")
             && stdout.contains("address (compressed): 1T2"),
-        "CLI output does not contain expected results: {}",
-        stdout
+        "CLI output does not contain expected results: {stdout}"
     );
 }

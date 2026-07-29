@@ -1,6 +1,7 @@
+use btc_vanity::error::VanityError;
 #[cfg(feature = "ethereum")]
 use btc_vanity::EthereumKeyPair;
-use btc_vanity::{BitcoinKeyPair, VanityAddr, VanityMode};
+use btc_vanity::{BitcoinKeyPair, VanityAddr, VanityBackend, VanityMode, VanitySearchOptions};
 #[cfg(feature = "solana")]
 use btc_vanity::{KeyPairGenerator, SolanaKeyPair};
 
@@ -96,10 +97,8 @@ fn test_bitcoin_vanity_address_regex() {
     let address = keypair.get_comp_address();
     let regex = regex::Regex::new(regex_pattern).unwrap();
     assert!(
-        regex.is_match(&address),
-        "Generated address '{}' does not match regex '{}'",
-        address,
-        regex_pattern
+        regex.is_match(address),
+        "Generated address '{address}' does not match regex '{regex_pattern}'"
     );
 }
 
@@ -115,4 +114,32 @@ fn test_invalid_regex_handling() {
         result.is_err(),
         "Expected error for invalid regex, but got success"
     );
+}
+
+#[test]
+fn test_zero_threads_is_rejected_for_non_empty_searches() {
+    let result = VanityAddr::generate_with_options::<BitcoinKeyPair>(
+        "abc",
+        VanitySearchOptions {
+            threads: 0,
+            backend: VanityBackend::Cpu,
+            ..VanitySearchOptions::default()
+        },
+    );
+
+    assert!(matches!(result, Err(VanityError::InvalidThreadCount)));
+}
+
+#[test]
+fn test_zero_threads_is_rejected_for_regex_searches() {
+    let result = VanityAddr::generate_regex_with_options::<BitcoinKeyPair>(
+        "^1",
+        VanitySearchOptions {
+            threads: 0,
+            backend: VanityBackend::Cpu,
+            ..VanitySearchOptions::default()
+        },
+    );
+
+    assert!(matches!(result, Err(VanityError::InvalidThreadCount)));
 }
