@@ -31,6 +31,11 @@ const RESULT_ADDRESS_BASE: u32 = 13u;
 const MODE_PREFIX: u32 = 0u;
 const MODE_SUFFIX: u32 = 1u;
 const MODE_ANYWHERE: u32 = 2u;
+const FLAG_CASE_SENSITIVE: u32 = 0x1u;
+const FLAG_STAGE_BTC: u32 = 0x2u;
+const STAGED_SURVIVOR_CAPACITY: u32 = 16u;
+const STAGED_SURVIVOR_SCALAR_WORDS: u32 = 128u;
+const STAGED_SURVIVOR_HASH_WORDS: u32 = 320u;
 const TABLE_POINT_STRIDE: u32 = {{ num_limbs * 2 }}u;
 var<workgroup> SECP256K1_TABLE_WG: array<PointAffine, {{ table_size }}>;
 {% include "sha256.wgsl" %}
@@ -45,10 +50,14 @@ fn ascii_lower(c: u32) -> u32 {
 }
 
 fn normalize_for_compare(c: u32) -> u32 {
-    if (params.line0.w == 0u) {
+    if ((params.line0.w & FLAG_CASE_SENSITIVE) == 0u) {
         return ascii_lower(c);
     }
     return c;
+}
+
+fn stage_btc_enabled() -> bool {
+    return (params.line0.w & FLAG_STAGE_BTC) != 0u;
 }
 
 fn load_seed_bigint() -> BigInt {
@@ -242,6 +251,132 @@ fn scalar_to_result_words(scalar: ptr<function, BigInt>) -> array<u32, 8> {
     return out;
 }
 
+fn write_hash160_to_debug(
+    h160: ptr<function, array<u32, 20>>,
+    debug_out: ptr<function, array<u32, 64>>,
+) {
+    for (var i: u32 = 0u; i < 64u; i = i + 1u) {
+        if (i < 20u) {
+            (*debug_out)[i] = (*h160)[i];
+        } else {
+            (*debug_out)[i] = 0u;
+        }
+    }
+}
+
+fn prefix_leading_ones_len(pattern_len: u32) -> u32 {
+    var count = 0u;
+    while (count < pattern_len && pattern_words[count] == 49u) {
+        count = count + 1u;
+    }
+    return count;
+}
+
+fn normalized_common_prefix_len(
+    a: ptr<function, AddressBuf>,
+    b: ptr<function, AddressBuf>,
+) -> u32 {
+    let n = min((*a).len, (*b).len);
+    var i = 0u;
+    while (i < n) {
+        if (normalize_for_compare((*a).data[i]) != normalize_for_compare((*b).data[i])) {
+            break;
+        }
+        i = i + 1u;
+    }
+    return i;
+}
+
+fn encode_btc_address_checksum_extreme_bounds(
+    h160: ptr<function, array<u32, 20>>,
+    out_min: ptr<function, AddressBuf>,
+    out_max: ptr<function, AddressBuf>,
+) {
+    var payload_min: array<u32, 64> = array<u32, 64>();
+    var payload_max: array<u32, 64> = array<u32, 64>();
+
+    payload_min[0] = 0u;
+    payload_max[0] = 0u;
+    for (var i: u32 = 0u; i < 20u; i = i + 1u) {
+        payload_min[i + 1u] = (*h160)[i];
+        payload_max[i + 1u] = (*h160)[i];
+    }
+
+    payload_min[21u] = 0u;
+    payload_min[22u] = 0u;
+    payload_min[23u] = 0u;
+    payload_min[24u] = 0u;
+
+    payload_max[21u] = 255u;
+    payload_max[22u] = 255u;
+    payload_max[23u] = 255u;
+    payload_max[24u] = 255u;
+
+    (*out_min) = base58_encode_var(&payload_min, 25u);
+    (*out_max) = base58_encode_var(&payload_max, 25u);
+}
+
+fn strong_prefix_prefilter_checksum_range(h160: ptr<function, array<u32, 20>>) -> bool {
+    let pattern_len = params.line0.z;
+    if (pattern_len == 0u || params.line0.y != MODE_PREFIX) {
+        return true;
+    }
+
+    var addr_min: AddressBuf;
+    var addr_max: AddressBuf;
+    encode_btc_address_checksum_extreme_bounds(h160, &addr_min, &addr_max);
+
+    let stable_len = normalized_common_prefix_len(&addr_min, &addr_max);
+    let check_len = min(pattern_len, stable_len);
+    for (var i: u32 = 0u; i < check_len; i = i + 1u) {
+        if (normalize_for_compare(addr_min.data[i]) != pattern_words[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+fn quick_prefilter_before_base58(h160: ptr<function, array<u32, 20>>) -> bool {
+    let pattern_len = params.line0.z;
+    let mode = params.line0.y;
+
+    if (pattern_len == 0u) {
+        return true;
+    }
+
+    if (mode != MODE_PREFIX) {
+        return true;
+    }
+
+    // All Bitcoin P2PKH addresses start with '1'.
+    if (pattern_words[0] != 49u) {
+        return false;
+    }
+
+    // Cheap deterministic reject: additional leading '1's require leading zero HASH160 bytes.
+    let leading_ones = prefix_leading_ones_len(pattern_len);
+    if (leading_ones <= 1u) {
+        return true;
+    }
+
+    let required_zero_bytes = leading_ones - 1u;
+    for (var i: u32 = 0u; i < required_zero_bytes; i = i + 1u) {
+        if ((*h160)[i] != 0u) {
+            return false;
+        }
+    }
+
+    // Strong zero-false-negative reject for non-leading-'1' prefixes:
+    // compare against checksum-extreme Base58 bounds and validate only the
+    // guaranteed stable common prefix segment.
+    if (pattern_len > leading_ones) {
+        return strong_prefix_prefilter_checksum_range(h160);
+    }
+
+    return true;
+}
+
 const RESULT_WINNER_INDEX: u32 = 0u;
 const RESULT_ATTEMPTS_LO_INDEX: u32 = 1u;
 const RESULT_ATTEMPTS_HI_INDEX: u32 = 2u;
@@ -295,15 +430,14 @@ fn store_match(
     }
 }
 
-fn derive_btc_address_from_point(
+fn derive_btc_hash160_from_point(
     p: ptr<function, BigInt>,
     p_wide: ptr<function, BigIntWide>,
     r: ptr<function, BigInt>,
     rinv: ptr<function, BigInt>,
     mu_fp: ptr<function, BigInt>,
     proj: ptr<function, Point>,
-    debug_out: ptr<function, array<u32, 64>>,
-    out_address: ptr<function, AddressBuf>,
+    out_h160: ptr<function, array<u32, 20>>,
 ) {
     var aff = projective_to_affine_non_mont(proj, p, p_wide, r, rinv, mu_fp);
     
@@ -321,20 +455,20 @@ fn derive_btc_address_from_point(
         ripemd_in[i] = h256[i];
     }
     var h160 = ripemd160_var(&ripemd_in, 32u);
-    
-    // Fill debug_out with HASH160(pubkey) bytes and ensure the rest is zeroed.
-    for(var i: u32 = 0u; i < 64u; i = i + 1u) {
-        if (i < 20u) {
-            (*debug_out)[i] = h160[i];
-        } else {
-            (*debug_out)[i] = 0u;
-        }
+    for (var i: u32 = 0u; i < 20u; i = i + 1u) {
+        (*out_h160)[i] = h160[i];
     }
+}
+
+fn encode_btc_address_from_hash160(
+    h160: ptr<function, array<u32, 20>>,
+    out_address: ptr<function, AddressBuf>,
+) {
 
     var payload21: array<u32, 64> = array<u32, 64>();
     payload21[0] = 0u; // Bitcoin P2PKH version byte
     for (var i: u32 = 0u; i < 20u; i = i + 1u) {
-        payload21[i + 1u] = h160[i];
+        payload21[i + 1u] = (*h160)[i];
     }
 
     var chk1 = sha256_var(&payload21, 21u);
@@ -405,6 +539,16 @@ fn secp256k1_btc_vanity_search(
     let g_affine = SECP256K1_TABLE_WG[0];
     var g_point = Point(g_affine.x, g_affine.y, r);
 
+    var survivor_count = 0u;
+    var survivor_candidate_idx: array<u32, STAGED_SURVIVOR_CAPACITY>;
+    var survivor_attempt_lo: array<u32, STAGED_SURVIVOR_CAPACITY>;
+    var survivor_attempt_hi: array<u32, STAGED_SURVIVOR_CAPACITY>;
+    var survivor_scalar_words: array<u32, STAGED_SURVIVOR_SCALAR_WORDS>;
+    var survivor_h160: array<u32, STAGED_SURVIVOR_HASH_WORDS>;
+
+    let staged_mode = stage_btc_enabled();
+
+    // Stage 1: EC + HASH160 + quick reject + survivor compaction.
     for (var lane: u32 = 0u; lane < candidates_per_invocation; lane = lane + 1u) {
         if (lane >= lane_count || current_candidate_index >= params.line0.x) {
             break;
@@ -414,47 +558,120 @@ fn secp256k1_btc_vanity_search(
             return;
         }
 
-        var digest: array<u32, 64> = array<u32, 64>();
-        var address: AddressBuf;
-        derive_btc_address_from_point(
+        var h160: array<u32, 20> = array<u32, 20>();
+        derive_btc_hash160_from_point(
             &p,
             &p_wide,
             &r,
             &rinv,
             &mu_fp,
             &current_point,
-            &digest,
-            &address,
+            &h160,
         );
-        if (!address_matches(&address)) {
-            if (lane + 1u < lane_count) {
-                current_candidate_index = current_candidate_index + 1u;
-                current_lo = current_lo + 1u;
-                if (current_lo == 0u) {
-                    current_hi = current_hi + 1u;
+
+        if (!staged_mode || quick_prefilter_before_base58(&h160)) {
+            if (staged_mode && survivor_count < STAGED_SURVIVOR_CAPACITY) {
+                let slot = survivor_count;
+                survivor_candidate_idx[slot] = current_candidate_index;
+                survivor_attempt_lo[slot] = current_lo;
+                survivor_attempt_hi[slot] = current_hi;
+
+                let scalar_words = scalar_to_result_words(&scalar);
+                let scalar_base = slot * 8u;
+                survivor_scalar_words[scalar_base + 0u] = scalar_words[0u];
+                survivor_scalar_words[scalar_base + 1u] = scalar_words[1u];
+                survivor_scalar_words[scalar_base + 2u] = scalar_words[2u];
+                survivor_scalar_words[scalar_base + 3u] = scalar_words[3u];
+                survivor_scalar_words[scalar_base + 4u] = scalar_words[4u];
+                survivor_scalar_words[scalar_base + 5u] = scalar_words[5u];
+                survivor_scalar_words[scalar_base + 6u] = scalar_words[6u];
+                survivor_scalar_words[scalar_base + 7u] = scalar_words[7u];
+
+                let h160_base = slot * 20u;
+                for (var i: u32 = 0u; i < 20u; i = i + 1u) {
+                    survivor_h160[h160_base + i] = h160[i];
                 }
-                increment_scalar_mod_order_in_place(&scalar);
-                current_point = projective_madd_1998_cmo_unsafe(&current_point, &g_point, &p);
+                survivor_count = survivor_count + 1u;
+            } else {
+                // Overflow or non-staged fallback: evaluate immediately.
+                var address: AddressBuf;
+                encode_btc_address_from_hash160(&h160, &address);
+                if (address_matches(&address)) {
+                    var attempts_lo = current_lo + 1u;
+                    var attempts_hi = current_hi;
+                    if (attempts_lo == 0u) {
+                        attempts_hi = attempts_hi + 1u;
+                    }
+
+                    var scalar_words = scalar_to_result_words(&scalar);
+                    var debug_hash: array<u32, 64> = array<u32, 64>();
+                    write_hash160_to_debug(&h160, &debug_hash);
+
+                    store_match(
+                        current_candidate_index,
+                        attempts_lo,
+                        attempts_hi,
+                        params.line1.z + 1u,
+                        &scalar_words,
+                        &address,
+                        &debug_hash,
+                    );
+                    return;
+                }
             }
+        }
+
+        if (lane + 1u < lane_count) {
+            current_candidate_index = current_candidate_index + 1u;
+            current_lo = current_lo + 1u;
+            if (current_lo == 0u) {
+                current_hi = current_hi + 1u;
+            }
+            increment_scalar_mod_order_in_place(&scalar);
+            current_point = projective_madd_1998_cmo_unsafe(&current_point, &g_point, &p);
+        }
+    }
+
+    // Stage 2: only encode and verify compacted survivors.
+    for (var s: u32 = 0u; s < survivor_count; s = s + 1u) {
+        if (result_words[0] != RESULT_SENTINEL) {
+            return;
+        }
+
+        var h160: array<u32, 20> = array<u32, 20>();
+        let h160_base = s * 20u;
+        for (var i: u32 = 0u; i < 20u; i = i + 1u) {
+            h160[i] = survivor_h160[h160_base + i];
+        }
+
+        var address: AddressBuf;
+        encode_btc_address_from_hash160(&h160, &address);
+        if (!address_matches(&address)) {
             continue;
         }
 
-        var attempts_lo = current_lo + 1u;
-        var attempts_hi = current_hi;
+        var attempts_lo = survivor_attempt_lo[s] + 1u;
+        var attempts_hi = survivor_attempt_hi[s];
         if (attempts_lo == 0u) {
             attempts_hi = attempts_hi + 1u;
         }
 
-        var scalar_words = scalar_to_result_words(&scalar);
+        var scalar_words: array<u32, 8>;
+        let scalar_base = s * 8u;
+        for (var i: u32 = 0u; i < 8u; i = i + 1u) {
+            scalar_words[i] = survivor_scalar_words[scalar_base + i];
+        }
+        var debug_hash: array<u32, 64> = array<u32, 64>();
+        write_hash160_to_debug(&h160, &debug_hash);
 
         store_match(
-            current_candidate_index,
+            survivor_candidate_idx[s],
             attempts_lo,
             attempts_hi,
             params.line1.z + 1u,
             &scalar_words,
             &address,
-            &digest,
+            &debug_hash,
         );
         return;
     }

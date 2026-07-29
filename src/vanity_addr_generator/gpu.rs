@@ -32,6 +32,8 @@ const LOG_LIMB_SIZE: u32 = 13;
 const WORKGROUP_SIZE: u32 = 256;
 const PATTERN_CAPACITY: usize = 40;
 const RESULT_WORDS: usize = 64;
+const GPU_PARAM_FLAG_CASE_SENSITIVE: u32 = 0x1;
+const GPU_PARAM_FLAG_STAGE_BTC: u32 = 0x2;
 
 const RESULT_WINNER_INDEX: usize = 0;
 const RESULT_ATTEMPTS_LO_INDEX: usize = 1;
@@ -408,6 +410,7 @@ impl Secp256k1GpuEngine {
         self.write_seed(&pipeline.seed_buf, &seed);
         self.write_pattern(&pipeline.pattern_buf, pattern, case_sensitive);
         let pattern_len = pattern.len();
+        let stage_btc_pipeline = matches!(target, GpuSearchTarget::Bitcoin);
 
         if batches == 0 {
             return Ok(None);
@@ -426,6 +429,7 @@ impl Secp256k1GpuEngine {
                 slot_index,
                 pattern_len,
                 case_sensitive,
+                stage_btc_pipeline,
                 vanity_mode,
                 tuning,
                 batch_index as u32,
@@ -449,6 +453,7 @@ impl Secp256k1GpuEngine {
                                 slot_index,
                                 pattern_len,
                                 case_sensitive,
+                                stage_btc_pipeline,
                                 vanity_mode,
                                 tuning,
                                 new_batch_index as u32,
@@ -471,6 +476,7 @@ impl Secp256k1GpuEngine {
                             slot_index,
                             pattern_len,
                             case_sensitive,
+                            stage_btc_pipeline,
                             vanity_mode,
                             tuning,
                             new_batch_index as u32,
@@ -509,6 +515,7 @@ impl Secp256k1GpuEngine {
         self.write_seed(&pipeline.seed_buf, &seed);
         self.write_pattern(&pipeline.pattern_buf, pattern, case_sensitive);
         let pattern_len = pattern.len();
+        let stage_btc_pipeline = matches!(target, GpuSearchTarget::Bitcoin);
 
         let ring_depth = tuning.ring_depth.min(pipeline.slots.len()).max(1);
         let mut inflight: VecDeque<(usize, usize)> = VecDeque::with_capacity(ring_depth);
@@ -523,6 +530,7 @@ impl Secp256k1GpuEngine {
                 slot_index,
                 pattern_len,
                 case_sensitive,
+                stage_btc_pipeline,
                 vanity_mode,
                 tuning,
                 batch_index as u32,
@@ -558,6 +566,7 @@ impl Secp256k1GpuEngine {
                             slot_index,
                             pattern_len,
                             case_sensitive,
+                            stage_btc_pipeline,
                             vanity_mode,
                             tuning,
                             new_batch_index as u32,
@@ -578,6 +587,7 @@ impl Secp256k1GpuEngine {
                         slot_index,
                         pattern_len,
                         case_sensitive,
+                        stage_btc_pipeline,
                         vanity_mode,
                         tuning,
                         new_batch_index as u32,
@@ -678,15 +688,24 @@ impl Secp256k1GpuEngine {
         vanity_mode: VanityMode,
         pattern_len: usize,
         case_sensitive: bool,
+        stage_btc_pipeline: bool,
         attempt_offset: u64,
         batch_index: u32,
         candidates_per_invocation: u32,
     ) {
+        let mut flags = 0u32;
+        if case_sensitive {
+            flags |= GPU_PARAM_FLAG_CASE_SENSITIVE;
+        }
+        if stage_btc_pipeline {
+            flags |= GPU_PARAM_FLAG_STAGE_BTC;
+        }
+
         let params = [
             batch_size as u32,
             vanity_mode_to_gpu(vanity_mode),
             pattern_len as u32,
-            case_sensitive as u32,
+            flags,
             attempt_offset as u32,
             (attempt_offset >> 32) as u32,
             batch_index,
@@ -708,6 +727,7 @@ impl Secp256k1GpuEngine {
         slot_index: usize,
         pattern_len: usize,
         case_sensitive: bool,
+        stage_btc_pipeline: bool,
         vanity_mode: VanityMode,
         tuning: GpuTuning,
         batch_index: u32,
@@ -721,6 +741,7 @@ impl Secp256k1GpuEngine {
             vanity_mode,
             pattern_len,
             case_sensitive,
+            stage_btc_pipeline,
             attempt_offset,
             batch_index,
             tuning.candidates_per_invocation,
