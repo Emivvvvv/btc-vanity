@@ -171,7 +171,34 @@ fn main() -> Result<(), btc_vanity::error::VanityError> {
 This example prints only the public address. Generated wallet objects also
 contain private key material; keep them out of logs and diagnostics.
 
-## Performance principles
+## Measured performance
+
+The following fixed-work Bitcoin P2PKH candidate loops were measured on an
+Apple M1 Pro with an 8-core CPU, 14-core integrated GPU, 16 GiB of unified
+memory, and Metal 3. Each path performed compressed public-key derivation,
+address generation, and a case-sensitive prefix comparison.
+
+| Tool and path | Median | Throughput |
+| --- | ---: | ---: |
+| btc-vanity CPU, one worker | 304.019 ms / 16,384 candidates | **53,891 candidates/s** |
+| [vgen 0.3.0](https://github.com/oritwoen/vgen/tree/a405fcb69032d328318cfacbda9d7fea9d4dcacc) CPU, one worker | 21.432 µs / candidate | 46,659 candidates/s |
+| btc-vanity Metal, default batch and ring depth | 5.001 s / 524,288 candidates | **104,837 candidates/s** |
+
+In this comparable single-worker Bitcoin loop, btc-vanity CPU was approximately
+**15.5% faster than vgen**. The experimental Metal path delivered approximately
+**1.95× the throughput of btc-vanity's one-worker CPU path**.
+
+These measurements compare candidate loops, not complete all-core application
+performance. They do not establish that Metal beats btc-vanity's full
+multithreaded CPU backend or that the same result applies to other hardware,
+chains, and drivers. See the [benchmark methodology and complete
+limitations](docs/src/performance.md).
+
+Beyond this measured throughput, btc-vanity provides the same local interface
+for Bitcoin, Ethereum, and Solana, with CPU, Auto, Hybrid, and experimental GPU
+backends, GPU duty-cycle control, and CPU reconstruction of GPU winners.
+
+### Choosing a backend
 
 Vanity search is probabilistic, and expected work grows exponentially with the
 number of constrained characters. Pattern length and alphabet therefore matter

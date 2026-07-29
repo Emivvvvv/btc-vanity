@@ -4,6 +4,56 @@ There is no universal fastest backend or candidate rate. Results vary with the
 chain pipeline, match mode, case policy, pattern length, CPU, GPU, driver,
 graphics API, power mode, temperature, compiler, and whether GPU state is warm.
 
+## Measured results: Apple M1 Pro
+
+On July 29, 2026, the version 3 branch was measured at tree
+`db218489bd9d716814b3648496ffd9f285213bc2` on:
+
+- Apple M1 Pro with 8 CPU cores reported to the process;
+- 14-core integrated GPU;
+- 16 GiB unified memory;
+- macOS 15.7.4; and
+- Metal 3.
+
+The comparison used [vgen 0.3.0 at revision
+`a405fcb69032d328318cfacbda9d7fea9d4dcacc`](https://github.com/oritwoen/vgen/tree/a405fcb69032d328318cfacbda9d7fea9d4dcacc).
+Both CPU measurements performed a case-sensitive Bitcoin P2PKH candidate loop:
+secp256k1 public-key derivation, compressed public-key serialization, address
+generation, and prefix comparison. Measurements report Criterion medians
+rather than the fastest sample.
+
+| Tool and path | Fixed work and median | Derived throughput |
+| --- | ---: | ---: |
+| btc-vanity CPU, one benchmark worker | 304.019 ms / 16,384 candidates | **53,891 candidates/s** |
+| vgen CPU, one benchmark worker | 21.432 µs / candidate | 46,659 candidates/s |
+| btc-vanity Metal, batch 262,144 × ring depth 2 | 5.001 s / 524,288 candidates | **104,837 candidates/s** |
+
+For this candidate loop, btc-vanity's one-worker CPU path was approximately
+**15.5% faster than vgen's one-worker CPU path**. btc-vanity's Metal path
+delivered approximately **1.95× the throughput of its own one-worker CPU
+path**.
+
+These are engine-level results, not a complete application leaderboard. The
+study did not compare the tools' full multicore CPU schedulers, and it does not
+show that Metal outperforms btc-vanity's full multithreaded CPU backend.
+
+### Excluded comparisons
+
+vgen's 262,144-candidate GPU benchmark could not be measured on this machine:
+its Metal shader pipeline failed during compilation with an internal compiler
+error. That failure is an excluded result, not evidence that btc-vanity is
+faster.
+
+Ethereum was excluded because vgen's CPU generator produced EIP-55 checksummed
+addresses while btc-vanity searches lowercase 40-character hexadecimal
+addresses, and vgen did not provide the corresponding GPU path. Solana was
+excluded because the available `solana-keygen grind` command exposed neither a
+fixed-work mode nor a throughput counter. Comparing random time-to-match runs
+would mostly compare luck.
+
+These figures should be replaced or expanded when equivalent full-pipeline,
+multicore, and cross-platform measurements are available.
+
 ## Think in candidates and probability
 
 Elapsed time combines two independent questions:
