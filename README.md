@@ -188,7 +188,7 @@ For this single-worker Bitcoin loop, btc-vanity CPU was approximately **15.5%
 faster than vgen**, while Metal delivered approximately **1.95× btc-vanity's
 one-worker CPU throughput**. Results are hardware-specific and do not compare
 full multicore CPU execution. See the [methodology and
-limitations](docs/src/performance.md).
+limitations](https://emivvvvv.github.io/btc-vanity/performance.html).
 
 ## Security and limitations
 
