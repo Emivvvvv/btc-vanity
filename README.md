@@ -18,6 +18,7 @@
 
   <p align="center">
     <a href="https://crates.io/crates/btc-vanity"><img src="https://img.shields.io/crates/v/btc-vanity.svg" alt="crates.io release"></a>
+    <a href="https://crates.io/crates/btc-vanity"><img src="https://img.shields.io/crates/d/btc-vanity.svg" alt="crates.io downloads"></a>
     <a href="https://docs.rs/btc-vanity/latest/btc_vanity/"><img src="https://docs.rs/btc-vanity/badge.svg" alt="docs.rs"></a>
     <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.89%2B-black.svg" alt="Rust 1.89+"></a>
     <a href="https://github.com/Emivvvvv/btc-vanity/actions/workflows/rust.yml"><img src="https://github.com/Emivvvvv/btc-vanity/actions/workflows/rust.yml/badge.svg" alt="CI"></a>
