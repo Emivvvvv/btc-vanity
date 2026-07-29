@@ -116,7 +116,7 @@ pub fn cli() -> Command {
                 .index(1)
                 .required_unless_present_any(["input-file"])
                 .help_heading("Input")
-                .help("The string (or regex) used to match Bitcoin vanity addresses."),
+                .help("The pattern or regular expression to match against addresses."),
         )
         .arg(
             Arg::new("input-file")
@@ -125,7 +125,7 @@ pub fn cli() -> Command {
                 .required_unless_present_any(["string"])
                 .value_name("FILE")
                 .help_heading("Input")
-                .help("Reads patterns and it's flags from the specified file for vanity address generation, with one pattern and it's flags per line."),
+                .help("Reads one pattern and its optional flags from each line of a file."),
         )
         .arg(
             Arg::new("output-file")
@@ -212,7 +212,7 @@ pub fn cli() -> Command {
                 .long("gpu-batch-size")
                 .value_name("N")
                 .help_heading("Performance")
-                .help("Overrides GPU batch size for GPU and hybrid backends. Larger values may improve throughput on high-end GPUs."),
+                .help("Overrides GPU batch size for GPU and hybrid backends. Larger values may improve throughput but reduce responsiveness."),
         )
         .arg(
             Arg::new("gpu-usage-limit")
@@ -239,6 +239,6 @@ pub fn cli() -> Command {
                 .long("disable-fast")
                 .action(ArgAction::SetTrue)
                 .help_heading("Matching Behavior")
-                .help("Disables fast mode to allow longer patterns (5 for BTC and SOL, 16 for ETH), though it may increase search time."),
+                .help("Removes the short-pattern guard (5 characters for BTC/SOL and 16 for ETH); absolute limits remain."),
         )
 }

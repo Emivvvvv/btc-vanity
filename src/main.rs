@@ -209,6 +209,12 @@ fn main() {
     let (cli_flags, source) = match app.try_get_matches() {
         Ok(matches) => parse_cli(matches),
         Err(err) => {
+            if matches!(
+                err.kind(),
+                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
+            ) {
+                err.exit();
+            }
             if err.kind() == ErrorKind::MissingRequiredArgument {
                 eprintln!(
                     "error: the following required arguments were not provided:\n  --input-file <input-file> OR <string>\n"
