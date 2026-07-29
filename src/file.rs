@@ -11,7 +11,7 @@ use std::path::Path;
 use crate::error::VanityError;
 use crate::flags::VanityFlags;
 use crate::vanity_addr_generator::chain::Chain;
-use crate::VanityMode;
+use crate::{VanityBackend, VanityMode};
 
 /// Represents a single line item from an input file,
 /// containing a vanity pattern and associated flags.
@@ -54,7 +54,10 @@ fn parse_line(line: &str) -> Option<FileLineItem> {
                 output_file_name: None,
                 vanity_mode: None,
                 chain: None,
-                threads: 16,
+                threads: 0,
+                backend: None,
+                gpu_batch_size: None,
+                gpu_usage_limit: None,
             },
         });
     }
@@ -88,10 +91,49 @@ fn parse_line(line: &str) -> Option<FileLineItem> {
 
     // output file name: look for `-o` or `--output-file` plus the next token
     let mut output_file_name: Option<String> = None;
+    let mut backend: Option<VanityBackend> = None;
+    let mut threads: usize = 0;
+    let mut gpu_batch_size: Option<usize> = None;
+    let mut gpu_usage_limit: Option<u8> = None;
     for (i, &flag) in flags_vec.iter().enumerate() {
         if flag == "-o" || flag == "--output-file" {
             if let Some(next_flag) = flags_vec.get(i + 1) {
                 output_file_name = Some(next_flag.to_string());
+            }
+        }
+
+        if flag == "-b" || flag == "--backend" {
+            if let Some(next_flag) = flags_vec.get(i + 1) {
+                if let Ok(parsed_backend) = next_flag.parse::<VanityBackend>() {
+                    backend = Some(parsed_backend);
+                }
+            }
+        }
+
+        if flag == "-t" || flag == "--threads" {
+            if let Some(next_flag) = flags_vec.get(i + 1) {
+                if let Ok(parsed_threads) = next_flag.parse::<usize>() {
+                    threads = parsed_threads;
+                }
+            }
+        }
+
+        if flag == "--gpu-batch-size" {
+            if let Some(next_flag) = flags_vec.get(i + 1) {
+                if let Ok(parsed_gpu_batch_size) = next_flag.parse::<usize>() {
+                    if parsed_gpu_batch_size > 0 {
+                        gpu_batch_size = Some(parsed_gpu_batch_size);
+                    }
+                }
+            }
+        }
+
+        if flag == "--gpu-usage-limit" {
+            if let Some(next_flag) = flags_vec.get(i + 1) {
+                gpu_usage_limit = next_flag
+                    .parse::<u8>()
+                    .ok()
+                    .filter(|limit| (1..=100).contains(limit));
             }
         }
     }
@@ -105,7 +147,10 @@ fn parse_line(line: &str) -> Option<FileLineItem> {
             output_file_name,
             vanity_mode,
             chain,
-            threads: 0,
+            threads,
+            backend,
+            gpu_batch_size,
+            gpu_usage_limit,
         },
     })
 }
@@ -152,11 +197,14 @@ pub fn parse_input_file(path: &str) -> Result<Vec<FileLineItem>, VanityError> {
 /// - Returns `VanityError::FileError` if the operation fails,
 ///   such as due to invalid input or a write failure.
 pub fn write_output_file(output_path: &Path, buffer: &str) -> Result<(), VanityError> {
-    // Attempt to open the file in append mode
-    let file_result = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(output_path);
+    let mut options = OpenOptions::new();
+    options.append(true).create(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let file_result = options.open(output_path);
     let mut file = match file_result {
         Ok(file) => file,
         Err(e) => {
@@ -179,7 +227,7 @@ pub fn write_output_file(output_path: &Path, buffer: &str) -> Result<(), VanityE
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_input_file, parse_line};
+    use super::{parse_input_file, parse_line, write_output_file};
     use crate::VanityMode;
 
     #[test]
@@ -220,6 +268,54 @@ mod tests {
         assert_eq!(item.pattern, "test");
         assert_eq!(item.flags.vanity_mode, Some(VanityMode::Prefix));
         assert_eq!(item.flags.output_file_name, Some("output.txt".to_string()));
+    }
+
+    #[test]
+    fn test_parse_line_with_threads_and_backend_flags() {
+        let line = "test -a -t 12 -b gpu";
+        let item = parse_line(line).expect("Failed to parse line with threads and backend");
+
+        assert_eq!(item.pattern, "test");
+        assert_eq!(item.flags.vanity_mode, Some(VanityMode::Anywhere));
+        assert_eq!(item.flags.threads, 12);
+        assert_eq!(item.flags.backend, Some(crate::VanityBackend::Gpu));
+    }
+
+    #[test]
+    fn test_parse_line_with_hybrid_backend_alias() {
+        let line = "test -p -b both";
+        let item = parse_line(line).expect("Failed to parse line with hybrid backend alias");
+
+        assert_eq!(item.pattern, "test");
+        assert_eq!(item.flags.vanity_mode, Some(VanityMode::Prefix));
+        assert_eq!(item.flags.backend, Some(crate::VanityBackend::Hybrid));
+    }
+
+    #[test]
+    fn test_parse_line_with_gpu_batch_size_flag() {
+        let line = "test -a --gpu-batch-size 524288";
+        let item = parse_line(line).expect("Failed to parse line with gpu batch size");
+
+        assert_eq!(item.pattern, "test");
+        assert_eq!(item.flags.vanity_mode, Some(VanityMode::Anywhere));
+        assert_eq!(item.flags.gpu_batch_size, Some(524_288));
+    }
+
+    #[test]
+    fn test_parse_line_with_gpu_usage_limit_flag() {
+        let line = "test -a --gpu-usage-limit 90";
+        let item = parse_line(line).expect("Failed to parse line with GPU usage limit");
+
+        assert_eq!(item.flags.gpu_usage_limit, Some(90));
+    }
+
+    #[test]
+    fn test_parse_line_ignores_invalid_gpu_usage_limit() {
+        for limit in ["0", "101", "invalid"] {
+            let line = format!("test --gpu-usage-limit {limit}");
+            let item = parse_line(&line).expect("Failed to parse line");
+            assert_eq!(item.flags.gpu_usage_limit, None);
+        }
     }
 
     #[test]
@@ -325,8 +421,7 @@ mod tests {
         if let Err(err) = result {
             assert!(
                 err.to_string().contains("No such file"),
-                "Unexpected error message: {}",
-                err
+                "Unexpected error message: {err}"
             );
         }
     }
@@ -356,5 +451,24 @@ mod tests {
 
         // Clean up
         std::fs::remove_file(file_path).expect("Failed to delete mock input file");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn output_files_are_created_for_owner_access_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().expect("temporary directory should be created");
+        let output_path = directory.path().join("wallets.txt");
+
+        write_output_file(&output_path, "private key material")
+            .expect("output file should be written");
+
+        let mode = std::fs::metadata(output_path)
+            .expect("output file metadata should be readable")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o600);
     }
 }
