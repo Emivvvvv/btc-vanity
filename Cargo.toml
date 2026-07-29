@@ -54,6 +54,14 @@ name = "gpu_end_to_end"
 harness = false
 required-features = ["gpu"]
 
+[[bench]]
+name = "cpu_benchmarks"
+harness = false
+
+[[bench]]
+name = "pattern_matching"
+harness = false
+
 [profile.test]
 opt-level = 3
 

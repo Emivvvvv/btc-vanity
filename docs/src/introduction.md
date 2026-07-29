@@ -1,9 +1,10 @@
 # Introduction
 
-btc-vanity searches for Bitcoin, Ethereum, and Solana addresses whose text
-matches a pattern you choose. It generates candidates locally, derives each
-candidate's address, and stops when one matches. The result is a normal keypair:
-the vanity text changes how the address looks, not how the network treats it.
+btc-vanity is a blazingly fast local vanity-address search tool for Bitcoin,
+Ethereum, and Solana addresses whose text matches a pattern you choose. It
+generates candidates locally, derives each candidate's address, and stops when
+one matches. The result is a normal keypair: the vanity text changes how the
+address looks, not how the network treats it.
 
 The program offers four execution backends:
 

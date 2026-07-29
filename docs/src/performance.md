@@ -1,8 +1,10 @@
 # Performance and benchmarking
 
-There is no universal fastest backend or candidate rate. Results vary with the
-chain pipeline, match mode, case policy, pattern length, CPU, GPU, driver,
-graphics API, power mode, temperature, compiler, and whether GPU state is warm.
+btc-vanity is engineered to be blazingly fast across multithreaded CPU and
+experimental GPU backends. However, there is no universal fastest backend or
+candidate rate for every machine. Results vary with the chain pipeline, match
+mode, case policy, pattern length, CPU, GPU, driver, graphics API, power mode,
+temperature, compiler, and whether GPU state is warm.
 
 ## Measured results: Apple M1 Pro
 
@@ -115,10 +117,7 @@ Run with a stable machine: close unrelated compute work, avoid thermal
 throttling, and keep conditions identical between variants. Randomize or
 alternate variant order when heat or boost behavior could bias later runs.
 
-The repository's Criterion benchmark separates cold GPU initialization from
-fixed-work CPU and GPU chain measurements. Exact commands and contributor
-verification expectations live in `CONTRIBUTING.md`; keep generated benchmark
-artifacts out of secret-bearing output locations.
+The repository's Criterion benchmark suite includes targets for CPU multithreaded scaling (`cpu_benchmarks`), pattern-matching algorithms (`pattern_matching`), and GPU candidate pipelines (`gpu_end_to_end`). Exact commands and contributor verification expectations live in `CONTRIBUTING.md`; keep generated benchmark artifacts out of secret-bearing output locations.
 
 ## Interpret results conservatively
 
