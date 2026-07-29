@@ -184,41 +184,11 @@ address generation, and a case-sensitive prefix comparison.
 | [vgen 0.3.0](https://github.com/oritwoen/vgen/tree/a405fcb69032d328318cfacbda9d7fea9d4dcacc) CPU, one worker | 21.432 µs / candidate | 46,659 candidates/s |
 | btc-vanity Metal, default batch and ring depth | 5.001 s / 524,288 candidates | **104,837 candidates/s** |
 
-In this comparable single-worker Bitcoin loop, btc-vanity CPU was approximately
-**15.5% faster than vgen**. The experimental Metal path delivered approximately
-**1.95× the throughput of btc-vanity's one-worker CPU path**.
-
-These measurements compare candidate loops, not complete all-core application
-performance. They do not establish that Metal beats btc-vanity's full
-multithreaded CPU backend or that the same result applies to other hardware,
-chains, and drivers. See the [benchmark methodology and complete
+For this single-worker Bitcoin loop, btc-vanity CPU was approximately **15.5%
+faster than vgen**, while Metal delivered approximately **1.95× btc-vanity's
+one-worker CPU throughput**. Results are hardware-specific and do not compare
+full multicore CPU execution. See the [methodology and
 limitations](docs/src/performance.md).
-
-Beyond this measured throughput, btc-vanity provides the same local interface
-for Bitcoin, Ethereum, and Solana, with CPU, Auto, Hybrid, and experimental GPU
-backends, GPU duty-cycle control, and CPU reconstruction of GPU winners.
-
-### Choosing a backend
-
-Vanity search is probabilistic, and expected work grows exponentially with the
-number of constrained characters. Pattern length and alphabet therefore matter
-more than a backend label.
-
-- CPU avoids accelerator setup and is the only regex engine, making it the
-  predictable choice for regex and many short searches.
-- Auto keeps short or unsupported work on CPU, can combine CPU with the
-  experimental GPU path for medium exact patterns, and can select experimental
-  GPU-only execution for longer exact patterns when a compatible adapter is
-  available.
-- Hybrid searches concurrently. Either worker may find the result first, and a
-  GPU initialization failure does not prevent its CPU path from continuing.
-- Experimental GPU throughput depends on chain, pattern shape, adapter, driver,
-  and system load. A GPU is not inherently faster for every search.
-- Lower GPU usage limits and smaller batches favor interactive responsiveness;
-  higher values favor sustained throughput.
-
-Measure on the target machine with representative patterns before choosing a
-backend for long-running work.
 
 ## Security and limitations
 

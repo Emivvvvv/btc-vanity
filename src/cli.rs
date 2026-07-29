@@ -25,7 +25,7 @@
 //! `-t, --threads <N>`: Sets the number of threads for address generation. <br>
 //! `-b, --backend <BACKEND>`: Selects the execution backend (`auto`, `cpu`, `gpu`, `hybrid`). `both` is accepted as an alias for `hybrid`. <br>
 //! `--gpu-batch-size <N>`: Overrides GPU dynamic tuning batch size (only used by GPU/hybrid paths). <br>
-//! `--gpu-usage-limit <PERCENT>`: Limits GPU dispatch duty cycle to 1–100%. Defaults to 70% in Hybrid and 100% in GPU mode. <br>
+//! `--gpu-usage-limit <PERCENT>`: Limits GPU dispatch duty cycle to 1-100%. Defaults to 70% in Hybrid and 100% in GPU mode. <br>
 //! `-f, --force-flags`: Forces CLI flags to override any flags specified in the input file, ensuring consistent behavior across all patterns. <br>
 //! `-d, --disable-fast`: Disables fast mode to allow longer patterns (5 for BTC and SOL, 16 for ETH), though it may increase search time. <br>
 //!

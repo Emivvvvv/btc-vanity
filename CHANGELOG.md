@@ -8,7 +8,7 @@ All notable changes to this project are documented here.
 
 - Bitcoin, Ethereum, and Solana exact-pattern GPU search.
 - CPU, GPU, Hybrid, and deterministic Auto backend selection.
-- Configurable GPU batch size and 1–100% duty-cycle limiting.
+- Configurable GPU batch size and 1-100% duty-cycle limiting.
 - A responsive 70% Hybrid default with short throttled dispatch windows.
 - CPU/GPU correctness, result-race, resource-limit, and benchmark coverage.
 - A user manual, security policy, contribution guide, and CI documentation
