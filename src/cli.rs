@@ -226,6 +226,29 @@ pub fn cli() -> Command {
                 .help("Limits the GPU dispatch duty cycle to 1-100%. Defaults to 70% in hybrid mode and 100% in GPU mode."),
         )
         .arg(
+            Arg::new("opencl")
+                .long("opencl")
+                .action(ArgAction::SetTrue)
+                .help_heading("Performance")
+                .help("Uses the optimised OpenCL GPU search (Bitcoin prefix only; needs the `opencl` feature)."),
+        )
+        .arg(
+            Arg::new("ocl-items")
+                .long("ocl-items")
+                .value_name("N")
+                .value_parser(clap::value_parser!(usize))
+                .help_heading("Performance")
+                .help("OpenCL concurrent work-items. [default: 65536]"),
+        )
+        .arg(
+            Arg::new("ocl-group")
+                .long("ocl-group")
+                .value_name("N")
+                .value_parser(clap::value_parser!(usize))
+                .help_heading("Performance")
+                .help("OpenCL points per side of each work-item centre per dispatch. [default: 256]"),
+        )
+        .arg(
             Arg::new("case-sensitive")
                 .short('c')
                 .long("case-sensitive")

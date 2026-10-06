@@ -58,6 +58,7 @@ fn parse_line(line: &str) -> Option<FileLineItem> {
                 backend: None,
                 gpu_batch_size: None,
                 gpu_usage_limit: None,
+                ..Default::default()
             },
         });
     }
@@ -151,6 +152,7 @@ fn parse_line(line: &str) -> Option<FileLineItem> {
             backend,
             gpu_batch_size,
             gpu_usage_limit,
+            ..Default::default()
         },
     })
 }

@@ -19,6 +19,26 @@ use std::path::Path;
 use std::process;
 use std::time::Instant;
 
+#[cfg(feature = "opencl")]
+fn opencl_bitcoin(pattern: &str, flags: &VanityFlags) -> Result<BitcoinKeyPair, String> {
+    use btc_vanity::opencl_btc::{search_btc_prefix, OclConfig};
+    if flags.vanity_mode.unwrap_or(VanityMode::Prefix) != VanityMode::Prefix {
+        return Err("--opencl supports prefix matching only".into());
+    }
+    let defaults = OclConfig::default();
+    let cfg = OclConfig {
+        items: flags.ocl_items.unwrap_or(defaults.items),
+        group: flags.ocl_group.unwrap_or(defaults.group),
+        ..defaults
+    };
+    search_btc_prefix(pattern, flags.is_case_sensitive, cfg)
+}
+
+#[cfg(not(feature = "opencl"))]
+fn opencl_bitcoin(_pattern: &str, _flags: &VanityFlags) -> Result<BitcoinKeyPair, String> {
+    Err("--opencl requires building with the `opencl` feature".into())
+}
+
 /// Generates and formats a vanity address depending on the chain.
 /// Returns a `Result<String, String>` where the `Ok(String)` is the final formatted output.
 fn generate_vanity_address(pattern: &str, vanity_flags: &VanityFlags) -> Result<String, String> {
@@ -37,13 +57,17 @@ fn generate_vanity_address(pattern: &str, vanity_flags: &VanityFlags) -> Result<
     let out = match vanity_flags.chain.unwrap_or(Chain::Bitcoin) {
         Chain::Bitcoin => {
             // 1) Generate the Bitcoin vanity
-            let result: Result<BitcoinKeyPair, VanityError> =
+            let result: Result<BitcoinKeyPair, String> = if vanity_flags.opencl {
+                opencl_bitcoin(pattern, vanity_flags)
+            } else {
                 match vanity_flags.vanity_mode.unwrap_or(VanityMode::Prefix) {
                     VanityMode::Regex => {
                         VanityAddr::generate_regex_with_options::<BitcoinKeyPair>(pattern, options)
                     }
                     _ => VanityAddr::generate_with_options::<BitcoinKeyPair>(pattern, options),
-                };
+                }
+                .map_err(|e: VanityError| e.to_string())
+            };
 
             // 2) Format the result on success
             match result {
@@ -58,7 +82,7 @@ fn generate_vanity_address(pattern: &str, vanity_flags: &VanityFlags) -> Result<
                     );
                     Ok(s)
                 }
-                Err(e) => Err(e.to_string()),
+                Err(e) => Err(e),
             }
         }
 

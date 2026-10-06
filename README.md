@@ -78,6 +78,14 @@ Bitcoin and prefix matching are the defaults:
 btc-vanity emiv
 ```
 
+Fast Bitcoin prefix search on an OpenCL GPU (about 1.5 billion keys/s on a
+Radeon 8060S integrated GPU; see the [OpenCL guide](docs/src/opencl-search.md)):
+
+```bash
+cargo install btc-vanity --features opencl
+btc-vanity --opencl -c -o wallet.txt 1Emiv
+```
+
 Select another chain or match mode:
 
 ```bash
@@ -108,9 +116,10 @@ experimental GPU commands require the corresponding Cargo features.
 | Case-sensitive exact matching | Yes | No | Yes |
 | CPU | Built in | `ethereum` feature | `solana` feature |
 | Experimental GPU exact matching | `gpu` feature | `ethereum` + `gpu` | `solana` + `gpu` |
+| OpenCL prefix search | `opencl` feature | No | No |
 
-The `all` feature enables `ethereum`, `solana`, and the experimental `gpu`
-feature. Bitcoin CPU search needs no optional feature.
+The `all` feature enables `ethereum`, `solana`, the experimental `gpu`
+feature, and `opencl`. Bitcoin CPU search needs no optional feature.
 
 ## Execution backends
 

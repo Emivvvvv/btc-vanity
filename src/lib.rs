@@ -38,6 +38,8 @@ pub mod error;
 pub mod file;
 pub mod flags;
 pub mod keys_and_address;
+#[cfg(feature = "opencl")]
+pub mod opencl_btc;
 pub mod vanity_addr_generator;
 #[cfg(feature = "gpu")]
 pub(crate) mod wgpu_sig_ops;

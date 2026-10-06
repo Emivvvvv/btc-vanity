@@ -53,9 +53,13 @@ btc-vanity --backend cpu --regex '^1A.*Z$'
 | `-b`, `--backend NAME` | `auto`, `cpu`, `gpu`, `hybrid`, or alias `both` |
 | `--gpu-batch-size N` | Requested GPU candidates per batch |
 | `--gpu-usage-limit PERCENT` | Best-effort GPU dispatch duty cycle, `1..=100` |
+| `--opencl` | Optimised OpenCL Bitcoin prefix search (`opencl` feature) |
+| `--ocl-items N` | OpenCL concurrent work-items; default 65536 |
+| `--ocl-group N` | OpenCL points per side of each centre per dispatch; default 256 |
 
 Thread count must be at least 1. Hybrid's default limit is 70%; explicit GPU's
-is 100%. GPU flags have no effect on a CPU-only search.
+is 100%. GPU flags have no effect on a CPU-only search. `--opencl` overrides
+`--backend` for Bitcoin prefix searches; see [OpenCL Bitcoin search](opencl-search.md).
 
 ## Matching behavior
 
