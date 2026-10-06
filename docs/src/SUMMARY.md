@@ -13,6 +13,7 @@
 - [Matching](matching.md)
 - [Choosing a backend](backends.md)
 - [GPU and Hybrid search](gpu-search.md)
+- [OpenCL Bitcoin search](opencl-search.md)
 - [Batch input and output](batch.md)
 - [Command-line reference](cli.md)
 - [Rust library](library.md)

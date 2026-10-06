@@ -18,7 +18,10 @@ cargo install btc-vanity --features gpu
 cargo install btc-vanity --features ethereum
 cargo install btc-vanity --features solana
 
-# Bitcoin, both optional chains, and GPU
+# Fast Bitcoin prefix search on OpenCL GPUs
+cargo install btc-vanity --features opencl
+
+# Bitcoin, both optional chains, GPU, and OpenCL
 cargo install btc-vanity --features all
 ```
 
@@ -29,7 +32,8 @@ The Cargo features are:
 | `ethereum` | Ethereum key and address support |
 | `solana` | Solana key and address support |
 | `gpu` | Experimental GPU and Hybrid acceleration through wgpu |
-| `all` | `ethereum`, `solana`, and `gpu` |
+| `opencl` | Optimised OpenCL Bitcoin prefix search (`--opencl`) |
+| `all` | `ethereum`, `solana`, `gpu`, and `opencl` |
 
 Features are additive. For example, Ethereum with GPU support uses
 `--features ethereum,gpu`.

@@ -27,6 +27,7 @@ ark-ed25519 = { version = "0.4.0", optional = true }
 ark-ff = { version = "0.4.0", optional = true }
 ark-ec = { version = "0.4.0", optional = true }
 minijinja = { version = "2.0.1", features = ["loader"], optional = true }
+opencl3 = { version = "0.12.3", optional = true }
 
 # Dependencies for Ethereum support
 hex = { version = "0.4.3", optional = true }  # Make it optional
@@ -41,9 +42,11 @@ bs58 = { version = "0.5.1", optional = true }
 default = []
 gpu = ["dep:ark-ec", "dep:ark-ed25519", "dep:ark-ff", "dep:ark-secp256k1", "dep:bytemuck", "dep:minijinja", "dep:num-bigint", "dep:pollster", "dep:wgpu"]
 
+opencl = ["dep:opencl3", "dep:num-bigint"]
+
 ethereum = ["hex", "secp256k1", "sha3"]
 solana = ["solana-keypair", "bs58"]
-all = ["solana", "ethereum", "gpu"]
+all = ["solana", "ethereum", "gpu", "opencl"]
 
 [dev-dependencies]
 tempfile = "3.6"
@@ -53,6 +56,15 @@ criterion = "0.5.1"
 name = "gpu_end_to_end"
 harness = false
 required-features = ["gpu"]
+
+[[bench]]
+name = "opencl_btc"
+harness = false
+required-features = ["opencl"]
+
+[[test]]
+name = "opencl_backend_tests"
+required-features = ["opencl"]
 
 [[bench]]
 name = "cpu_benchmarks"

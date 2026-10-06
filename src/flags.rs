@@ -34,6 +34,12 @@ pub struct VanityFlags {
     pub gpu_batch_size: Option<usize>,
     /// Optional GPU dispatch duty-cycle percentage.
     pub gpu_usage_limit: Option<u8>,
+    /// Use the OpenCL Bitcoin prefix backend.
+    pub opencl: bool,
+    /// OpenCL work-item count override.
+    pub ocl_items: Option<usize>,
+    /// OpenCL points per side of each work-item centre.
+    pub ocl_group: Option<usize>,
 }
 
 /// Enum representing the source of the vanity patterns.
@@ -106,6 +112,9 @@ pub fn parse_cli(matches: ArgMatches) -> (VanityFlags, PatternsSource) {
             .and_then(|value| value.parse::<usize>().ok())
             .filter(|value| *value > 0),
         gpu_usage_limit: matches.get_one::<u8>("gpu-usage-limit").copied(),
+        opencl: matches.get_flag("opencl"),
+        ocl_items: matches.get_one::<usize>("ocl-items").copied(),
+        ocl_group: matches.get_one::<usize>("ocl-group").copied(),
     };
 
     // 5) Figure out if user gave a single pattern or a file
@@ -176,6 +185,9 @@ impl VanityFlags {
                 backend: file_flags.backend.or(self.backend),
                 gpu_batch_size: file_flags.gpu_batch_size.or(self.gpu_batch_size),
                 gpu_usage_limit: file_flags.gpu_usage_limit.or(self.gpu_usage_limit),
+                opencl: self.opencl || file_flags.opencl,
+                ocl_items: file_flags.ocl_items.or(self.ocl_items),
+                ocl_group: file_flags.ocl_group.or(self.ocl_group),
             }
         }
     }

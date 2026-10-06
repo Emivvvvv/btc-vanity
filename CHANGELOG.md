@@ -6,6 +6,10 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- An `opencl` feature and `--opencl` flag: a Bitcoin prefix search for OpenCL
+  GPUs using batched affine additions, the secp256k1 endomorphism, and
+  HASH160 range matching, with CPU re-verification of every hit (about
+  1.5 billion keys/s on a Radeon 8060S).
 - Bitcoin, Ethereum, and Solana exact-pattern GPU search.
 - CPU, GPU, Hybrid, and deterministic Auto backend selection.
 - Configurable GPU batch size and 1-100% duty-cycle limiting.
